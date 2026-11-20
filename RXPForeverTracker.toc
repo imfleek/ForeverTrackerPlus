@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: RXP ForeverTracker
 ## Notes: Shows your RestedXP guide steps in the objective tracker (click-to-use circles, waypoint arrow, back a step) and makes the tracker mouse-wheel scrollable, with zone sorting, rewards and tooltips. Settings: /qt
-## Version: 1.0.4
+## Version: 2.0
 ## Category: Quests
 ## X-Curse-Project-ID: 1801986
 ## IconTexture: Interface\AddOns\RXPForeverTracker\Textures\Cow
@@ -11,6 +11,7 @@
 ## OptionalDeps: RXPGuides, LibSharedMedia-3.0, Questie, QuestieDB
 
 Bootstrap.lua
+ScrollSkin.lua
 
 Objectives/Core.lua
 Objectives/rxp/Readers.lua
@@ -20,10 +21,12 @@ Objectives/features/QuestFocus.lua
 Objectives/features/QuestReady.lua
 Objectives/features/Windows.lua
 Objectives/features/RxpFixes.lua
+Objectives/features/RxpAwake.lua
 Objectives/features/WhyWindow.lua
 Objectives/features/Onboarding.lua
 Objectives/features/GuideMenu.lua
 Objectives/circle/Circle.lua
+Objectives/circle/Models.lua
 Objectives/circle/Action.lua
 Objectives/tracker/SkipBox.lua
 Objectives/tracker/Rows.lua
@@ -46,9 +49,11 @@ Tracker/Extras.lua
 Tracker/Questie.lua
 Tracker/Track.lua
 Tracker/Party.lua
+Tracker/Reputation.lua
 Tracker/MoreQuests.lua
 Tracker/Config.lua
 Tracker/DebugWindow.lua
 Tracker/Prereqs.lua
 Tracker/Conflicts.lua
+Tracker/LevelCap.lua
 Tracker/Minimap.lua

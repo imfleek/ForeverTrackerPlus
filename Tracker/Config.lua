@@ -897,25 +897,37 @@ local function buildChoice(item, parent)
 		popup.child = CreateFrame("Frame", nil, popup.scroll)
 		popup.child:SetSize(1, 1)
 		popup.scroll:SetScrollChild(popup.child)
-		popup.track = popup:CreateTexture(nil, "ARTWORK")
-		popup.track:SetWidth(4)
-		paint(popup.track, C.track)
-		popup.thumb = popup:CreateTexture(nil, "OVERLAY")
-		popup.thumb:SetWidth(4)
-		paint(popup.thumb, C.thumb)
+		-- the list's scrollbar (Forever look, ScrollSkin.lua): a rail inside the list's right edge, with room for its
+		-- arrows above and below
+		local BAR_W, ARROW_ROOM = 6, 8
+		popup.track = CreateFrame("Frame", nil, popup)
+		popup.track:SetWidth(BAR_W)
+		popup.track:SetFrameLevel(popup.scroll:GetFrameLevel() + 5)
+		popup.track:Hide()
+		popup.thumb = popup.track:CreateTexture(nil, "OVERLAY")
+		popup.thumb:SetWidth(BAR_W)
+		local function scrollBy(dir)
+			local range = popup.scroll:GetVerticalScrollRange() or 0
+			local value = popup.scroll:GetVerticalScroll() + dir * 44 * ts()
+			popup.scroll:SetVerticalScroll(math.min(math.max(value, 0), range))
+			if popup.placeThumb then popup.placeThumb() end
+		end
+		root.scrollSkin.bar(popup.track, popup.thumb, scrollBy)
 		local function placeThumb()
 			local range = popup.scroll:GetVerticalScrollRange() or 0
 			local shown = range > 0.5
 			popup.track:SetShown(shown)
-			popup.thumb:SetShown(shown)
 			if not shown then return end
-			local trackH = popup.scroll:GetHeight() - 4
+			popup.track:ClearAllPoints()
+			popup.track:SetPoint("TOPRIGHT", popup.scroll, "TOPRIGHT", -3, -ARROW_ROOM)
+			popup.track:SetPoint("BOTTOMRIGHT", popup.scroll, "BOTTOMRIGHT", -3, ARROW_ROOM)
 			local viewH = popup.scroll:GetHeight()
+			local trackH = viewH - 2 * ARROW_ROOM
 			local thumbH = math.max(16, trackH * viewH / (viewH + range))
 			local pos = (popup.scroll:GetVerticalScroll() / range) * (trackH - thumbH)
 			popup.thumb:SetHeight(thumbH)
 			popup.thumb:ClearAllPoints()
-			popup.thumb:SetPoint("TOPRIGHT", popup.scroll, "TOPRIGHT", -3, -2 - pos)
+			popup.thumb:SetPoint("TOPRIGHT", popup.track, "TOPRIGHT", 0, -pos)
 		end
 		popup.placeThumb = placeThumb
 		popup:EnableMouseWheel(true)
@@ -1675,16 +1687,13 @@ local function declareItems(db)
 	-- Quest Tracker ------------------------------------------------------------------------------------------------
 	page("questlist", "quests", "Quest list")
 	check("Lock tracker position", function() return db.locked end, function(v) api.setLocked(v) end,
-		nil, nil, "unlocked shows a drag bar")
+		nil, nil, "unlocked: drag the tracker like a frame in Edit Mode")
 	slider("Extra length", 0, 1500, 1, function(v) return v == 0 and "Auto" or ("%d px"):format(v) end,
 		function() return db.height end, function(v) db.height = v; api.applyLayout() end)
 	note("Extra length sets how tall the quest list is; 0 is automatic.")
 	check("Show scrollbar", function() return db.scrollbar end, function(v) api.setScrollbarShown(v) end)
 	check("Only on mouseover", function() return db.scrollbarMouseover end,
 		function(v) api.setScrollbarMouseover(v) end, function() return db.scrollbar end, 24)
-	color("Scrollbar colour", function() return db.scrollbarColor or { 0.2, 0.85, 0.55 } end,
-		function(v) db.scrollbarColor = v; if api.applyScrollbarColor then api.applyScrollbarColor() end end,
-		function() return db.scrollbar end, 24, 0.85)
 	slider("Scrollbar width", 2, 30, 1, "%d px", function() return db.scrollbarWidth or 10 end,
 		function(v) if api.setScrollbarWidth then api.setScrollbarWidth(v) end end, function() return db.scrollbar end, 24)
 	check("Usable quest items on the left", function() return db.itemsLeft ~= false end, function(v) api.setItemsLeft(v) end)
@@ -1718,6 +1727,24 @@ local function declareItems(db)
 	})
 	slider("\"Quests\" header padding", -50, 40, 1, "%+d px", function() return db.questsPadY or 0 end,
 		function(v) db.questsPadY = v; if api.applyQuestsPad then api.applyQuestsPad() end end)
+	-- R106-49: off: the header scrolls away with the quests (as before)
+	check("Keep the \"Quests\" header at the top", function() return db.pinQuestsHeader end,
+		function(v) api.setPinQuestsHeader(v) end, nil, nil, "off: it scrolls with the quests")
+	-- R106-57: Blizzard's Professions section in its own box above the quest tracker, 2 recipes tall, then it scrolls
+	check("Professions beside the quest tracker", function() return db.profAbove ~= false end,
+		function(v) api.setProfessionsAbove(v) end, nil, nil, "tracked recipes in their own box left of the Quests header; 2 show, more scroll")
+	local profOn = function() return db.profAbove ~= false end
+	-- R106-64: where the box sits (left of the Quests header by default)
+	slider("Professions horizontal position", -400, 400, 1, "%+d px", function() return db.profX or 0 end,
+		function(v) api.setProfessionsPosition(v, nil) end, profOn, 24)
+	slider("Professions vertical position", -400, 400, 1, "%+d px", function() return db.profY or 0 end,
+		function(v) api.setProfessionsPosition(nil, v) end, profOn, 24)
+	check("Professions scrollbar", function() return db.profScrollbar ~= false end,
+		function(v) api.setProfScrollbarShown(v) end, profOn, 24)
+	check("Only on mouseover", function() return db.profScrollbarMouseover end,
+		function(v) api.setProfScrollbarMouseover(v) end, function() return profOn() and db.profScrollbar ~= false end, 48)
+	slider("Professions scrollbar width", 2, 30, 1, "%d px", function() return db.profScrollbarWidth or 10 end,
+		function(v) api.setProfScrollbarWidth(v) end, function() return profOn() and db.profScrollbar ~= false end, 24)
 	slider("Scroll speed", 10, 200, 1, "%d px", function() return db.step end, function(v) db.step = v end)
 	buttons("Reset position Scroll to top", {
 		{ "Reset position", function() api.resetPosition() end, 120 },
@@ -1746,6 +1773,48 @@ local function declareItems(db)
 	page("titles", "quests", "Quest titles")
 	check("Word wrap titles and objectives", function() return db.wordWrap end,
 		function(v) db.wordWrap = v; if api.applyWrap then api.applyWrap() end end)
+	-- R106-48: a dark edge around the text (Fonts.lua keeps it like the font)
+	check("Outline quest titles", function() return db.titleOutline end,
+		function(v) db.titleOutline = v and true or false; if api.applyFont then api.applyFont() end end, nil, nil,
+		"a thin dark edge around the quest titles")
+	check("Outline quest objectives", function() return db.objectiveOutline end,
+		function(v) db.objectiveOutline = v and true or false; if api.applyFont then api.applyFont() end end, nil, nil,
+		"a thin dark edge around the objective lines")
+	check("Distance and direction after quest titles", function() return db.questDistance ~= false end,
+		function(v) db.questDistance = v; if api.applyQuestDistance then api.applyQuestDistance() end
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil,
+		"how far away the quest is, with an arrow that points at it (outside instances)")
+	local distanceOn = function() return db.questDistance ~= false end
+	local function applyDistance()
+		if api.applyQuestDistance then api.applyQuestDistance() end
+		if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+	end
+	-- R106-63: the yards and the arrow each on or off
+	check("Show distance", function() return db.distanceText ~= false end,
+		function(v) db.distanceText = v and true or false; applyDistance() end, distanceOn, 24, "how far away, as \"120 yds\"")
+	check("Show arrow", function() return db.distanceArrow ~= false end,
+		function(v) db.distanceArrow = v and true or false; applyDistance() end, distanceOn, 24, "points at the quest")
+	percent("Arrow size", 50, 200, function() return db.distArrowScale or 1 end,
+		function(v) db.distArrowScale = v; applyDistance() end, distanceOn, 24)
+	percent("Arrow opacity", 10, 100, function() return db.distArrowAlpha or 1 end,
+		function(v) db.distArrowAlpha = v; applyDistance() end, distanceOn, 24)
+	-- R106-74: the watched reputation at the top of the quest list (Reputation.lua), the game's bar hidden meanwhile
+	check("Tracked reputation at the top", function() return db.repTrack ~= false end,
+		function(v) if api.setRepTrack then api.setRepTrack(v) end end, nil, nil,
+		"the faction you watch, with its bar, above the quests; the game's reputation bar is hidden while it shows")
+	check("Progress bars on objectives", function() return db.progressBars ~= false end,
+		function(v) db.progressBars = v; if api.applyProgressBars then api.applyProgressBars() end
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil,
+		"a small bar with the count at the right of each objective, as \"Khaz Modan Iron [26/30]\"")
+	check("Blue bars", function() return db.progressBarBlue end,
+		function(v) db.progressBarBlue = v; if api.applyProgressBars then api.applyProgressBars() end
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+		function() return db.progressBars ~= false end, 24,
+		"always blue; off: red, orange, yellow, then green when done")
+	check("Under the objective", function() return db.progressBarUnder end,
+		function(v) db.progressBarUnder = v; if api.applyProgressBars then api.applyProgressBars() end
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+		function() return db.progressBars ~= false end, 24, "on a line of its own under the text, not at its right")
 	check("Experience reward after titles", function() return db.showXP end, function(v) api.setReward("xp", v) end)
 	color("Experience colour", function() return db.xpColor or { 0.69, 0.53, 1 } end,
 		function(v) db.xpColor = v; if api.applyExtras then api.applyExtras() end end, function() return db.showXP end, 24)
@@ -1772,9 +1841,14 @@ local function declareItems(db)
 	end, function(v) db.completeCheckColor = v; applyChecks() end, checksOn, 24, 1)
 	check("Outline the check", function() return db.completeCheckOutline end,
 		function(v) db.completeCheckOutline = v; applyChecks() end, checksOn, 24, "a thin dark edge, as the zone header outline")
-	check("Icons on Elite+ quests", function() return db.condense end,
+	check("Icon Classifications", function() return db.condense end,
 		function(v) db.condense = v; if api.applyExtras then api.applyExtras() end end, nil, nil,
-		"elite, group, dungeon, raid, PvP")
+		"elite, group, dungeon, raid, PvP, added in WoW Forever")
+	-- R106-68: the Forever "W" on quests new to WoW Forever, on or off
+	check("Icon on quests new to Forever", function() return db.foreverIcon ~= false end,
+		function(v) db.foreverIcon = v and true or false; if api.applyExtras then api.applyExtras() end
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+		function() return db.condense end, 24, "the Forever \"W\"")
 	if api.questieLoaded and api.questieLoaded() then -- raid attunement quests, from Questie's quest chains
 		check("Star on raid attunement quests", function() return db.attunementStar ~= false end,
 			function(v) db.attunementStar = v; if api.applyExtras then api.applyExtras() end
@@ -1830,6 +1904,14 @@ local function declareItems(db)
 	check("List quests past the tracking limit", function() return db.moreQuests ~= false end,
 		function(v) db.moreQuests = v; if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
 		function() return db.trackMode == "all" end)
+	-- Questie's own "hide untracked quest icons", the other way round (Questie.lua): with it on, these quests have no
+	-- map markers
+	if api.questieLoaded and api.questieLoaded() and api.questieShowsUntracked then
+		check("Show them on the map (Questie)", function() return api.questieShowsUntracked() end,
+			function(v) api.setQuestieShowsUntracked(v) end,
+			function() return db.trackMode == "all" and db.moreQuests ~= false end, 24,
+			"world map and minimap markers; the same as Questie's \"Hide untracked quest icons\", turned the other way")
+	end
 	pageByKey.tracking.reset = resetQuests
 	-- Zone headers: greyed while Track has no zone headers (still opens)
 	pageByKey.zoneheaders.dimmed = function() return not db.zoneSort end
@@ -1847,6 +1929,9 @@ local function declareItems(db)
 		page("guidetracker", "guide", "Tracker settings")
 		check("Show RestedXP steps in the tracker", function() return g.get("enabled") end,
 			function(v) g.setEnabled(v) end, nil, nil, "off brings back RestedXP's own windows")
+		check("NPC automation while RestedXP is hidden", function() return g.get("hiddenAutomation") end,
+			function(v) g.setFlag("hiddenAutomation", v) end, function() return g.get("enabled") end, 24,
+			"quests, gossip, flights, hearthstone, buying and training, with its window hidden")
 		check("Own window", function() return db.guideDetached end,
 			function(v) if api.setGuideDetached then api.setGuideDetached(v) end end,
 			function() return g.get("enabled") end, 24, "out of the quest tracker; drag its bar to move it")
@@ -1895,9 +1980,6 @@ local function declareItems(db)
 		check("Only on mouseover", function() return g.get("upcomingScrollbarMouseover") end,
 			function(v) g.setUpcoming("upcomingScrollbarMouseover", v) end,
 			function() return g.get("upcomingScrollbar") ~= false end, 24)
-		color("Scrollbar colour", function() return g.get("upcomingScrollbarColor") or { 0.2, 0.85, 0.55, 0.85 } end,
-			function(v) g.setUpcoming("upcomingScrollbarColor", v) end,
-			function() return g.get("upcomingScrollbar") ~= false end, 24, 0.85)
 		slider("Scrollbar width", 1, 12, 1, "%d px", function() return g.get("upcomingScrollbarWidth") or 3 end,
 			function(v) g.setUpcoming("upcomingScrollbarWidth", v) end,
 			function() return g.get("upcomingScrollbar") ~= false end, 24)
@@ -2315,17 +2397,20 @@ local function buildSidebar(f, top)
 	-- the scrollbar: a 6 px track with a draggable thumb, as the Prerequisite Journal's guide list has
 	local BAR_W = 6
 	local bar = CreateFrame("Frame", nil, sidebar)
-	bar:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 4, 0)
-	bar:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT", 4, 0)
+	-- (Forever look, ScrollSkin.lua; inset so its arrows fit above and below)
+	bar:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 4, -8)
+	bar:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT", 4, 8)
 	bar:SetWidth(BAR_W)
 	bar:Hide()
-	solid(bar, "BACKGROUND", C.track, 1):SetAllPoints()
 	local thumb = CreateFrame("Frame", nil, bar)
 	thumb:SetWidth(BAR_W)
 	thumb:EnableMouse(true)
-	solid(thumb, "ARTWORK", C.thumb, 1):SetAllPoints()
 	sidebar.bar = bar
 	local function range() return math.max((content:GetHeight() or 0) - (scroller:GetHeight() or 0), 0) end
+	root.scrollSkin.bar(bar, thumb, function(dir)
+		scroller:SetVerticalScroll(math.min(math.max((scroller:GetVerticalScroll() or 0) + dir * 30, 0), range()))
+		if sidebar.fit then sidebar.fit() end
+	end)
 	local function placeThumb()
 		local viewH, listH, max = scroller:GetHeight() or 0, content:GetHeight() or 0, range()
 		if max <= 0.5 or viewH <= 1 then bar:Hide() return end
@@ -2678,21 +2763,23 @@ local function build()
 				if (scroll:GetVerticalScrollRange() or 0) <= 0.5 then self:Hide() end
 			end)
 		end
+		root.scrollSkin.native(scrollbar) -- Forever look (ScrollSkin.lua)
 	end
 	if not scrollbar then
 		scrollbar = CreateFrame("Slider", nil, panel)
 		scrollbar.qtsOwn = true
 		scrollbar:SetOrientation("VERTICAL")
-		scrollbar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 8, 0)
-		scrollbar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 8, 0)
+		scrollbar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 8, -8) -- room for the arrows
+		scrollbar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 8, 8)
 		scrollbar:SetWidth(8)
-		local strack = scrollbar:CreateTexture(nil, "BACKGROUND")
-		strack:SetAllPoints()
-		paint(strack, C.track)
 		local sthumb = scrollbar:CreateTexture(nil, "OVERLAY")
 		sthumb:SetSize(8, 40)
-		paint(sthumb, { 0.36, 0.3, 0.22 })
 		scrollbar:SetThumbTexture(sthumb)
+		-- Forever look (ScrollSkin.lua); the arrows move one wheel notch
+		root.scrollSkin.bar(scrollbar, sthumb, function(dir)
+			local low, high = scrollbar:GetMinMaxValues()
+			scrollbar:SetValue(math.min(math.max(scrollbar:GetValue() + dir * 60, low), high))
+		end)
 		scrollbar:SetMinMaxValues(0, 0)
 		scrollbar:SetValueStep(1)
 		scrollbar:SetValue(0)

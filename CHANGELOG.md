@@ -2,6 +2,36 @@
 
 All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 
+## 2.0
+A big update to the quest tracker. It also includes 1.0.4, which was not released on its own.
+
+### Added
+- **Distance and direction:** how far away each quest is ("120 yds") and a gold arrow that points at it, after the quest title. Options for the arrow's size and opacity, and to show or hide the distance and the arrow separately. Objective text keeps clear of the arrow. `/qt distance` explains what it shows.
+- **Progress bars on objectives**, in the look of the reputation bars: red, orange, yellow, then green when done (or always blue). They can sit to the right of the objective or under it.
+- **Tracked reputation** at the top of the quest list: the faction, your standing and a bar. The game's own reputation bar is hidden while it shows. Click it for the reputation window. Option: Quest list → "Tracked reputation at the top".
+- **Icon Classifications:** a skull for elite quests, dungeon, raid and PvP icons (battleground quests too, including Battle for the Darkspear Islands), a star on raid attunement quests, and a Forever "W" on quests new to WoW Forever (with its own on/off option). The PvP icon shows your own faction.
+- **Professions** (tracked recipes) in their own box beside the quest tracker, with position sliders and their own scrollbar options.
+- **Ctrl + right-click a quest** to put the links of its reward items in chat.
+- **Quest tooltips:** rewards in their rarity's colour (also the rewards at the end of a Questie chain), party members' surnames, and (from 1.0.4) hold **Ctrl** to see what finishing the quest or its chain unlocks.
+- Options: outline quest titles, outline objectives, keep the "Quests" header at the top.
+- At level 60, a popup asks whether to turn off the separate RXPGuides addon.
+- Moving the tracker looks like Blizzard's Edit Mode.
+- RestedXP: guide steps, the waypoint arrow, the item bar and target frame keep working while RestedXP's own window is hidden. Optional NPC automation (quests, gossip, flights, training) while it is hidden.
+
+### Changed
+- Every scrollbar uses the look of the game's character pane scrollbar.
+- "More quests" reads as part of one list with the tracked quests, and can show its quests on the map (Questie).
+- Quest item buttons sit beside the objectives, 12.5 % smaller, so the title row is free for the icons.
+- Coins in quest titles are a little smaller, and gold, silver and copper always stay together on one line.
+- Blizzard's quest POI buttons next to quest titles are always hidden.
+- The mouse wheel scrolls the quest tracker in combat.
+
+### Fixed
+- No more jitter or flicker while running, changing zones or opening the world map.
+- If EllesmereUI's Quest Tracker is installed, a popup offers to turn it off (it made the tracker text flicker).
+- Collapsing the "Quests" header while it is kept at the top no longer causes an error.
+- No taint errors about auras in dungeons or from Edit Mode.
+
 ## 1.0.4
 ### Added
 - Quest tooltips (with Questie): hold **Ctrl** to see what finishing the quest unlocks, and what finishing its whole chain unlocks. Each quest it opens shows its level, "starts a new chain of N quests" when it leads on to others, and "also needs: …" when another unfinished quest is required too. Only quests for your race and class that you haven't done are listed, and quests the chain already shows are not repeated. Without Ctrl, the tooltip's hint says when there is something to see. On/off: Settings → Tooltips → "What finishing the quest or its chain unlocks" (on by default).

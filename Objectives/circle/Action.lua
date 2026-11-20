@@ -56,6 +56,10 @@ local function attachPortrait(button, use)
 	local name = use.type == "unit" and use.name or nil
 	local portrait = name and portraits:get(name)
 	portraits:attach(button, portrait, button)
+	-- not seen yet: the creature's model from its npc id (Models.lua), until a portrait is drawn
+	if ns.showCircleModel then
+		if portrait or not name then ns.hideCircleModel(button) else ns.showCircleModel(button, name, button) end
+	end
 	ns.setMark(button, use, portrait)
 end
 

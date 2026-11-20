@@ -96,7 +96,9 @@ api.fontPath = function() return "Fonts\\ARIALN.TTF" end
 api.themeKit = { C = setmetatable({}, { __index = function() return { 0, 0, 0 } end }), create = function() return obj(), true end,
 	solid = function() return obj() end, gradient = function() end, border = function() end,
 	makeButton = function() return obj() end }
-assert(loadfile(A .. "/Tracker/Prereqs.lua"))("x", { tracker = { api = api, db = db } })
+local root = { tracker = { api = api, db = db } }
+assert(loadfile(A .. "/ScrollSkin.lua"))("x", root)
+assert(loadfile(A .. "/Tracker/Prereqs.lua"))("x", root)
 local pass = true
 local function check(l, c) print((c and "ok   " or "FAIL ") .. l); pass = pass and c end
 local ok, err = pcall(api.togglePrereqs)

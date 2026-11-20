@@ -152,10 +152,15 @@ end
 function api.layoutMoreQuests()
 	if not frame or used == 0 or not wanted() then hide() return end
 	local viewport = _G.RXPForeverTrackerViewport
-	local anchor, contentBottom = lowestModule()
 	-- the whole tracker collapsed, or the "Quests" section folded with its collapse button: these quests go too
 	local questModule = _G.QuestObjectiveTracker
 	local questsFolded = questModule and questModule.IsCollapsed and questModule:IsCollapsed()
+	-- right under Blizzard's quests; with none of them shown, under the lowest section
+	local anchor, contentBottom
+	if questModule and questModule:IsShown() and api.moduleContentBottom then
+		anchor, contentBottom = questModule, api.moduleContentBottom(questModule)
+	end
+	if not contentBottom then anchor, contentBottom = lowestModule() end
 	if not viewport or not anchor or not tracker:IsShown() or (tracker.IsCollapsed and tracker:IsCollapsed())
 		or questsFolded then
 		hide()
@@ -180,6 +185,7 @@ function api.layoutMoreQuests()
 	frame:SetPoint("TOPLEFT", anchor, "TOPLEFT", 0, -(math.max(down, 0) + gap))
 	frame:SetWidth(width)
 	frame:Show()
+	-- the sections after the quests (tracked recipes, ...) go below this one: Core.lua pushSectionsAfterQuests
 end
 
 -- Bottom of the section in UIParent units, for the scroll range.
@@ -277,6 +283,20 @@ local lastSignature
 local forceBuild = false
 local function colorKey(c) return c and ("%.3f,%.3f,%.3f"):format(c[1] or 0, c[2] or 0, c[3] or 0) or "" end
 
+-- Progress on objectives, as on Blizzard's quests (Extras.lua, "Progress bars on objectives"): the same framed bar
+-- with the count inside it, at the right edge of the line.
+local progressBits, progressUsed = {}, 0
+local BAR_GAP = 6
+local function progressBit()
+	progressUsed = progressUsed + 1
+	local b = progressBits[progressUsed]
+	if not b then
+		b = api.newProgressBar(frame)
+		progressBits[progressUsed] = b
+	end
+	return b
+end
+
 local function build()
 	if not db then return end
 	if not frame then
@@ -286,10 +306,17 @@ local function build()
 		frame:Hide()
 	end
 	local function clear()
-		for _, r in ipairs(rows) do r:Hide(); if api.hideTitleIcons then api.hideTitleIcons(r) end end
+		for _, r in ipairs(rows) do
+			r:Hide()
+			if api.hideTitleIcons then api.hideTitleIcons(r) end
+			if api.hideQuestDistance then api.hideQuestDistance(r) end
+			r.qtsReserve = nil
+		end
 		for _, b in ipairs(clickers) do b:Hide() end
 		for _, l in ipairs(labels) do l:Hide() end
 		for _, d in ipairs(dashes) do d:Hide() end
+		for _, b in ipairs(progressBits) do api.hideProgressBar(b) end
+		progressUsed = 0
 		used = 0
 		lastSignature = nil
 	end
@@ -317,8 +344,13 @@ local function build()
 	for _, quest in ipairs(list) do
 		local title = (type(quest.level) == "number" and quest.level > 0) and ("[%d] %s"):format(quest.level, quest.title)
 			or quest.title
-		if api.rewardSuffix then title = title .. api.rewardSuffix(quest.id) end
+		if api.rewardSuffix then title = title .. api.rewardSuffix(quest.id, look.header[2]) end
+		-- title icons, as on the tracked quests (Extras.lua): the Forever infinity furthest out, then the star
+		local icons = {}
+		local forever = api.foreverIcon and api.foreverIcon(quest.id)
+		if forever then icons[#icons + 1] = forever end
 		local star = api.attunementIcon and api.attunementIcon(quest.id)
+		if star then icons[#icons + 1] = star end
 		local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(quest.id) and true or false
 		local lines = {}
 		if complete then
@@ -330,8 +362,8 @@ local function build()
 				if text and text ~= "" then lines[#lines + 1] = { text, o.finished and true or false } end
 			end
 		end
-		entries[#entries + 1] = { quest = quest, title = title, star = star, complete = complete, lines = lines }
-		parts[#parts + 1] = quest.id .. "|" .. tostring(quest.header) .. "|" .. title .. (star and "*" or "") .. (complete and "v" or "")
+		entries[#entries + 1] = { quest = quest, title = title, icons = icons, complete = complete, lines = lines }
+		parts[#parts + 1] = quest.id .. "|" .. tostring(quest.header) .. "|" .. title .. (star and "*" or "") .. (forever and "~" or "") .. (complete and "v" or "")
 		for _, line in ipairs(lines) do parts[#parts + 1] = (line[2] and "+" or "-") .. line[1] end
 	end
 	local signature = table.concat(parts, "\n")
@@ -358,6 +390,8 @@ local function build()
 		elseif api.hideTitleIcons then
 			api.hideTitleIcons(fs)
 		end
+		-- a coin amount whose coin would wrap without its number starts the next line (Extras.lua)
+		if api.keepCoinsTogether then text = api.keepCoinsTogether(fs, text) end
 		fs:SetText(text)
 		fs:SetTextColor(color[1], color[2], color[3])
 		fs:Show()
@@ -381,7 +415,14 @@ local function build()
 			label:SetText(quest.header)
 			label:Show()
 		end
-		local fs = add(entry.title, look.header, look.headerX, look.headerColor, nil, entry.star and { entry.star } or nil)
+		-- room at the title's right edge for the distance and arrow (Extras.lua), as on Blizzard's quests
+		-- (only for a quest that shows a distance, so the other titles keep their full width)
+		local reserve = api.questHasDistance and api.questHasDistance(quest.id) and api.questDistanceReserve
+			and api.questDistanceReserve(look.header[1], look.header[2], look.header[3]) or nil
+		local fs = add(entry.title, look.header, look.headerX, look.headerColor, reserve and (4 + reserve) or nil,
+			#entry.icons > 0 and entry.icons or nil)
+		fs.qtsReserve = reserve
+		if api.attachQuestDistance then api.attachQuestDistance(fs, quest.id) end
 		-- a finished quest: the green check on its own, left of the title (Extras.lua)
 		if api.placeCheck then api.placeCheck(fs, entry.complete) end
 		click = click + 1
@@ -401,7 +442,29 @@ local function build()
 				d:SetPoint("TOPLEFT", frame, "TOPLEFT", look.dashX, -y)
 				d:Show()
 			end
-			add(line[1], look.line, look.textX, line[2])
+			local name, have, need
+			if db.progressBars ~= false and api.progressParts and api.drawProgressBar then
+				name, have, need = api.progressParts(line[1])
+			end
+			if name then
+				local b = progressBit()
+				if api.progressBarUnder and api.progressBarUnder() then
+					-- under the objective: the bar on a line of its own, from the text's left to the right edge
+					add(name, look.line, look.textX, line[2])
+					-- the same gaps above and below as on Blizzard's quests (Extras.lua), the room in this layout
+					local top, bottom = api.progressUnderGaps()
+					local bh = api.progressUnderBarHeight(look.line[2])
+					api.drawProgressBar(b, frame, look.textX, look.line[1], look.line[2], look.line[3], have, need,
+						"TOPLEFT", math.max(width - look.textX - 4, 20), bh, -(y + top))
+					y = y + top + bh + bottom + look.lineGap
+				else
+					local reserve = api.progressBarSize(look.line[2]) + BAR_GAP
+					local fs = add(name, look.line, look.textX, line[2], 4 + reserve)
+					api.drawProgressBar(b, fs, BAR_GAP, look.line[1], look.line[2], look.line[3], have, need)
+				end
+			else
+				add(line[1], look.line, look.textX, line[2])
+			end
 		end
 	end
 	frame:SetHeight(math.max(y, 1))

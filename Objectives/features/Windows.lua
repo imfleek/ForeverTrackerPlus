@@ -22,8 +22,9 @@ end
 -- CONSTRAINT: not while the tracker is hidden (ns.paused): no circles stand in for the item bar and the target frame
 -- then, and a player with no quest still sees the guide.
 local function windowsHidden()
-	return skinHides() and not ns.paused()
+	return skinHides() and not (ns.paused and ns.paused()) -- Tracker.lua (later in the TOC) defines ns.paused
 end
+ns.rxpWindowsHidden = windowsHidden
 
 local function windowOf(entry)
 	return entry.frame or entry
@@ -116,12 +117,15 @@ end
 
 -- CONSTRAINT: timer bars (LibCandyBar) are UIParent children, so the RXPFrame fade skips them; never hide or
 -- unlist: a bar's OnHide drops it from the list ns.activeTimer reads.
+-- Also faded while RestedXP's own window is hidden and the RXP Tracker keeps its timers running (RxpAwake.lua).
 local function fadeTimers()
-	local alpha = windowsHidden() and 0 or 1
+	local hidden = windowsHidden() or (ns.rxpAsleep ~= nil and ns.rxpAsleep())
+	local alpha = hidden and 0 or 1
 	for _, bar in pairs(ns.timerBars()) do
 		if bar:GetAlpha() ~= alpha then bar:SetAlpha(alpha) end
 	end
 end
+ns.fadeTimers = fadeTimers
 
 local function hideWhileHiding(window)
 	if not windowsHidden() then return end
@@ -143,7 +147,8 @@ function ns.updateWindows()
 					hooked[window] = entry
 					window:HookScript("OnShow", hideWhileHiding)
 				end
-				window:SetShown(not hidden and enabled and ns.rxpProfile().showEnabled)
+				-- RestedXP's "Show all Enabled Frames" (showEnabled) off: every one of its windows stays hidden
+				window:SetShown(not hidden and enabled and ns.rxpProfile().showEnabled ~= false)
 			end
 		end
 	end

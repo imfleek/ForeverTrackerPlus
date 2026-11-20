@@ -26,7 +26,7 @@ function parent:CreateTexture()
 	function t:Hide() self.shown = false end
 	return t
 end
-local env = setmetatable({ db = db, api = api, UIParent = { CreateFontString = function() return fontString({}) end } }, { __index = _G })
+local env = setmetatable({ db = db, api = api, ADDON = "RXPForeverTracker", UIParent = { CreateFontString = function() return fontString({}) end } }, { __index = _G })
 local place = load(block .. "\nreturn placeTitleIcons, attunementIcon", "x", "t", env)
 local placeTitleIcons, attunementIcon = place()
 local fs = fontString(parent)

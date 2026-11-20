@@ -32,13 +32,15 @@ local DEFAULTS = {
 	upcomingShown = 2,
 	upcomingScrollbar = true,
 	upcomingScrollbarMouseover = false,
-	upcomingScrollbarColor = { 0.2, 0.85, 0.55, 0.85 },
 	upcomingScrollbarWidth = 3,
 	-- size and place of the current step(s) and of the upcoming steps (scale 1 = as drawn; x/y in px, + right / up)
 	currentScale = 1, currentX = 0, currentY = 0,
 	upcomingScale = 1, upcomingX = 0, upcomingY = 0,
 	-- the "N/M" step counter in the RXP Tracker's header (Forever Style): shown, text size, colour (nil = the game's)
 	stepCountShown = true, stepCountSize = 0, stepCountColor = false,
+	-- RestedXP's NPC automation (quests, gossip, flights, hearthstone, buying, training) while its window is hidden and
+	-- RxpAwake.lua keeps its guide running
+	hiddenAutomation = false,
 }
 
 local db = type(_G.RXPForeverTrackerGuideDB) == "table" and _G.RXPForeverTrackerGuideDB or {}
@@ -52,10 +54,7 @@ if type(db.questFocusSaved) ~= "table" then db.questFocusSaved = {} end
 db.followingSteps = Clamp(math.floor(tonumber(db.followingSteps) or DEFAULTS.followingSteps), 0, ns.ALL_STEPS)
 if db.theme ~= "rxp" then db.theme = "forever" end -- new installs (and unknown values) get Forever Style
 db.upcomingShown = Clamp(math.floor(tonumber(db.upcomingShown) or DEFAULTS.upcomingShown), 1, ns.ALL_STEPS)
-if type(db.upcomingScrollbarColor) ~= "table" then
-	local c = DEFAULTS.upcomingScrollbarColor
-	db.upcomingScrollbarColor = { c[1], c[2], c[3], c[4] }
-end
+db.upcomingScrollbarColor = nil -- removed: every scrollbar uses the Forever art (ScrollSkin.lua)
 ns.db = db
 ns.DEFAULTS = DEFAULTS
 

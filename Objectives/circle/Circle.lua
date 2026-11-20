@@ -180,14 +180,18 @@ function ns.sizeCircle(button, disc)
 	button.icon:SetSize(inner, inner)
 	button.cross:SetSize(inner * CROSS, inner * CROSS)
 	ns.sizeUnseenMark(button, disc)
+	if button.model and ns.sizeCircleModel then ns.sizeCircleModel(button) end
 end
 
 function ns.drawsIcon(use)
 	return use.type ~= "unit" and use.type ~= "abandon"
 end
 
+-- the unseen mark: a unit circle with neither portrait nor a drawn model (Models.lua)
 function ns.setMark(button, use, portrait)
-	button.mark:SetShown(use ~= nil and (use.type == "abandon" or (use.type == "unit" and portrait == nil)))
+	local model = button.model
+	local pictured = portrait ~= nil or (model ~= nil and model.loaded ~= false)
+	button.mark:SetShown(use ~= nil and (use.type == "abandon" or (use.type == "unit" and not pictured)))
 end
 
 function ns.paintArmed(button, armed)

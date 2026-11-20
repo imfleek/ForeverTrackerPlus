@@ -20,6 +20,34 @@ local function shortName(name)
 	return (name:match("^([^%-]+)")) or name
 end
 
+-- R106-72: WoW Forever's characters carry a surname (user: show players' last names). There UnitName's second value is
+-- the surname, where other clients give the realm; the player's own name may already hold it ("Ana Smith"). Chat and
+-- addon-message senders are "Ana Smith" (the separator: Constants.CharacterNameSeparatorConsts, a space).
+local function separator()
+	local c = Constants and Constants.CharacterNameSeparatorConsts
+	local sep = c and c.CHARACTERNAME_SURNAME_SEPARATOR
+	return type(sep) == "string" and sep ~= "" and sep or " "
+end
+local surnamesCached
+local function surnames()
+	if surnamesCached ~= nil then return surnamesCached end
+	local fn = UnitNameUnmodified or UnitName
+	local name, second = fn("player")
+	if isSecret(name) or isSecret(second) then return false end
+	surnamesCached = (type(second) == "string" and second ~= "") or (type(name) == "string" and name:find(separator(), 1, true) ~= nil)
+	return surnamesCached
+end
+-- a unit's name with its surname on Forever ("Ana Smith"), else its name; and its first name
+local function fullName(unit)
+	local name, second = UnitName(unit)
+	if type(name) ~= "string" or isSecret(name) or isSecret(second) then return nil end
+	local sep = separator()
+	if name:find(sep, 1, true) then return name, name:sub(1, name:find(sep, 1, true) - 1) end
+	if surnames() and type(second) == "string" and second ~= "" then return name .. sep .. second, name end
+	return name, name
+end
+api.partyFullName = fullName
+
 -- "questID:f/r,f/r;questID:f/r" in messages of at most 250 bytes
 local function encodeAll()
 	local parts = {}
@@ -81,7 +109,7 @@ end
 local incoming = {}
 local function receive(sender, message)
 	local name = shortName(sender)
-	if not name or name == UnitName("player") then return end
+	if not name or name == UnitName("player") or name == fullName("player") then return end
 	local last = message:sub(1, 1) == "E"
 	if last then message = message:sub(2) end
 	local into = incoming[name] or {}
@@ -157,15 +185,18 @@ function api.addPartyProgress(tip, questID)
 	for i = 1, (GetNumSubgroupMembers and GetNumSubgroupMembers() or 4) do
 		local unit = "party" .. i
 		if UnitExists(unit) then
-			local name = UnitName(unit)
-			if type(name) == "string" and not isSecret(name) then
-				-- their progress: from this addon, else from Questie's party sync
-				local data = progress[name] and progress[name][questID]
-				if not data then data = questieCounts(name, questID) end
+			local full, name = fullName(unit)
+			if full then
+				-- their progress: from this addon, else from Questie's party sync (senders are "Ana Smith" on Forever)
+				local mine = progress[full] or progress[name]
+				local data = mine and mine[questID]
+				if not data then data = questieCounts(full, questID) or (full ~= name and questieCounts(name, questID)) or nil end
+				-- shown with the surname (R106-72)
+				name = full
 				if data then
 					local text, done = describe(data)
 					lines[#lines + 1] = { name, text, done }
-				elseif progress[name] then
+				elseif mine then
 					lines[#lines + 1] = { name, "not on quest", nil, true }
 				else
 					local on = onQuest(unit, questID)

@@ -286,9 +286,21 @@ local function rewardItems(quest)
 	return rewardIndex[quest] or {}
 end
 
+-- R106-75: the item's name in its rarity's colour (user: the chain's reward items uncoloured): the quality from the
+-- game's item data; not loaded yet, the item is asked for and the open tooltip is drawn again when it arrives
+local waitingItems = {}
 local function itemText(item)
-	local name, link = GetItemInfo and GetItemInfo(item)
-	return link or name or get("Item", item, "name") or ("item " .. item)
+	local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+	local name = getInfo and getInfo(item)
+	name = name or get("Item", item, "name") or ("item " .. item)
+	local quality = api.itemQuality and api.itemQuality(item, nil, nil)
+	local hex = quality and api.qualityHex and api.qualityHex(quality)
+	if hex then return hex .. name .. "|r" end
+	if type(item) == "number" and C_Item and C_Item.RequestLoadItemDataByID then
+		waitingItems[item] = true
+		pcall(C_Item.RequestLoadItemDataByID, item)
+	end
+	return name
 end
 
 -- Experience as Questie computes it (its QuestXP module: level-adjusted, 0 at max level), gold from the game's
@@ -968,6 +980,36 @@ end
 
 -- Re-sort and redraw when the option changes or Questie becomes ready.
 local clearCaches -- below: every per-quest answer, so nothing from before Questie was ready is kept
+-- "Show them on the map" (/qt Tracking and sorting, under "List quests past the tracking limit"): Questie's own
+-- "hide untracked quest icons" (Questie.db.profile.hideUntrackedQuestsMapIcons), shown and changed here the other way
+-- round, for players who do not know Questie has it. This addon turns Questie's tracker off (Conflicts.lua), so Questie
+-- counts a quest as tracked only while the game watches it (QuestieQuest:IsQuestTracked, Questie master); with that
+-- option on, the quests "More quests" lists (past the game's watch limit) have no map or minimap markers.
+local function questieProfile()
+	local questie = _G.Questie
+	local profile = type(questie) == "table" and type(questie.db) == "table" and questie.db.profile
+	return type(profile) == "table" and profile or nil
+end
+function api.questieShowsUntracked()
+	local profile = questieProfile()
+	return profile ~= nil and not profile.hideUntrackedQuestsMapIcons
+end
+function api.setQuestieShowsUntracked(show)
+	local profile = questieProfile()
+	if not profile then return end
+	local hide = not show
+	if (profile.hideUntrackedQuestsMapIcons and true or false) == hide then return end
+	profile.hideUntrackedQuestsMapIcons = hide
+	-- Questie draws its markers again with the new setting; not while its quest icons are off (ToggleNotes(true)
+	-- would turn them on)
+	if profile.enabled == false then return end
+	local qq = module("QuestieQuest")
+	if qq and type(qq.ToggleNotes) == "function" then
+		local ok, err = pcall(qq.ToggleNotes, qq, true)
+		if not ok then geterrorhandler()(err) end
+	end
+end
+
 function api.applyQuestie()
 	if clearCaches then clearCaches() end
 	if api.applyExtras then api.applyExtras() end
@@ -985,7 +1027,16 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	-- Ctrl shows the whole chain: redraw an open quest tooltip when Ctrl is pressed or released
 	local keys = CreateFrame("Frame")
 	keys:RegisterEvent("MODIFIER_STATE_CHANGED")
-	keys:SetScript("OnEvent", function(_, _, key)
+	pcall(keys.RegisterEvent, keys, "GET_ITEM_INFO_RECEIVED")
+	keys:SetScript("OnEvent", function(_, event, key)
+		if event == "GET_ITEM_INFO_RECEIVED" then
+			-- a chain reward item the tooltip waited for: drawn again in its colour (R106-75)
+			if waitingItems[key] then
+				waitingItems[key] = nil
+				if api.refreshQuestTooltip then C_Timer.After(0, api.refreshQuestTooltip) end
+			end
+			return
+		end
 		if (key == "LCTRL" or key == "RCTRL") and api.questieOn()
 			and (ns.db.questieChain ~= false or ns.db.questieUnlocks ~= false) and api.refreshQuestTooltip then
 			api.refreshQuestTooltip()

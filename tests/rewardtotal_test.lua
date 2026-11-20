@@ -1,8 +1,8 @@
 -- 3.2.5: journal reward totals use the quest-title settings (xp orb / coins), and Questie totals add up.
 local A = arg[1]
 local src = io.open(A .. "/Tracker/Extras.lua"):read("a")
-local coinBlock = src:match("(local function coin%(file%).-\nlocal COIN = [^\n]+)")
-local goldFn = src:match("(local function gold%(copper, coins, spaced%).-\nend)")
+local coinBlock = src:match("(local COIN_SCALE = .-\napi%.coinPx = coinPx)")
+local goldFn = src:match("(local function gold%(copper, coins, spaced, px%).-\nend)")
 local orb = src:match("(local XP_ORB = [^\n]+)")
 local fmt = src:match("(function api%.formatRewardTotals%(xp, money, spacedCoins%).-\nend)")
 local db = {}

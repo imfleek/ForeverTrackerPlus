@@ -8,7 +8,13 @@ local ADDON, root = ...; local ns = root.tracker
 
 local DELAY = 8
 -- Addons that replace or hide the default quest tracker. Questie only when its own tracker is switched on.
-local KNOWN = { "!KalielsTracker", "KalielsTracker", "BetterQuestList", "SorhaQuestLog", "QuestGuru_Tracker", "Questie" }
+local KNOWN = { "!KalielsTracker", "KalielsTracker", "BetterQuestList", "SorhaQuestLog", "QuestGuru_Tracker", "Questie",
+	"EllesmereUIQuestTracker" }
+-- R106-45: addons that keep Blizzard's tracker but restyle its text (font, size, outline) on every quest update, a
+-- frame after Blizzard: with this addon's own font on the same text the look switched back and forth several times a
+-- second while the world map was open (user's video; EllesmereUI Quest Tracker 9.9.1, _Skin.lua StyleFontStringSized
+-- on QUEST_LOG_UPDATE). Only that part of the suite is disabled; the rest of it keeps working.
+local RESTYLERS = { EllesmereUIQuestTracker = true }
 
 local function questieTrackerOn()
 	local questie = _G.Questie
@@ -56,8 +62,13 @@ local function ask()
 	if not other then return end
 	local otherTitle = titleOf(other)
 	local questie = other == "Questie"
+	local restyler = RESTYLERS[other]
 	StaticPopupDialogs.RXPFOREVERTRACKER_OTHER_TRACKER = {
-		text = questie and (root.BRAND .. " found Questie's own quest tracker switched on.\n\n" .. root.BRAND
+		text = restyler and (root.BRAND .. " found %s.\n\nIt restyles the same quest tracker text as " .. root.BRAND
+			.. " (font, size, outline) on every quest update; with both on, the text flickers between two looks, "
+			.. "most of all while the world map is open.\n\nDisable one of them? Only %s is disabled, the rest of "
+			.. "that addon suite keeps working. The UI reloads.")
+			or questie and (root.BRAND .. " found Questie's own quest tracker switched on.\n\n" .. root.BRAND
 			.. " only works with Blizzard's default quest tracker, which Questie's tracker replaces; with both on they "
 			.. "can hide or overlap each other.\n\nTurn off Questie's tracker (the rest of Questie keeps working), or "
 			.. "disable " .. root.BRAND .. "? The UI reloads.")

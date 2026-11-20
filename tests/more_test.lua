@@ -136,3 +136,18 @@ print("Quests section folded -> More quests hidden:", hidden)
 questModule.IsCollapsed = function() return false end
 api.layoutMoreQuests()
 print("unfolded -> shown again:", not hidden)
+
+-- R106-2 / R106-13: More quests sits right under Blizzard's quests; moving the sections after them (tracked recipes)
+-- below is Core.lua's pushSectionsAfterQuests (sectionpush_test), not this file's
+local function check(l, c) print((c and "ok   " or "FAIL ") .. l) end
+local pushed = false
+api.pushBelowMoreQuests = function() pushed = true end
+local professions = setmetatable({ GetContentsHeight = function() return 40 end }, F)
+local scenario = setmetatable({ GetContentsHeight = function() return 30 end }, F)
+_G.ObjectiveTrackerFrame.modules = { scenario, questModule, professions }
+local anchoredTo
+rawset(frame, "SetPoint", function(_, _, rel) anchoredTo = rel end)
+api.layoutMoreQuests()
+check("More quests sits right under Blizzard's quests (not the lowest section)", anchoredTo == questModule)
+check("More quests does not move other sections itself", not pushed)
+

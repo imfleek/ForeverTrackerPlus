@@ -7,7 +7,7 @@ local api = {}
 ns.settings = api
 
 local OPTIONS = {"enabled", "theme", "followingSteps", "arrowButton", "arrowSatellites", "arrowCollapse", "arrowLocked",
-	"upcomingShown", "upcomingScrollbar", "upcomingScrollbarMouseover", "upcomingScrollbarColor", "upcomingScrollbarWidth",
+	"upcomingShown", "upcomingScrollbar", "upcomingScrollbarMouseover", "upcomingScrollbarWidth",
 	"currentScale", "currentX", "currentY", "upcomingScale", "upcomingX", "upcomingY",
 	"stepCountShown", "stepCountSize", "stepCountColor", "arrowColor", "arrowAlpha"}
 
@@ -63,7 +63,7 @@ function api.setFlag(key, on)
 	if key == "arrowLocked" then syncArrowLock() else ns.refresh() end
 end
 
--- Upcoming steps: upcomingShown (1-20), upcomingScrollbar, upcomingScrollbarMouseover, upcomingScrollbarColor
+-- Upcoming steps: upcomingShown (1-20), upcomingScrollbar, upcomingScrollbarMouseover, upcomingScrollbarWidth
 function api.setUpcoming(key, value)
 	if key == "upcomingShown" then value = Clamp(math.floor((tonumber(value) or 2) + 0.5), 1, ns.ALL_STEPS) end
 	if key == "upcomingScrollbarWidth" then value = Clamp(math.floor((tonumber(value) or 3) + 0.5), 1, 12) end

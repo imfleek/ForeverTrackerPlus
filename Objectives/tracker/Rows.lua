@@ -331,6 +331,67 @@ local function iconKey(tag)
 	return tonumber(tex) and tostring(tonumber(tex)) or tex:lower():gsub("\\", "/")
 end
 
+-- Spells a line names that its own step does not cast or train ("cast |T135920:0|t[Holy Light] if needed"): the
+-- guide's own spell ids (every .cast / .usespell / .train of the current guide, so also ranks not learned yet), then
+-- the game's lookup by name (spells the character knows: GetSpellInfo answers its highest rank). Built once per guide.
+local guideSpellIndex = setmetatable({}, { __mode = "k" })
+local function guideSpells()
+	local guide = ns.rxp and ns.rxp.currentGuide
+	if type(guide) ~= "table" or type(guide.steps) ~= "table" then return nil end
+	local index = guideSpellIndex[guide]
+	if index then return index end
+	index = { names = {}, icons = {} }
+	for _, step in ipairs(guide.steps) do
+		for _, e in ipairs(type(step) == "table" and type(step.elements) == "table" and step.elements or {}) do
+			if type(e) == "table" and SPELL_TAGS[e.tag] then
+				local ids = { e.id }
+				if type(e.ids) == "table" then for _, v in ipairs(e.ids) do ids[#ids + 1] = v end end
+				for _, id in pairs(ids) do
+					id = tonumber(id)
+					if id and id > 0 then
+						local name = spellName(id)
+						-- the first mention keeps the name: a guide trains the low rank before the high one
+						if type(name) == "string" and name ~= "" and not index.names[name:lower()] then
+							index.names[name:lower()] = id
+						end
+						local icon = spellIcon(id)
+						if icon then
+							local key, had = tostring(icon), index.icons[tostring(icon)]
+							index.icons[key] = (had == nil or (had and spellName(had) == name)) and (had or id) or false
+						end
+					end
+				end
+			end
+		end
+	end
+	guideSpellIndex[guide] = index
+	return index
+end
+local function spellByName(name)
+	if C_Spell and C_Spell.GetSpellInfo then
+		local ok, info = pcall(C_Spell.GetSpellInfo, name)
+		if ok and type(info) == "table" and tonumber(info.spellID) then return tonumber(info.spellID) end
+	end
+	if GetSpellInfo then
+		local ok, _, _, _, _, _, _, id = pcall(GetSpellInfo, name)
+		if ok and tonumber(id) then return tonumber(id) end
+	end
+end
+-- a spell for a bracketed name; with an icon in front, only a spell with that icon
+local function spellFor(key, icon)
+	if key == "" then return nil end
+	local want = icon and iconKey(icon)
+	local index = guideSpells()
+	local id = index and index.names[key:lower()] or spellByName(key)
+	if id and want then
+		local have = spellIcon(id)
+		if have and tostring(have):lower():gsub("\\", "/") ~= want then id = nil end
+	end
+	if not id and want and index then id = index.icons[want] or nil end
+	return id
+end
+ns.spellFor = spellFor
+
 -- A cast step: RestedXP puts the spell's own icon in front of the line, and the step names the spell with the same
 -- icon again; the line starts with one general spell icon instead.
 local CAST_ICON = "|TInterface/ICONS/INV_Misc_Book_09:0|t"
@@ -410,6 +471,11 @@ local function linkText(text, element)
 			if not link and key ~= "" then
 				local id = knownItem(nameForms(key), icon)
 				if id then link = "item:" .. id end
+			end
+			-- a spell named in the text: the game's spell tooltip (with its rank) on hover
+			if not link then
+				local id = spellFor(key, icon)
+				if id then link = "spell:" .. id end
 			end
 			return link
 		end
@@ -1222,11 +1288,16 @@ end
 local function buildUpBar()
 	upBar = CreateFrame("Frame", nil, module.ContentsFrame)
 	upBar:SetWidth(3)
-	upBar.track = upBar:CreateTexture(nil, "BACKGROUND")
-	upBar.track:SetAllPoints()
-	upBar.track:SetColorTexture(0, 0, 0, 0.35)
 	upBar.thumb = upBar:CreateTexture(nil, "ARTWORK")
 	upBar.thumb:SetWidth(3)
+	-- Forever look (ScrollSkin.lua); the arrows scroll one step, as the wheel does
+	root.scrollSkin.bar(upBar, upBar.thumb, function(dir)
+		local new = math.min(math.max(upOffset + dir, 0), math.max(upTotal - upShown, 0))
+		if new == upOffset then return end
+		upOffset = new
+		lastActive = GetTime()
+		ns.relayout()
+	end)
 	upBar.elapsed = 0
 	return upBar
 end
@@ -1274,8 +1345,6 @@ local function placeUpBar()
 	end
 	bar:SetWidth(width)
 	bar.thumb:SetWidth(width)
-	local c = ns.db.upcomingScrollbarColor or { 0.2, 0.85, 0.55, 0.85 }
-	bar.thumb:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
 	local height = (first.height or 0) * (first:GetScale() or 1)
 	for i = 2, #upRows do height = height + (upRows[i].height or 0) * (upRows[i]:GetScale() or 1) end
 	height = math.max(height, 8)

@@ -28,3 +28,21 @@ shown = nil; timers = {}
 assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("RXPForeverTracker", root)
 evt({ UnregisterEvent = function() end }, "PLAYER_ENTERING_WORLD", false, true); timers[1][2]()
 print("after Keep both, next reload prompts:", shown ~= nil)
+
+-- R106-45: EllesmereUI Quest Tracker (restyles the tracker's text): asked about, with its own text, and only it disabled
+do
+	local function check(l, c) print((c and "ok   " or "FAIL ") .. l) end
+	loaded = { EllesmereUIQuestTracker = true }
+	disabled, reloaded, shown, timers = {}, false, nil, {}
+	_G.RXPForeverTrackerDB = { enabled = true }
+	root.tracker.db = _G.RXPForeverTrackerDB
+	assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("RXPForeverTracker", root)
+	evt({ UnregisterEvent = function() end }, "PLAYER_ENTERING_WORLD", true, false)
+	timers[1][2]()
+	local d = shown and StaticPopupDialogs[shown.which]
+	check("EllesmereUI Quest Tracker: asked about", d ~= nil and shown.a == "EllesmereUIQuestTracker")
+	check("its own text: it restyles the text, the rest of the suite keeps working",
+		d and d.text:find("restyles the same quest tracker text", 1, true) ~= nil and d.text:find("keeps working", 1, true) ~= nil)
+	if d then d.OnCancel(nil, nil, "clicked") end
+	check("Disable it: only EllesmereUIQuestTracker, then reload", disabled[1] == "EllesmereUIQuestTracker" and #disabled == 1 and reloaded)
+end

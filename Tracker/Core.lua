@@ -17,12 +17,28 @@ ns.api, ns.onLogin = {}, {}
 local tracker = _G.ObjectiveTrackerFrame
 if not tracker or root.disabledAll then ns.disabled = true return end
 
+-- CONSTRAINT: Edit Mode replaces the tracker's SetPoint / ClearAllPoints / SetScale / SetParent with its own Lua
+-- versions and keeps the plain ones as <name>Base. Calling the Edit Mode versions from here ran Edit Mode's own
+-- bookkeeping (anchor-changed flags) as addon code, so it was tainted, and Edit Mode's next layout pass ran tainted:
+-- InvokeOnAnyEditModeSystemAnchorChanged -> GetAuraDataByIndex "Auras cannot be accessed when secret while tainted by
+-- 'RXPForeverTracker'". The tracker is moved, scaled and parented here only through the plain methods (Base where
+-- Edit Mode has them); Edit Mode is not told, and the hooks below still see each call.
+local function plain(method)
+	local f = tracker[method .. "Base"]
+	if type(f) ~= "function" then f = tracker[method] end
+	return f
+end
+local function moveTracker(method, ...)
+	return plain(method)(tracker, ...)
+end
+ns.api.moveTracker = moveTracker
+
 local EXTRA, MAX_EXTRA = 3000, 8000
 local GUIDE_SLOT = 1.5 -- AllObjectives RXP puts its module after uiOrder 1 (Scenario)
 local BAR_WIDTH = 10 -- default; /qt Quest list "Scrollbar width" (db.scrollbarWidth)
-local DEFAULTS = { enabled = true, step = 40, height = 500, scale = 1, locked = true, zoneSort = true, zoneFilter = false, spacing = 0, zoneHeaderScale = 1, zoneHeaderOutline = false, guideDetached = false, scrollbarWidth = 10, questCount = true, questCountSize = 0, questCountCustom = false, questCountColor = { 1, 1, 1, 1 }, questsHeaderColor = false, questsLineColor = false, zoneHeaderX = 4, zoneHeaderY = 0, questTitleX = 0, zoneHeaderColor = { 0.2, 0.85, 0.55 }, tooltips = true, widthExtra = 0, condense = true, showXP = true, wordWrap = true, showGold = true, scrollbar = true, scrollbarMouseover = false, zoneHeaderPadY = 6, xpColor = { 0.69, 0.53, 1 }, trackMode = "all", partyProgress = true, configTextSize = 1.15, rewardOrder = { "xp", "gold" }, iconScale = 1, iconAlpha = 1, completeCheck = true, completeCheckScale = 1, completeCheckAlpha = 1, completeCheckColor = false, completeCheckOutline = false, orphanSort = "level", orphanReverse = false, layer = 1, goldCoins = false, xpOrb = false, itemsLeft = true, guideScale = 1, questScale = 1, moreQuests = true, tooltipCoins = false,
+local DEFAULTS = { enabled = true, step = 40, height = 500, scale = 1, locked = true, zoneSort = true, zoneFilter = false, spacing = 0, zoneHeaderScale = 1, zoneHeaderOutline = false, guideDetached = false, scrollbarWidth = 10, questCount = true, questCountSize = 0, questCountCustom = false, questCountColor = { 1, 1, 1, 1 }, questsHeaderColor = false, questsLineColor = false, zoneHeaderX = 4, zoneHeaderY = 0, questTitleX = 0, zoneHeaderColor = { 0.2, 0.85, 0.55 }, tooltips = true, widthExtra = 0, condense = true, progressBars = true, progressBarUnder = false, progressBarBlue = false, titleOutline = false, objectiveOutline = false, pinQuestsHeader = false, distanceText = true, distanceArrow = true, repTrack = true, profAbove = true, profScrollbar = true, profScrollbarMouseover = false, profScrollbarWidth = 10, profX = 0, profY = 0, questDistance = true, distArrowScale = 1, distArrowAlpha = 1, showXP = true, wordWrap = true, showGold = true, scrollbar = true, scrollbarMouseover = false, zoneHeaderPadY = 6, xpColor = { 0.69, 0.53, 1 }, trackMode = "all", partyProgress = true, configTextSize = 1.15, rewardOrder = { "xp", "gold" }, iconScale = 1, iconAlpha = 1, completeCheck = true, completeCheckScale = 1, completeCheckAlpha = 1, completeCheckColor = false, completeCheckOutline = false, orphanSort = "level", orphanReverse = false, layer = 1, goldCoins = false, xpOrb = false, itemsLeft = true, guideScale = 1, questScale = 1, moreQuests = true, tooltipCoins = false,
 	tooltipXpOrb = false, zoneOrder = "closest", font = "default", questsPadY = 0, questie = true,
-	questieChain = true, questieChainReward = true, questieUnlocks = true, attunementStar = true, scrollbarColor = { 0.2, 0.85, 0.55, 0.85 },
+	questieChain = true, questieChainReward = true, questieUnlocks = true, attunementStar = true,
 	background = false, backgroundColor = { 0, 0, 0, 0.4 }, backgroundPad = 6, trackerAlpha = 1, guideAlpha = 1, questAlpha = 1 }
 local db
 local function barWidth()
@@ -83,6 +99,9 @@ local guide                       -- the visible foreign module, if any
 local pinGuide = false            -- guide sits directly under the header and stays fixed
 local pinned = 0                  -- height of the fixed strip (header + guide), screen pixels
 local follower                    -- first visible module under the strip: the one that is moved to scroll
+local profHeld                    -- R106-57: the Professions section while it sits in its own box above the tracker
+local placeProf                   -- (below) puts it at its scroll position in that box
+local layoutProfessions           -- (below) the box: place, height for 2 recipes, scrollbar
 local bases = setmetatable({}, { __mode = "k" }) -- module -> { [point] = {rel, relPoint, x, y} } as its owner anchored it
 local hooked = {}
 local fitCap                      -- window height limit so it never runs off the bottom of the screen
@@ -205,7 +224,7 @@ local function windowHeight()
 	return math.max(h, 100)
 end
 
-local movingGhost = false -- true while the green bar is dragged: nothing else may re-anchor the window meanwhile
+local movingGhost = false -- true while the Edit Mode overlay is dragged: nothing else may re-anchor the window meanwhile
 local schedule, watchStrip -- defined further down
 local scheduleScreenCheck -- defined after layoutGhost
 local screenSettled = false -- set a few seconds after the tracker is set up: positions read earlier are not final
@@ -264,25 +283,41 @@ end
 -- tracker's window (background, scrollbar side), not the quest text: whether long text is cut off or wraps is up to
 -- "Word wrap titles and objectives".
 local WIDTH_FIELDS = { "lineWidth", "blockWidth" }
+-- CONSTRAINT: Quest Tracker scale (scale and width fields) applies to these quest-list modules only. A field written
+-- here is one Blizzard's layout reads, so that module's layout runs tainted; a module that reads secret data there then
+-- fails: the scenario module in dungeons (Blizzard_MawBuffs ShouldShowMawBuffs -> GetAuraDataByIndex: "Auras cannot be
+-- accessed when secret while tainted by 'RXPForeverTracker'"). Every other module (scenario, widgets, bonus objectives,
+-- world quests, other addons') stays at scale 1 with Blizzard's own fields, untouched.
+local SCALED_MODULES = { "QuestObjectiveTracker", "CampaignQuestObjectiveTracker", "AchievementObjectiveTracker",
+	"AdventureObjectiveTracker", "ProfessionsRecipeTracker", "MonthlyActivitiesObjectiveTracker" }
+local function scaledModule(module)
+	for _, name in ipairs(SCALED_MODULES) do
+		if _G[name] == module then return true end
+	end
+	return false
+end
+ns.api.scaledModule = scaledModule
 local function applyModuleWidths()
 	if InCombatLockdown() then return false end
 	local qs = questScale()
 	local changed = false
 	for _, module in ipairs(tracker.modules or {}) do
-		if not module.qtsBaseW then module.qtsBaseW = module:GetWidth() * (module:GetScale() or 1) end
-		-- module units: a module scaled by qs needs 1/qs of the width to cover the same width on screen
-		local want = module.qtsBaseW / qs
-		if module.qtsBaseW > 0 and math.abs(module:GetWidth() - want) > 0.5 then
-			guarded(function() module:SetWidth(want) end)
-			changed = true
-		end
-		module.qtsBaseFields = module.qtsBaseFields or {}
-		for _, field in ipairs(WIDTH_FIELDS) do
-			local current = module[field]
-			if type(current) == "number" then
-				if module.qtsBaseFields[field] == nil then module.qtsBaseFields[field] = current end
-				local wantField = module.qtsBaseFields[field] / qs
-				if current ~= wantField then module[field] = wantField; changed = true end
+		if scaledModule(module) then
+			if not module.qtsBaseW then module.qtsBaseW = module:GetWidth() * (module:GetScale() or 1) end
+			-- module units: a module scaled by qs needs 1/qs of the width to cover the same width on screen
+			local want = module.qtsBaseW / qs
+			if module.qtsBaseW > 0 and math.abs(module:GetWidth() - want) > 0.5 then
+				guarded(function() module:SetWidth(want) end)
+				changed = true
+			end
+			module.qtsBaseFields = module.qtsBaseFields or {}
+			for _, field in ipairs(WIDTH_FIELDS) do
+				local current = module[field]
+				if type(current) == "number" then
+					if module.qtsBaseFields[field] == nil then module.qtsBaseFields[field] = current end
+					local wantField = module.qtsBaseFields[field] / qs
+					if current ~= wantField then module[field] = wantField; changed = true end
+				end
 			end
 		end
 	end
@@ -357,8 +392,9 @@ local function applyModuleScales()
 	local qs = questScale()
 	local changed = false
 	for _, module in ipairs(tracker.modules or {}) do
-		if module.SetScale and math.abs((module:GetScale() or 1) - qs) > 1e-4 then
-			guarded(function() module:SetScale(qs) end)
+		local want = scaledModule(module) and qs or 1 -- the others: Blizzard's scale (SCALED_MODULES)
+		if module.SetScale and math.abs((module:GetScale() or 1) - want) > 1e-4 then
+			guarded(function() module:SetScale(want) end)
 			changed = true
 		end
 	end
@@ -405,12 +441,12 @@ end
 local function layoutTracker()
 	local s = scale()
 	if not InCombatLockdown() then
-		if math.abs(tracker:GetScale() - s) > 1e-4 then tracker:SetScale(s) end
+		if math.abs(tracker:GetScale() - s) > 1e-4 then moveTracker("SetScale", s) end
 		if strip then strip:SetScale(s) end
 	end
-	tracker:ClearAllPoints()
-	tracker:SetPoint("TOPLEFT", ghost, "TOPLEFT", 0, 0)
-	tracker:SetPoint("TOPRIGHT", ghost, "TOPRIGHT", 0, 0)
+	moveTracker("ClearAllPoints")
+	moveTracker("SetPoint", "TOPLEFT", ghost, "TOPLEFT", 0, 0)
+	moveTracker("SetPoint", "TOPRIGHT", ghost, "TOPRIGHT", 0, 0)
 	tracker:SetHeight(naturalH + extraNow)
 end
 
@@ -540,12 +576,203 @@ local function layoutDivider()
 	divider:ClearAllPoints()
 	local inset = 8
 	-- just under the last step; the padding goes below the line, above the Quests header
-	local lineY = pinned - questsPad() - DIVIDER_GAP / 2
+	local lineY = pinned - (ns.api.questsHeaderPinnedPx and ns.api.questsHeaderPinnedPx() or 0) - questsPad() - DIVIDER_GAP / 2
 	divider:SetPoint("TOPLEFT", ghost, "TOPLEFT", inset, -lineY + 2)
 	divider:SetPoint("TOPRIGHT", ghost, "TOPRIGHT", -inset, -lineY + 2)
 	divider:SetHeight(4)
 	divider:Show()
 end
+
+-- R106-49: Quest list > "Keep the Quests header at the top" (db.pinQuestsHeader; off: it scrolls with the quests, as
+-- before). While the quests are the first section, their "Quests" header (QuestObjectiveTracker.Header) is lifted out
+-- of the scrolling list into a holder just above the clip edge, at its own place and size, and the fixed strip grows by
+-- its height. The tracker is anchored to the ghost frame, not to the clip area, so the header's old room in the list
+-- then sits above the clip edge and the first quest starts right under the pinned header. Put back when switched off,
+-- when another section is first, or when the quests hide. Not in combat (refresh waits for its end).
+-- (its own block: Core.lua is near Lua's 200-locals limit of one chunk)
+local pinQuestsHeader
+do
+local headerHolder
+local headerHeld        -- the header while it is in the holder
+local headerModule      -- its own section (where it goes back)
+local headerPoints = {} -- its anchors as Blizzard set them (to the section)
+local headerPx = 0      -- the pinned header's room in the fixed strip, UIParent units
+local headerHooked = setmetatable({}, { __mode = "k" })
+function ns.api.questsHeaderPinnedPx() return headerHeld and headerPx or 0 end
+
+local function anchorHeaderToHolder(header)
+	header:ClearAllPoints()
+	local any = false
+	for _, p in ipairs(headerPoints) do
+		local rel = (p[2] == headerModule or p[2] == nil) and headerHolder or p[2]
+		header:SetPoint(p[1], rel, p[3], p[4], p[5])
+		any = true
+	end
+	if not any then header:SetPoint("TOPLEFT", headerHolder, "TOPLEFT", 0, 0) end
+end
+
+-- R106-54: the quests are chained to the header (the first quest's TOP at the header's BOTTOM, fromHeaderOffsetY; each
+-- next quest at the one above it), so with the header pinned they stayed with it and did not scroll until far down
+-- (user: "the top of the list is still shown when the scrollbar is halfway down"). While it is pinned, every point
+-- anchored to the header is anchored to the same place in its section instead (which scrolls): the header's point
+-- measured from the section's TOPLEFT where the header was (headerGeom, section units). Put back when unpinned.
+local headerGeom      -- { gap above the header, its left from the section's left, its width, its height }
+local rechained = setmetatable({}, { __mode = "k" }) -- frame -> { {point, relPoint, x, y} as Blizzard set them }
+local chainHooked = setmetatable({}, { __mode = "k" })
+local function headerPointInModule(relPoint)
+	local g = headerGeom
+	relPoint = relPoint or "TOPLEFT"
+	local x = relPoint:find("LEFT") and g[2] or relPoint:find("RIGHT") and (g[2] + g[3]) or (g[2] + g[3] / 2)
+	local y = relPoint:find("TOP") and -g[1] or relPoint:find("BOTTOM") and -(g[1] + g[4]) or -(g[1] + g[4] / 2)
+	return x, y
+end
+local function rechainPoint(frame, point, relPoint, x, y)
+	local px, py = headerPointInModule(relPoint)
+	rechained[frame] = rechained[frame] or {}
+	local list = rechained[frame]
+	for i = #list, 1, -1 do if list[i][1] == point then table.remove(list, i) end end
+	list[#list + 1] = { point, relPoint or point, x or 0, y or 0 }
+	guarded(function() frame:SetPoint(point, headerModule, "TOPLEFT", (x or 0) + px, (y or 0) + py) end)
+end
+local function hookChain(frame)
+	if chainHooked[frame] or type(frame) ~= "table" or not frame.SetPoint then return end
+	chainHooked[frame] = true
+	hooksecurefunc(frame, "SetPoint", function(self, point, rel, relPoint, x, y)
+		if guard or not headerHeld or type(point) ~= "string" then return end
+		if type(rel) == "number" then return end -- (point, x, y): to its parent, not the header
+		if type(relPoint) == "number" then x, y, relPoint = relPoint, x, nil end
+		if type(rel) == "string" then rel = _G[rel] end
+		if rel == headerHeld then rechainPoint(self, point, relPoint, x, y) end
+	end)
+end
+-- the section's frames that may hang on the header: its blocks and the children of the section and its contents
+local function chainCandidates(module)
+	local list = {}
+	for _, byId in pairs(type(module.usedBlocks) == "table" and module.usedBlocks or {}) do
+		for _, block in pairs(type(byId) == "table" and byId or {}) do list[#list + 1] = block end
+	end
+	for _, parent in ipairs({ module, module.ContentsFrame }) do
+		if type(parent) == "table" and parent.GetChildren then
+			for _, child in ipairs({ parent:GetChildren() }) do list[#list + 1] = child end
+		end
+	end
+	return list
+end
+local function rechainAll(module)
+	for _, frame in ipairs(chainCandidates(module)) do
+		if frame ~= headerHeld and type(frame) == "table" and frame.GetNumPoints then
+			hookChain(frame)
+			for i = frame:GetNumPoints(), 1, -1 do
+				local point, rel, relPoint, x, y = frame:GetPoint(i)
+				if point and rel == headerHeld then rechainPoint(frame, point, relPoint, x, y) end
+			end
+		end
+	end
+end
+local function unchainAll(header)
+	for frame, list in pairs(rechained) do
+		for _, p in ipairs(list) do
+			guarded(function() frame:SetPoint(p[1], header, p[2], p[3], p[4]) end)
+		end
+	end
+	wipe(rechained)
+end
+
+local function unpinQuestsHeader()
+	local header, module = headerHeld, headerModule
+	if not header then return end
+	headerHeld = nil
+	guarded(function()
+		header:SetParent(module)
+		header:ClearAllPoints()
+		for _, p in ipairs(headerPoints) do header:SetPoint(p[1], p[2] or module, p[3], p[4], p[5]) end
+	end)
+	unchainAll(header)
+	if headerHolder then headerHolder:Hide() end
+	headerPx = 0
+end
+
+-- first: the section that will be first under the fixed strip; base: the strip's height without the header.
+-- Returns the header's room (UIParent units) to add to the strip, 0 when not pinned.
+function pinQuestsHeader(first, base)
+	local module = _G.QuestObjectiveTracker
+	local header = module and module.Header
+	local want = db.pinQuestsHeader and header ~= nil and first == module and moduleVisible(module) and header:IsShown()
+		and not InCombatLockdown()
+	if not want then unpinQuestsHeader() return 0 end
+	if not headerHeld then
+		-- measured where Blizzard put it, inside its section (the gap above it and its height)
+		local mTop, hTop, hBottom = module:GetTop(), header:GetTop(), header:GetBottom()
+		local mLeft0, hLeft, hRight = module:GetLeft(), header:GetLeft(), header:GetRight()
+		if not (mTop and hTop and hBottom and mLeft0 and hLeft and hRight) then return 0 end
+		headerModule = module
+		-- section units (the header is the section's child, same scale)
+		headerGeom = { mTop - hTop, hLeft - mLeft0, hRight - hLeft, hTop - hBottom }
+		wipe(headerPoints)
+		for i = 1, header:GetNumPoints() do
+			local point, rel, relPoint, x, y = header:GetPoint(i)
+			if point then headerPoints[#headerPoints + 1] = { point, rel, relPoint, x or 0, y or 0 } end
+		end
+		headerPx = math.max(toScreen(module, mTop) - toScreen(header, hBottom), 0)
+		if not headerHolder then
+			headerHolder = withAlpha(CreateFrame("Frame", nil, UIParent))
+		end
+		-- R106-56: the header calls its parent for its own work (the collapse button: self:GetParent():ToggleCollapsed();
+		-- user: "attempt to call a nil value" collapsing Quests while pinned). While it sits in the holder, every
+		-- function of its section the holder does not have itself is passed on to the section.
+		if headerHolder.qtsForwards ~= module then
+			headerHolder.qtsForwards = module
+			for key, fn in pairs(module) do
+				if type(key) == "string" and type(fn) == "function" and headerHolder[key] == nil then
+					headerHolder[key] = function(_, ...) return fn(module, ...) end
+				end
+			end
+		end
+		-- Blizzard anchoring the header again (to its section) while it is pinned: back to the holder at once
+		if not headerHooked[header] then
+			headerHooked[header] = true
+			hooksecurefunc(header, "SetPoint", function(self, point, rel, relPoint, x, y)
+				if guard or self ~= headerHeld then return end
+				if type(rel) == "number" then x, y, rel, relPoint = rel, relPoint, nil, nil
+				elseif type(relPoint) == "number" then x, y, relPoint = relPoint, x, nil end
+				if rel ~= nil and rel ~= headerModule and rel ~= headerHolder then return end
+				guarded(function() anchorHeaderToHolder(self) end)
+			end)
+		end
+		-- a block the section takes later (GetBlock, before Blizzard anchors it): watched at once
+		if not chainHooked[module] and type(module.GetBlock) == "function" then
+			chainHooked[module] = true
+			hooksecurefunc(module, "GetBlock", function(self)
+				if not headerHeld then return end
+				for _, frame in ipairs(chainCandidates(self)) do hookChain(frame) end
+			end)
+		end
+		headerHeld = header
+		guarded(function() header:SetParent(headerHolder) end)
+	end
+	-- the holder: the section's scale and width, at the section's left, its top at the window's top less the strip
+	local s = module:GetEffectiveScale() / UIParent:GetEffectiveScale()
+	local holder = headerHolder
+	holder:SetScale(s)
+	holder:SetFrameStrata(tracker:GetFrameStrata())
+	holder:SetFrameLevel(tracker:GetFrameLevel() + 5)
+	holder:SetAlpha(trackerAlpha() * questAlpha())
+	local mLeft, gLeft = module:GetLeft(), ghost:GetLeft()
+	local dx = (mLeft and gLeft) and (toScreen(module, mLeft) - toScreen(ghost, gLeft)) or 0
+	holder:ClearAllPoints()
+	holder:SetPoint("TOPLEFT", ghost, "TOPLEFT", dx / s, -base / s)
+	holder:SetSize(module:GetWidth(), headerPx / s)
+	guarded(function() anchorHeaderToHolder(headerHeld) end)
+	rechainAll(module) -- the quests hanging on the header scroll with their section (R106-54)
+	holder:Show()
+	return headerPx
+end
+
+function ns.api.setPinQuestsHeader(on)
+	db.pinQuestsHeader = on and true or false
+	if ns.api.applyLayout then ns.api.applyLayout() end
+end
+end -- the pinned header block
 
 ---------------------------------------------------------------------------------------------------------------------
 -- Modules: guide detection, scrolling anchor
@@ -576,6 +803,18 @@ local function canMove(frame)
 end
 local setAnchorOffset
 
+-- The first section after Blizzard's quests (Professions, Achievements, ...) moves down below the last quest entry and
+-- "More quests" (pushSectionsAfterQuests, below): those sections stay at the very bottom, below every quest.
+local pushed, pushPx = nil, 0
+local cbTime, cbBase -- contentBottom's per-frame cache (below); a push clears it
+-- a section's anchor offset in screen pixels: the scroll position on the first section, the push on the pushed one
+local function anchorOffsetFor(module)
+	local px = 0
+	if module == follower then px = px + (offset - drop) end
+	if module == pushed then px = px - pushPx end
+	return px
+end
+
 local function hookModule(module)
 	if hooked[module] then return end
 	hooked[module] = true
@@ -605,11 +844,31 @@ local function hookModule(module)
 			x, y, relPoint = relPoint, x, nil
 		end
 		if type(rel) == "string" then rel = _G[rel] end
+		-- R106-57: the Professions section in its own box: Blizzard's place is only remembered (to put it back), it
+		-- stays in the box; a section Blizzard chains to it takes its place in the tracker instead
+		if profHeld then
+			if self == profHeld then
+				bases[self] = bases[self] or {}
+				bases[self][point] = { rel or self:GetParent(), relPoint or point, x or 0, y or 0 }
+				if placeProf then placeProf() end
+				return
+			end
+			if rel == profHeld then
+				local pb = bases[profHeld]
+				local b = pb and (pb.TOP or pb.TOPLEFT or pb.TOPRIGHT)
+				if b then
+					rel, relPoint, y = b[1], b[2], (b[4] or 0) + (y or 0)
+					local r, rp, xx, yy = rel, relPoint, x or 0, y
+					guarded(function() self:SetPoint(point, r, rp, xx, yy) end)
+				end
+			end
+		end
 		bases[self] = bases[self] or {}
 		bases[self][point] = { rel or self:GetParent(), relPoint or point, x or 0, y or 0 }
 		-- Blizzard re-anchors its modules on every tracker update (zone changes, quest and aura events...). Re-apply the
 		-- scroll offset in the same frame, so the list never shows one frame at the unscrolled position (the flicker).
-		if self == follower and (offset - drop) ~= 0 and canMove(self) then setAnchorOffset(self, offset - drop) end
+		local px = (self == follower or self == pushed) and anchorOffsetFor(self) or 0
+		if px ~= 0 and canMove(self) then setAnchorOffset(self, px) end
 	end)
 	if module.parentContainer == tracker then
 		hooksecurefunc(module, "SetWidth", function(self, w)
@@ -666,7 +925,7 @@ end
 local function pickFollower()
 	local best, bestOrder
 	for _, module in ipairs(tracker.modules or {}) do
-		if moduleVisible(module) then
+		if moduleVisible(module) and module ~= profHeld then -- (the Professions box scrolls on its own)
 			local order = module.uiOrder or math.huge
 			if not bestOrder or order < bestOrder then best, bestOrder = module, order end
 		end
@@ -678,8 +937,20 @@ end
 
 local function setFollower(module)
 	if module == follower then return end
-	if follower then setAnchorOffset(follower, 0) end
+	local old = follower
 	follower = module
+	if old then setAnchorOffset(old, anchorOffsetFor(old)) end -- keeps its push, if it is the pushed section
+end
+
+-- move module (nil: none) down by px (UIParent units), and put the one moved before back
+function ns.api.pushBelowMoreQuests(module, px)
+	px = module and math.max(tonumber(px) or 0, 0) or 0
+	if module == pushed and math.abs(px - pushPx) < 0.5 then return end
+	local old = pushed
+	pushed, pushPx = module, px
+	if old and old ~= module then setAnchorOffset(old, anchorOffsetFor(old)) end
+	if module then setAnchorOffset(module, anchorOffsetFor(module)) end
+	cbTime = nil -- the content's bottom moved
 end
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -703,14 +974,13 @@ ns.api.moduleContentBottom = moduleContentBottom
 
 -- Within one frame the content only moves with the scroll offset (its bottom minus the offset stays the same), so the
 -- scan of every block (scrollMax, the scrollbar and the background each need it) runs once per frame; refresh starts
--- a new scan.
-local cbTime, cbBase
+-- a new scan. (cbTime, cbBase: declared with the push, above)
 local function contentBottom()
 	local now = GetTime()
 	if cbTime == now and cbBase then return cbBase + offset end
 	local lowest
 	for _, module in ipairs(tracker.modules or {}) do
-		if moduleVisible(module) then
+		if moduleVisible(module) and module ~= profHeld then -- (above the tracker, in its own box)
 			local b = moduleContentBottom(module)
 			if b and (not lowest or b < lowest) then lowest = b end
 		end
@@ -790,9 +1060,9 @@ local function updateScrollbar()
 	thumb:SetPoint("TOP", bar, "TOP", 0, -(offset / max) * (trackH - thumbH))
 end
 
--- "Show on mouseover only": the bar is visible (50 %) while the mouse is over the list or the bar, while scrolling or
+-- "Show on mouseover only": the bar is visible while the mouse is over the list or the bar, while scrolling or
 -- dragging, and fades out 2 seconds after the last of those.
-local BAR_ALPHA, FADE_DELAY, FADE_TIME = 0.5, 2, 0.4
+local BAR_ALPHA, FADE_DELAY, FADE_TIME = 1, 2, 0.4 -- the Forever art at full strength (ScrollSkin.lua)
 local lastActive = 0
 local fader = CreateFrame("Frame")
 local function fadeStep(_, elapsed)
@@ -845,7 +1115,7 @@ local function setOffset(value)
 	lastActive = GetTime()
 	local max = scrollMax()
 	offset = math.min(math.max(value, 0), max)
-	setAnchorOffset(follower, offset - drop)
+	setAnchorOffset(follower, anchorOffsetFor(follower))
 	updateScrollbar()
 end
 
@@ -896,7 +1166,10 @@ end
 
 local function onWheel(_, delta, onBar)
 	wheelEvents = wheelEvents + 1
-	if InCombatLockdown() then return end -- the tracker holds secure buttons: it cannot be moved in combat
+	-- R106-50: the wheel scrolls in combat too (user). Blizzard's tracker sections are not protected in Forever (/qt
+	-- debug), so they move in combat, as the scrollbar and Blizzard's own re-anchoring already did; only a section that
+	-- is protected (canMove) waits, as the scroll position would not reach it.
+	if InCombatLockdown() and follower and not canMove(follower) then return end
 	if scrollMax() <= 0 then return end
 	if not onBar and nearerGuide() then return end
 	setOffset(offset - delta * db.step)
@@ -959,6 +1232,31 @@ function watchStrip()
 	end
 end
 
+-- Sections after Blizzard's quests (tracked profession recipes, achievements, ...) go below every quest. Blizzard
+-- anchors the first of them to the quests section's frame, but its last entries can run past that frame's bottom (zone
+-- headers and titles that wrap add room after Blizzard measured), and "More quests" (MoreQuests.lua) sits under those
+-- entries: so that section moves down by how far the lowest quest entry (or More quests) reaches below the frame.
+-- Blizzard anchors each section to the one before it, so the ones after follow. Measured only on things above the
+-- moved section, so moving it never changes the measure.
+local function pushSectionsAfterQuests()
+	local q = _G.QuestObjectiveTracker
+	local after
+	if q and moduleVisible(q) and not (q.IsCollapsed and q:IsCollapsed()) then
+		local seen = false
+		for _, module in ipairs(tracker.modules or {}) do
+			if seen and moduleVisible(module) and module ~= profHeld then after = module break end
+			if module == q then seen = true end
+		end
+	end
+	local frameBottom = after and q:GetBottom()
+	local lowest = after and moduleContentBottom(q)
+	local more = after and ns.api.moreQuestsBottom and ns.api.moreQuestsBottom()
+	if more and (not lowest or more < lowest) then lowest = more end
+	if not (frameBottom and lowest) then ns.api.pushBelowMoreQuests(nil) return end
+	ns.api.pushBelowMoreQuests(after, math.max(toScreen(q, frameBottom) - lowest, 0))
+end
+ns.api.pushSectionsAfterQuests = pushSectionsAfterQuests
+
 local function refresh()
 	if not viewport then return end
 	-- Moving, resizing or re-parenting frames that hold secure buttons is blocked in combat (EnableMouseWheel, SetPoint
@@ -971,7 +1269,7 @@ local function refresh()
 		fitCap = nil
 	end
 	unclamp()
-	if tracker:GetParent() ~= viewport then guarded(function() tracker:SetParent(viewport) end) end
+	if tracker:GetParent() ~= viewport then guarded(function() moveTracker("SetParent", viewport) end) end
 	if #foreign == 0 then scanForeign() end
 	for _, module in ipairs(tracker.modules or {}) do hookModule(module) end
 	for _, module in ipairs(foreign) do hookModule(module) end
@@ -985,12 +1283,24 @@ local function refresh()
 	guarded(function() layoutGhost(); layoutTracker() end)
 	detectMode()
 	watchStrip()
+	-- the Professions section in its own box above the tracker (R106-57), before the first section is picked
+	if layoutProfessions then layoutProfessions() end
 	pinned = measurePinned()
+	-- the tracked reputation at the top of the quest list (R106-74, Reputation.lua): its room joins the fixed strip
+	if ns.api.layoutTrackedReputation then
+		local ok, room = pcall(ns.api.layoutTrackedReputation, ghost, pinned, trackerAlpha() * questAlpha())
+		-- R106-77: the scrolling sections move down by the same room (user: the top quest was cut off: it stayed
+		-- where it was, under the strip that grew over it)
+		if ok and type(room) == "number" then pinned = pinned + room; drop = drop + room end
+	end
+	-- the Quests header kept at the top (R106-49): its room joins the fixed strip
+	pinned = pinned + pinQuestsHeader(pickFollower(), pinned)
 	guarded(layoutViewport)
 	fitToScreen()
 	layoutBar()
 	layoutDivider()
 	if ns.api.layoutMoreQuests then pcall(ns.api.layoutMoreQuests) end
+	pushSectionsAfterQuests()
 	if strip then strip:SetShown(tracker:IsShown()) end
 
 	if applyModuleWidths() then markDirty() end
@@ -1003,7 +1313,7 @@ local function refresh()
 	setFollower(pickFollower())
 	local max = scrollMax()
 	offset = math.min(math.max(offset, 0), max)
-	setAnchorOffset(follower, offset - drop)
+	setAnchorOffset(follower, anchorOffsetFor(follower))
 	updateScrollbar()
 
 	if not warned and tracker.GetAvailableHeight then
@@ -1032,18 +1342,52 @@ local function savePosition()
 	schedule()
 end
 
+-- Unlocked ("Lock tracker position" off): the tracker looks like a frame in Blizzard's Edit Mode (the selected look: a
+-- see-through yellow panel with a yellow edge over the whole tracker, its name in the middle) and is dragged by it.
+-- The game's own Edit Mode art is used when the client has it (NineSliceUtil, layout "EditModeSystemSelectionLayout",
+-- texture kit "editmode-actionbar-selected"); otherwise the same look is drawn in plain colours. Right-click locks.
+local EDIT_FILL, EDIT_EDGE = { 1, 0.82, 0, 0.22 }, { 1, 0.82, 0, 0.95 }
+local function editModeArt(frame)
+	local util = NineSliceUtil
+	if util and type(util.ApplyLayoutByName) == "function" and C_Texture and C_Texture.GetAtlasInfo
+		and C_Texture.GetAtlasInfo("editmode-actionbar-selected-nineslice-corner") then
+		local ok = pcall(util.ApplyLayoutByName, frame, "EditModeSystemSelectionLayout", "editmode-actionbar-selected")
+		if ok and frame.TopLeftCorner then return true end
+	end
+	local fill = frame:CreateTexture(nil, "BACKGROUND")
+	fill:SetAllPoints()
+	fill:SetColorTexture(EDIT_FILL[1], EDIT_FILL[2], EDIT_FILL[3], EDIT_FILL[4])
+	local E = 2
+	for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, E }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, E },
+		{ "TOPLEFT", "BOTTOMLEFT", E, nil }, { "TOPRIGHT", "BOTTOMRIGHT", E, nil } }) do
+		local line = frame:CreateTexture(nil, "BORDER")
+		line:SetPoint(side[1]); line:SetPoint(side[2])
+		if side[3] then line:SetWidth(side[3]) else line:SetHeight(side[4]) end
+		line:SetColorTexture(EDIT_EDGE[1], EDIT_EDGE[2], EDIT_EDGE[3], EDIT_EDGE[4])
+	end
+	return false
+end
+
 local function createHandle()
 	handle = withAlpha(CreateFrame("Frame", nil, UIParent))
-	handle:SetHeight(18)
-	handle:SetPoint("BOTTOMLEFT", ghost, "TOPLEFT", 0, 2)
-	handle:SetPoint("BOTTOMRIGHT", ghost, "TOPRIGHT", 0, 2)
+	handle:SetPoint("TOPLEFT", ghost, "TOPLEFT", -4, 4)
+	handle:SetPoint("BOTTOMRIGHT", ghost, "BOTTOMRIGHT", 4, -4)
 	handle:SetFrameStrata("HIGH")
-	local bg = handle:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(0.1, 0.6, 0.4, 0.85)
-	local text = handle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	handle.nativeArt = editModeArt(handle)
+	local text = handle:CreateFontString(nil, "OVERLAY")
+	text:SetFontObject(_G.GameFontHighlightHuge or _G.GameFontHighlightLarge or _G.GameFontHighlight)
 	text:SetPoint("CENTER")
-	text:SetText("Quest tracker - drag to move")
+	text:SetShadowOffset(2, -2)
+	text:SetShadowColor(0, 0, 0, 1)
+	text:SetText("Objective Tracker")
+	handle.label = text
+	handle:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+		GameTooltip:SetText("Objective Tracker", 1, 0.82, 0)
+		GameTooltip:AddLine("Drag to move. Right-click to lock it in place.", 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	handle:SetScript("OnLeave", function(self) if GameTooltip:GetOwner() == self then GameTooltip:Hide() end end)
 	handle:EnableMouse(true)
 	handle:RegisterForDrag("LeftButton")
 	-- The window follows the cursor through SetPoint every frame instead of StartMoving: the game's built-in frame
@@ -1065,6 +1409,7 @@ local function createHandle()
 		schedule()
 	end
 	handle:SetScript("OnMouseDown", function(_, button)
+		if button == "RightButton" then ns.api.setLocked(true) return end
 		if button ~= "LeftButton" then return end
 		if InCombatLockdown() then say("cannot move the tracker in combat") return end
 		local left, top = ghost:GetLeft(), ghost:GetTop()
@@ -1102,18 +1447,11 @@ local function createScrollbar()
 	bar:EnableMouse(true)
 	bar:EnableMouseWheel(true)
 	bar:SetScript("OnMouseWheel", function(self, delta) onWheel(self, delta, true) end) -- the scrollbar always scrolls
-	local track = bar:CreateTexture(nil, "BACKGROUND")
-	track:SetAllPoints()
-	track:SetColorTexture(0, 0, 0, 0.35)
-
 	thumb = CreateFrame("Frame", nil, bar)
 	thumb:SetWidth(barWidth())
 	thumb:EnableMouse(true)
-	local fill = thumb:CreateTexture(nil, "ARTWORK")
-	fill:SetAllPoints()
-	local c = db.scrollbarColor or { 0.2, 0.85, 0.55 }
-	fill:SetColorTexture(c[1], c[2], c[3], tonumber(c[4]) or 0.85)
-	thumb.fill = fill
+	-- Forever look (ScrollSkin.lua); the arrows scroll one wheel notch
+	root.scrollSkin.bar(bar, thumb, function(dir) onWheel(nil, -dir, true) end)
 
 	-- click on the track: jump there
 	bar:SetScript("OnMouseDown", function()
@@ -1139,6 +1477,234 @@ local function createScrollbar()
 	end)
 	bar:Hide()
 end
+
+---------------------------------------------------------------------------------------------------------------------
+-- R106-57: the Professions section above the quest tracker (user); R106-64: left of it, beside the Quests header. Blizzard's ProfessionsRecipeTracker leaves the
+-- tracker for a box of its own just above the window (Quest list > Professions: "Professions above the quest
+-- tracker", db.profAbove, on by default). The box is as tall as its first PROF_ROWS recipes; more scroll in it (the
+-- wheel over it, and a scrollbar with the quest list's options of its own: shown, only on mouseover, width).
+-- Blizzard's own place for it is remembered (the SetPoint hook in hookModule) and given back when switched off; a
+-- section Blizzard chains to it takes its place in the tracker. Not moved in combat (refresh waits).
+---------------------------------------------------------------------------------------------------------------------
+do -- its own block (Lua's 200-locals limit)
+local PROF_GAP, PROF_ROWS = 6, 2
+local profBox, profBar, profThumb
+local profOffset, profMax, profView = 0, 0, 0
+local profDragging, profActive = nil, 0
+local profParent
+local profRetries = 0
+local profFader = CreateFrame("Frame")
+
+local function profBarWidth()
+	local w = db and tonumber(db.profScrollbarWidth)
+	return w and math.min(math.max(math.floor(w + 0.5), 2), 30) or BAR_WIDTH
+end
+
+function placeProf()
+	local m = profHeld
+	if not (m and profBox) then return end
+	local units = profOffset * UIParent:GetEffectiveScale() / m:GetEffectiveScale()
+	guarded(function()
+		m:ClearAllPoints()
+		m:SetPoint("TOPLEFT", profBox, "TOPLEFT", 0, units)
+		m:SetPoint("TOPRIGHT", profBox, "TOPRIGHT", 0, units)
+	end)
+end
+
+-- its whole height and the height of its first PROF_ROWS recipes (header included), UIParent units
+local function profHeights(m)
+	local top = m:GetTop()
+	if not top then return nil end
+	top = toScreen(m, top)
+	local lowest = moduleContentBottom(m)
+	if not lowest then return nil end
+	local full = math.max(top - lowest, 0)
+	local blocks = {}
+	for _, byId in pairs(type(m.usedBlocks) == "table" and m.usedBlocks or {}) do
+		for _, block in pairs(type(byId) == "table" and byId or {}) do
+			if type(block) == "table" and block.IsShown and block:IsShown() and block:GetTop() then blocks[#blocks + 1] = block end
+		end
+	end
+	table.sort(blocks, function(a, b) return a:GetTop() > b:GetTop() end)
+	local view = full
+	if #blocks > PROF_ROWS then
+		local cut = lowestShown(blocks[PROF_ROWS], 2, nil)
+		if cut then view = math.min(full, math.max(top - cut, 0)) end
+	end
+	return full, view
+end
+
+local function updateProfBar()
+	if not profBar then return end
+	local show = db.profScrollbar ~= false and profMax > 0 and profBox and profBox:IsShown()
+	profBar:SetShown(show and true or false)
+	if not show then return end
+	profBar:SetWidth(profBarWidth())
+	profThumb:SetWidth(profBarWidth())
+	profBar:ClearAllPoints()
+	-- R106-64: on the box's outer (left) side, away from the quest list and its own scrollbar
+	profBar:SetPoint("TOPRIGHT", profBox, "TOPLEFT", -2, 0)
+	profBar:SetPoint("BOTTOMRIGHT", profBox, "BOTTOMLEFT", -2, 0)
+	local trackH = profBar:GetHeight()
+	if not trackH or trackH <= 0 then return end
+	local thumbH = math.min(math.max(profView / (profView + profMax) * trackH, 24), trackH)
+	profThumb:SetHeight(thumbH)
+	profThumb:ClearAllPoints()
+	profThumb:SetPoint("TOP", profBar, "TOP", 0, -(profOffset / profMax) * (trackH - thumbH))
+end
+
+local function profFadeStep(_, elapsed)
+	if not profBar then return end
+	if not db.profScrollbarMouseover then
+		profBar:SetAlpha(BAR_ALPHA * trackerAlpha())
+		profFader:SetScript("OnUpdate", nil)
+		return
+	end
+	local now = GetTime()
+	if profDragging or profBar:IsMouseOver() or (profBox and profBox:IsMouseOver()) then profActive = now end
+	local full = BAR_ALPHA * trackerAlpha()
+	local target = (now - profActive < FADE_DELAY) and full or 0
+	local alpha = profBar:GetAlpha()
+	local stepSize = full * elapsed / FADE_TIME
+	if alpha < target then alpha = math.min(target, alpha + stepSize) elseif alpha > target then alpha = math.max(target, alpha - stepSize) end
+	profBar:SetAlpha(alpha)
+end
+local function updateProfFader()
+	if db.profScrollbarMouseover then profFader:SetScript("OnUpdate", profFadeStep) else profFadeStep(nil, 0) end
+end
+
+local function setProfOffset(value)
+	profActive = GetTime()
+	profOffset = math.min(math.max(value, 0), profMax)
+	placeProf()
+	updateProfBar()
+end
+
+local function createProfBox()
+	profBox = withAlpha(CreateFrame("Frame", "RXPForeverTrackerProfessions", UIParent))
+	profBox:SetClipsChildren(true)
+	profBox:EnableMouseWheel(true) -- once, out of combat (protected)
+	profBox:SetScript("OnMouseWheel", function(_, delta)
+		if InCombatLockdown() and profHeld and not canMove(profHeld) then return end
+		setProfOffset(profOffset - delta * db.step)
+	end)
+	profBar = CreateFrame("Frame", nil, UIParent)
+	profBar:EnableMouse(true)
+	profBar:EnableMouseWheel(true)
+	profBar:SetScript("OnMouseWheel", function(_, delta) setProfOffset(profOffset - delta * db.step) end)
+	profThumb = CreateFrame("Frame", nil, profBar)
+	profThumb:EnableMouse(true)
+	root.scrollSkin.bar(profBar, profThumb, function(dir) setProfOffset(profOffset + dir * db.step) end)
+	profBar:SetScript("OnMouseDown", function()
+		local trackH, thumbH = profBar:GetHeight(), profThumb:GetHeight()
+		if profMax <= 0 or trackH <= thumbH then return end
+		local fraction = (profBar:GetTop() - cursorY() - thumbH / 2) / (trackH - thumbH)
+		setProfOffset(math.min(math.max(fraction, 0), 1) * profMax)
+	end)
+	profThumb:SetScript("OnMouseDown", function()
+		profDragging = { y = cursorY(), offset = profOffset }
+		profThumb:SetScript("OnUpdate", function()
+			local trackH, thumbH = profBar:GetHeight(), profThumb:GetHeight()
+			if not profDragging or profMax <= 0 or trackH <= thumbH then return end
+			setProfOffset(profDragging.offset + (profDragging.y - cursorY()) * profMax / (trackH - thumbH))
+		end)
+	end)
+	profThumb:SetScript("OnMouseUp", function()
+		profDragging = nil
+		profThumb:SetScript("OnUpdate", nil)
+	end)
+	profBar:Hide()
+	profBox:Hide()
+end
+
+local function releaseProfessions()
+	local m = profHeld
+	if not m then return end
+	profHeld = nil
+	guarded(function()
+		m:SetParent(profParent or tracker)
+		m:ClearAllPoints()
+		for point, a in pairs(bases[m] or {}) do m:SetPoint(point, a[1], a[2], a[3], a[4]) end
+	end)
+	if profBox then profBox:Hide() end
+	if profBar then profBar:Hide() end
+	profOffset = 0
+	markDirty()
+end
+
+function layoutProfessions()
+	local m = _G.ProfessionsRecipeTracker
+	if not (db.profAbove ~= false and m and ghost) then releaseProfessions() return end
+	if InCombatLockdown() then return end
+	if not profBox then createProfBox() end
+	if profHeld ~= m then
+		profParent = m:GetParent()
+		profHeld = m
+		guarded(function() m:SetParent(profBox) end)
+		markDirty() -- the tracker closes the gap it leaves
+	end
+	local s = scale()
+	profBox:SetScale(s)
+	profBox:SetFrameStrata(tracker:GetFrameStrata())
+	profBox:SetFrameLevel(tracker:GetFrameLevel())
+	profBar:SetFrameStrata(tracker:GetFrameStrata())
+	profBar:SetFrameLevel(tracker:GetFrameLevel() + 4)
+	profBox:ClearAllPoints()
+	-- R106-64: left of the quest list, its top level with the "Quests" header (the clip area's top, under the fixed
+	-- strip), as wide as the list; moved by Quest list > "Professions horizontal / vertical position" (db.profX, profY)
+	local px = math.min(math.max(tonumber(db.profX) or 0, -400), 400)
+	local py = math.min(math.max(tonumber(db.profY) or 0, -400), 400)
+	profBox:SetPoint("TOPRIGHT", viewport, "TOPLEFT", (px - PROF_GAP) / s, py / s)
+	profBox:SetWidth(math.max(ghost:GetWidth() * (ghost:GetEffectiveScale() / profBox:GetEffectiveScale()), 50))
+	if not (m:IsShown() and tracker:IsShown()) then
+		profBox:Hide()
+		updateProfBar()
+		return
+	end
+	-- R106-62: shown before it is measured: inside a hidden box the section has no place, so it was never measured
+	-- and the box never showed (user: no Professions header and no recipes after R106-57). Without a place yet it
+	-- stays open a header tall and is measured again on the next frame (a few times at most).
+	if not profBox:IsShown() then profBox:SetHeight(math.max(profBox:GetHeight() or 0, 30 / s)) end
+	profBox:Show()
+	placeProf()
+	local full, view = profHeights(m)
+	if not full then
+		profRetries = profRetries + 1
+		if profRetries <= 5 and C_Timer then C_Timer.After(0, ns.api.applyLayout) end
+		return
+	end
+	profRetries = 0
+	profView = view
+	profMax = math.max(full - view, 0)
+	profOffset = math.min(profOffset, profMax)
+	profBox:SetHeight(math.max(view + 2, 1) / s)
+	placeProf()
+	profBox:Show()
+	updateProfBar()
+	updateProfFader()
+end
+
+function ns.api.setProfessionsAbove(on)
+	db.profAbove = on and true or false
+	if not db.profAbove then releaseProfessions() end
+	ns.api.applyLayout()
+end
+function ns.api.setProfessionsPosition(x, y)
+	if x ~= nil then db.profX = math.floor((tonumber(x) or 0) + 0.5) end
+	if y ~= nil then db.profY = math.floor((tonumber(y) or 0) + 0.5) end
+	if not InCombatLockdown() then layoutProfessions() end
+end
+function ns.api.setProfScrollbarShown(on) db.profScrollbar = on and true or false; updateProfBar() end
+function ns.api.setProfScrollbarMouseover(on)
+	db.profScrollbarMouseover = on and true or false
+	profActive = GetTime()
+	updateProfFader()
+end
+function ns.api.setProfScrollbarWidth(value)
+	db.profScrollbarWidth = math.min(math.max(math.floor((tonumber(value) or BAR_WIDTH) + 0.5), 2), 30)
+	updateProfBar()
+end
+end -- the Professions block
 
 ---------------------------------------------------------------------------------------------------------------------
 -- API used by the config window, the minimap button and the slash commands
@@ -1181,12 +1747,6 @@ end
 function ns.api.setScrollbarShown(shown)
 	db.scrollbar = shown and true or false
 	updateScrollbar()
-end
-
-function ns.api.applyScrollbarColor()
-	if not (thumb and thumb.fill) then return end
-	local c = db.scrollbarColor or { 0.2, 0.85, 0.55 }
-	thumb.fill:SetColorTexture(c[1], c[2], c[3], tonumber(c[4]) or 0.85)
 end
 
 function ns.api.applyQuestsPad()
@@ -1233,6 +1793,10 @@ function ns.api.resetDefaults(keys, label)
 	needsLayout = true
 	if ns.api.applyZoneHeaders then ns.api.applyZoneHeaders() end
 	if ns.api.applyExtras then ns.api.applyExtras() end
+	-- the title / objective outlines back to the game's (R106-48)
+	if (wanted("titleOutline") or wanted("objectiveOutline")) and ns.api.afterTrackerUpdateFonts then
+		pcall(ns.api.afterTrackerUpdateFonts)
+	end
 	if ns.api.applyQuestsHeaderLook then pcall(ns.api.applyQuestsHeaderLook) end
 	if ns.api.updateQuestCount then pcall(ns.api.updateQuestCount) end
 	ns.api.applyGuideScale()
@@ -1331,7 +1895,7 @@ local function enable()
 	unclamp()
 	guarded(function()
 		layoutGhost()
-		tracker:SetParent(viewport)
+		moveTracker("SetParent", viewport)
 		if tracker.Header and tracker.Header.SetParent then tracker.Header:SetParent(strip) end
 		layoutTracker()
 		layoutViewport()
@@ -1350,7 +1914,11 @@ local function enable()
 		if guard then return end
 		if canMove(tracker) then
 			capture()
-			guarded(function() tracker:ClearAllPoints(); tracker:SetPoint("TOPLEFT", ghost, "TOPLEFT", 0, 0); tracker:SetPoint("TOPRIGHT", ghost, "TOPRIGHT", 0, 0) end)
+			guarded(function()
+				moveTracker("ClearAllPoints")
+				moveTracker("SetPoint", "TOPLEFT", ghost, "TOPLEFT", 0, 0)
+				moveTracker("SetPoint", "TOPRIGHT", ghost, "TOPRIGHT", 0, 0)
+			end)
 		else
 			needsLayout = true
 		end
@@ -1388,7 +1956,7 @@ local function enable()
 	local function onScale()
 		if guard then return end
 		if math.abs(tracker:GetScale() - scale()) > 1e-4 and canMove(tracker) then
-			guarded(function() tracker:SetScale(scale()) end)
+			guarded(function() moveTracker("SetScale", scale()) end)
 		end
 		schedule()
 	end
@@ -1400,7 +1968,7 @@ local function enable()
 	local function onParent()
 		if guard or tracker:GetParent() == viewport then return end
 		if canMove(tracker) then
-			guarded(function() tracker:SetParent(viewport) end)
+			guarded(function() moveTracker("SetParent", viewport) end)
 		else
 			needsLayout = true
 		end
@@ -1559,7 +2127,9 @@ local QT_HELP = {
 	{ "zone", "sort quests by zone, on or off" },
 	{ "sort", "sort the quests now" },
 	{ "lock", "lock the tracker in place" },
-	{ "unlock", "unlock the tracker (drag the green bar)" },
+	{ "unlock", "unlock the tracker (drag it like a frame in Edit Mode)" },
+	{ "distance", "why a quest title shows or hides its distance arrow" },
+	{ "fontlog", "record the tracker's font changes for 10 s (open the map meanwhile), then show who made them" },
 	{ "reset", "scroll the tracker back to the top" },
 	{ "on", "turn the quest tracker on (then /reload)" },
 	{ "off", "turn the quest tracker off (then /reload)" },
@@ -1609,7 +2179,11 @@ SlashCmdList.ALLTRACKERRXP = function(msg)
 	elseif cmd == "sort" then
 		if ns.api.sortNow then ns.api.sortNow() end
 	elseif cmd == "lock" then ns.api.setLocked(true); say("tracker locked")
-	elseif cmd == "unlock" then ns.api.setLocked(false); say("tracker unlocked: drag the green bar")
+	elseif cmd == "unlock" then ns.api.setLocked(false); say("tracker unlocked: drag it like a frame in Edit Mode")
+	elseif cmd == "distance" then
+		if ns.api.distanceReport then ns.api.distanceReport(say) end
+	elseif cmd == "fontlog" then
+		if ns.api.fontLog then ns.api.fontLog(say) end
 	elseif cmd == "reset" then ns.api.scrollToTop()
 	elseif cmd == "off" then
 		db.enabled = false
@@ -1646,6 +2220,7 @@ frame:SetScript("OnEvent", function(_, event)
 			-- an unset tracking mode is a real choice ("Blizzard's normal tracking") for existing settings
 			if db[key] == nil and (fresh or key ~= "trackMode") then db[key] = value end
 		end
+		db.scrollbarColor = nil -- removed: every scrollbar uses the Forever art (ScrollSkin.lua)
 		if type(db.minimap) ~= "table" then db.minimap = { hide = false, angle = 225 } end
 		db.extra = nil -- "layout room" is automatic now
 		db.guideScrolls = nil -- "Scroll the RestedXP guide with the quests" was removed

@@ -88,7 +88,12 @@ local function mark(module, quest)
 	shifted[block] = nil
 	-- CONSTRAINT: OnLayout reshows the POI button every layout.
 	local button = block.poiButton
-	if ready and button and button:IsShown() and not ns.protectedInCombat(button) then button:Hide() end
+	-- R106-46: not :Hide() (its OnHide registers with EventRegistry from here: taints the map's pins); see-through and
+	-- not clickable instead (the quest tracker half hides every POI button that way anyway)
+	if ready and button then
+		local suppress = root.tracker and root.tracker.api and root.tracker.api.suppressPOI
+		if suppress then suppress(button) elseif button:GetAlpha() ~= 0 then button:SetAlpha(0) end
+	end
 	local line = block.usedLines[READY_KEY]
 	local resize = block.used and not ns.protectedInCombat(block)
 	local compact = ready and resize and line

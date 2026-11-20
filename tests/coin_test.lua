@@ -1,8 +1,8 @@
 local src = io.open(arg[1] .. "/Tracker/Extras.lua"):read("a")
-local coinBlock = src:match("(local function coin%(file%).-\nlocal COIN = [^\n]+)")
-local goldFn = src:match("(local function gold%(copper, coins, spaced%).-\nend)")
+local coinBlock = src:match("(local COIN_SCALE = .-\napi%.coinPx = coinPx)")
+local goldFn = src:match("(local function gold%(copper, coins, spaced, px%).-\nend)")
 local db = { goldCoins = false }
-local env = setmetatable({ db = db }, { __index = _G })
+local env = setmetatable({ db = db, api = {} }, { __index = _G })
 local gold = load(coinBlock .. "\n" .. goldFn .. "\nreturn gold", "x", "t", env)()
 local text = "  |cffaaaaaa(vendor|r " .. gold(4043, true) .. "|cffaaaaaa)|r"
 local readable = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T[^|]*UI%-(%a+)Icon[^|]*|t", "[%1]")

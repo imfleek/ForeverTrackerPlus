@@ -89,6 +89,7 @@ function arrow.drawPortrait(button, token, redraw)
 	if redraw or new then SetPortraitTexture(portrait, token) end
 	portrait.seen = GetTime()
 	portraits:attach(button, portrait, button.art)
+	if ns.hideCircleModel then ns.hideCircleModel(button) end
 	button.mark:Hide()
 end
 
@@ -96,6 +97,10 @@ function arrow.setArt(button, use)
 	local name = use and use.type == "unit" and use.name or nil
 	local portrait = name and portraits:get(name) or nil
 	portraits:attach(button, portrait, button.art)
+	-- not seen yet: the creature's model (Models.lua; the art is a plain frame, so this works in combat too)
+	if ns.showCircleModel then
+		if portrait or not name then ns.hideCircleModel(button) else ns.showCircleModel(button, name, button.art) end
+	end
 	button.icon:SetShown(use ~= nil and ns.drawsIcon(use))
 	ns.setMark(button, use, portrait)
 end

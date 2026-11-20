@@ -119,6 +119,7 @@ local backHidden = 0
 ns.hideBackButton = function() backHidden = backHidden + 1 end
 ns.placeBackButton = function() skipCalls.back = true end
 ns.backButtonRoom = function() return 0 end
+assert(loadfile(dir .. "/ScrollSkin.lua"))("x", root)
 assert(loadfile(dir .. "/Objectives/tracker/Rows.lua"))("x", root)
 
 local headerText = obj()
@@ -406,6 +407,29 @@ check("a book's \"Pages\" shows its first page", pages:find("|Hitem:2725|h", 1, 
 local pages2 = decorate("|T134332:0|t[Green Hills of Stranglethorn Pages]", { step = { elements = {} } }, {})
 check("also written without the dash", pages2:find("|Hitem:2725|h", 1, true) ~= nil)
 check("an item named in the plural links to the item", out:find("|Hitem:3928|h|T134833:0|t[Superior Healing Potions]|h", 1, true) ~= nil)
+-- R105-5: a spell a line names without its step casting or training it ("cast |T135920:0|t[Holy Light] if needed")
+do
+	local keepGuide = ns.rxp.currentGuide
+	local trainStep = { elements = { { tag = "train", id = 635 } } }
+	ns.rxp.currentGuide = { steps = { trainStep, { elements = {} } } }
+	local oldName, oldTex = _G.C_Spell.GetSpellName, _G.C_Spell.GetSpellTexture
+	_G.C_Spell.GetSpellName = function(id) return ({ [635] = "Holy Light", [19750] = "Flash of Light" })[id] or oldName(id) end
+	_G.C_Spell.GetSpellTexture = function(id) return ({ [635] = 135920, [19750] = 135907 })[id] or oldTex(id) end
+	_G.C_Spell.GetSpellInfo = function(name) if name == "Flash of Light" then return { spellID = 19750 } end end
+	local plainStep = { step = { elements = {} } }
+	local holy = decorate(">>Cast |T135920:0|t[Holy Light] if needed", plainStep, {})
+	check("a spell the guide trains elsewhere links by name (rank not learned yet)", holy:find("|Hspell:635|h|T135920:0|t[Holy Light]|h", 1, true) ~= nil)
+	local flash = decorate("Use [Flash of Light] on him", { step = { elements = {} } }, {})
+	check("a spell the character knows links through the game's lookup", flash:find("|Hspell:19750|h[Flash of Light]|h", 1, true) ~= nil)
+	local byIcon = decorate("Keep |T135920:0|t[Holy Lite] ready", { step = { elements = {} } }, {})
+	check("an unknown name with the icon of the guide's spell links by icon", byIcon:find("|Hspell:635|h", 1, true) ~= nil)
+	local wrongIcon = decorate("|T999:0|t[Flash of Light]", { step = { elements = {} } }, {})
+	check("not when the icon in front is another one", wrongIcon:find("|H", 1, true) == nil)
+	local none = decorate("Beware [Thunder Clap]", { step = { elements = {} } }, {})
+	check("an unknown spell name: no link, no error", none == "Beware [Thunder Clap]")
+	_G.C_Spell.GetSpellName, _G.C_Spell.GetSpellTexture, _G.C_Spell.GetSpellInfo = oldName, oldTex, nil
+	ns.rxp.currentGuide = keepGuide
+end
 -- 3.5.52: an upcoming step links the quests its accept / turn-in objectives name; Shift+click puts a quest in chat
 do
 	local stepQ = { elements = { { tag = "accept", questId = 920, title = "Tenaron's Summons" },

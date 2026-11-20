@@ -43,6 +43,8 @@ local original = RXP.QuestAutomation
 if type(original) == "function" then
 	local function guarded(self, event, ...)
 		if rewardWindowEvent(event) == "QUEST_COMPLETE" and rewardLinksMissing() then return end
+		-- RxpAwake.lua (later in the TOC): no automation while RestedXP's window is hidden, unless chosen in /qt
+		if ns.runRxpAutomation then return ns.runRxpAutomation(original, self, event, ...) end
 		return original(self, event, ...)
 	end
 	RXP.QuestAutomation = guarded

@@ -902,19 +902,20 @@ local function build()
 	-- a thin scrollbar on the right, shown when the list is longer than the box: drag its thumb, or use the wheel
 	local BAR_W = 6
 	local menuBar = CreateFrame("Frame", nil, guideMenu)
-	menuBar:SetPoint("TOPRIGHT", -2, -3)
-	menuBar:SetPoint("BOTTOMRIGHT", -2, 3)
+	-- (Forever look, ScrollSkin.lua; inset so its arrows fit above and below)
+	menuBar:SetPoint("TOPRIGHT", -2, -10)
+	menuBar:SetPoint("BOTTOMRIGHT", -2, 10)
 	menuBar:SetWidth(BAR_W)
 	menuBar:SetFrameLevel(menuScroll:GetFrameLevel() + 5)
-	local barTrack = k.solid(menuBar, "BACKGROUND", C.track, 1)
-	barTrack:SetAllPoints()
 	local menuThumb = CreateFrame("Frame", nil, menuBar)
 	menuThumb:SetWidth(BAR_W)
 	menuThumb:EnableMouse(true)
-	local thumbTex = k.solid(menuThumb, "ARTWORK", C.thumb, 1)
-	thumbTex:SetAllPoints()
 	local function contentHeight() return menuChild:GetHeight() or 0 end
 	local function viewHeight() return menuScroll:GetHeight() or 0 end
+	local scrollTo
+	root.scrollSkin.bar(menuBar, menuThumb, function(dir)
+		scrollTo((menuScroll:GetVerticalScroll() or 0) + dir * ROW_H * 3)
+	end)
 	local function updateMenuBar()
 		local childH, viewH = contentHeight(), viewHeight()
 		local range = math.max(childH - viewH, 0)
@@ -926,7 +927,7 @@ local function build()
 		menuThumb:ClearAllPoints()
 		menuThumb:SetPoint("TOP", menuBar, "TOP", 0, -((menuScroll:GetVerticalScroll() or 0) / range) * (trackH - thumbH))
 	end
-	local function scrollTo(value)
+	function scrollTo(value)
 		local range = math.max(contentHeight() - viewHeight(), 0)
 		menuScroll:SetVerticalScroll(math.min(math.max(value, 0), range))
 		updateMenuBar()
@@ -1100,6 +1101,7 @@ local function build()
 				if (scroll:GetVerticalScrollRange() or 0) <= 0.5 then self:Hide() end
 			end)
 		end
+		root.scrollSkin.native(scrollbar) -- Forever look (ScrollSkin.lua)
 	end
 	scroll:SetPoint("TOPLEFT", 12, -12)
 	scroll:SetPoint("BOTTOMRIGHT", -30, 12)

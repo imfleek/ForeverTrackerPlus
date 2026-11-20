@@ -3,8 +3,9 @@
 -- SORT: Blizzard lists tracked quests in the order they were watched. When the option is on, the watch list is
 -- rebuilt (RemoveQuestWatch + AddQuestWatch, keeping each quest's watch type) whenever the order is wrong: zones by
 -- their closest quest, quests inside a zone closest first, so the closest quest/objective is at the very top. Re-checked
--- every 4 s while you move and after the game's own SortQuestWatches; out of combat only, never while the order is
--- already right, at most 4 re-orders per 10 s (so it cannot loop).
+-- every 15 s while you move and after the game's own SortQuestWatches; out of combat only, never while the order is
+-- already right, at most 4 re-orders per 10 s (so it cannot loop). With "Track all quests" the rebuild also picks WHICH
+-- quests are tracked: the closest ones, up to the game's limit; "More quests" lists the rest after them.
 --
 -- HEADERS (experimental): a zone name is drawn above the first quest block of each zone. The room for it is added to
 -- the bottom of the block above (SetHeight post-hook, the technique AllObjectives RXP uses) and the header text is a
@@ -251,6 +252,100 @@ local function waypointDistance(id, place)
 	return dx * dx + dy * dy
 end
 
+-- The distance and direction after quest titles (Extras.lua, "Distance and direction after quest titles").
+-- api.playerWorldPos(): the player's own world position now (continent, x, y in yards; nil inside an instance or
+-- without a map position, never the centre-of-map guess the sort uses). The world vector's x runs north and y west
+-- (C_Map.GetWorldPosFromMapPos), as GetPlayerFacing counts: 0 = north, turning left (counter-clockwise).
+function api.playerWorldPos()
+	if instanceName() then return nil end
+	local map = C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+	if not map then return nil end
+	local ok, pos = pcall(C_Map.GetPlayerMapPosition, map, "player")
+	if not (ok and pos) then return nil end
+	local x, y = pos.x, pos.y
+	if pos.GetXY then x, y = pos:GetXY() end
+	if type(x) ~= "number" or type(y) ~= "number" or isSecret(x) then return nil end
+	local continent, wx, wy = worldPos(map, x, y)
+	if not continent then return nil end
+	return { continent = continent, x = wx, y = wy, map = map }
+end
+
+-- The quest markers the world map shows on the player's map (C_QuestLog.GetQuestsOnMap, QuestPOIMapInfo: questID, x,
+-- y), read once per position reading (me) and kept on it: where a quest in this zone is, also without Questie.
+local function mapMarker(me, id)
+	if me.markers == nil then
+		me.markers = {}
+		if me.map and C_QuestLog.GetQuestsOnMap then
+			local ok, list = pcall(C_QuestLog.GetQuestsOnMap, me.map)
+			for _, info in ipairs(ok and type(list) == "table" and list or {}) do
+				local qid, x, y = info.questID, info.x, info.y
+				if type(qid) == "number" and type(x) == "number" and type(y) == "number" and not isSecret(x)
+					and not me.markers[qid] then
+					me.markers[qid] = { x, y }
+				end
+			end
+		end
+	end
+	return me.markers[id]
+end
+
+-- api.questDirection(id, me): yards to the nearest place the quest is done and its world angle (atan2 of west over
+-- north, as GetPlayerFacing). The place: Questie's spawns (the turn-in once complete); else the quest's marker on the
+-- player's map (GetQuestsOnMap; also C_QuestLog.GetNextWaypointForMap); else the game's next waypoint (it gives one
+-- only for a quest in another zone). Only the yards from the game's own distance when no place is known (no arrow).
+-- nil on another continent or when unknown.
+local function toward(me, map, x, y)
+	local continent, wx, wy = worldPos(map, x, y)
+	if continent ~= me.continent then return nil end
+	local dx, dy = wx - me.x, wy - me.y
+	return dx * dx + dy * dy, dx, dy
+end
+local lastTarget, TARGET_KEEP = {}, 60 -- quest ID -> the last place found (world), kept 60 s
+function api.questDirection(id, me)
+	if not me then return nil end
+	local best, bx, by
+	for _, p in ipairs(questWorldPoints(id) or {}) do
+		if p[1] == me.continent then
+			local dx, dy = p[2] - me.x, p[3] - me.y
+			local d = dx * dx + dy * dy
+			if not best or d < best then best, bx, by = d, dx, dy end
+		end
+	end
+	if not best and me.map then
+		local marker = mapMarker(me, id)
+		if not marker and C_QuestLog.GetNextWaypointForMap then
+			local ok, x, y = pcall(C_QuestLog.GetNextWaypointForMap, id, me.map)
+			if ok and type(x) == "number" and type(y) == "number" and not isSecret(x) then marker = { x, y } end
+		end
+		if marker then best, bx, by = toward(me, me.map, marker[1], marker[2]) end
+	end
+	if not best and C_QuestLog.GetNextWaypoint then
+		local ok, map, x, y = pcall(C_QuestLog.GetNextWaypoint, id)
+		if ok and type(map) == "number" and type(x) == "number" and type(y) == "number" and not isSecret(x) then
+			local continent, wx, wy = worldPos(map, x, y)
+			if continent == me.continent then
+				bx, by = wx - me.x, wy - me.y
+				best = bx * bx + by * by
+			end
+		end
+	end
+	-- R106-40: the place last found is kept (TARGET_KEEP s) and used while every source above finds none for a moment
+	-- (user: with the world map open or after a zone change the arrows went away and the yards jumped, image: only the
+	-- game's distance, no direction); the yards and the angle are still from where you stand now
+	if best then
+		lastTarget[id] = { continent = me.continent, x = me.x + bx, y = me.y + by, time = GetTime() }
+	else
+		local t = lastTarget[id]
+		if t and t.continent == me.continent and GetTime() - t.time < TARGET_KEEP then
+			bx, by = t.x - me.x, t.y - me.y
+			best = bx * bx + by * by
+		end
+	end
+	if best then return math.sqrt(best), (math.atan2 or math.atan)(by, bx) end
+	local d = clientDistance(id)
+	if d and d < FAR then return math.sqrt(d), nil end
+end
+
 local lastSource = {}
 local function questDistance(id, zone, place)
 	-- in a dungeon its quests are the closest (ahead of every distance)
@@ -281,9 +376,10 @@ local function questDistance(id, zone, place)
 end
 
 
--- Distances closer together than this (squared yards) count as equal, so the list does not swap two quests back and
--- forth while you walk between them; the current order then decides.
-local BUCKET = 30
+-- Distances closer together than this (yards) count as equal, so the list does not swap two quests back and forth
+-- while you walk between them; the current order then decides. 100 (was 30): a quest has to become clearly closer to
+-- move up, so the list stays still while you run about (user: the titles moved around, "calmer sorting").
+local BUCKET = 100
 local function bucket(d)
 	if d < 0 then return d end -- the dungeon you are in
 	if d >= FAR then return d end
@@ -320,6 +416,38 @@ api.orderQuests = function(list) return orderQuests(list) end
 
 local function sorted(list) return orderQuests(list) end
 
+-- "Track all quests": the game tracks at most MAX_QUEST_WATCHES quests (20 seen on Forever). The closest ones (by the
+-- same order) are the tracked ones; the rest are listed right after them by "More quests" (MoreQuests.lua), so both
+-- read as one list sorted by distance. Other modes only re-order what is tracked.
+local function maxWatches()
+	return (Constants and Constants.QuestWatchConsts and Constants.QuestWatchConsts.MAX_QUEST_WATCHES) or 25
+end
+local function candidates(list)
+	if db.trackMode ~= "all" then return list end
+	local all, seen = {}, {}
+	for _, q in ipairs(list) do all[#all + 1] = q; seen[q.id] = true end
+	local n = C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetNumQuestLogEntries() or 0
+	for i = 1, n do
+		local info = C_QuestLog.GetInfo(i)
+		local id = info and not info.isHeader and info.questID
+		-- the same quests "More quests" lists: not hidden, world or bonus tasks, or hidden by the zone filter
+		if id and not isSecret(id) and not seen[id] and not info.isHidden and not info.isTask and not info.isBounty
+			and not (db.zoneHidden and db.zoneHidden[id]) then
+			seen[id] = true
+			all[#all + 1] = { id = id, zone = headerTitle(id) or "", index = #list + i }
+		end
+	end
+	return all
+end
+local function wantedWatches(list)
+	local want = sorted(candidates(list))
+	local limit = maxWatches()
+	if db.trackMode == "all" then
+		for i = #want, limit + 1, -1 do want[i] = nil end
+	end
+	return want
+end
+
 local busy = false
 local reversedAdd = false -- this client puts a newly watched quest first instead of last
 local recent = {}         -- times of our recent reorders
@@ -337,17 +465,21 @@ local function rewatch(list, want, reverse)
 		if q.type ~= nil then C_QuestLog.AddQuestWatch(q.id, q.type) else C_QuestLog.AddQuestWatch(q.id) end
 	end
 end
-local function sortWatches(force)
+-- afterGame: right after the game's own SortQuestWatches (opening the world map, a new zone: QUEST_POI_UPDATE). That
+-- one is put back each time (up to 20 in 10 s); anything else that keeps re-ordering is fought at most 4 times.
+local sortCounts = { game = 0, ours = 0, held = 0 }
+local function sortWatches(force, afterGame)
 	if not db or not db.zoneSort or not db.enabled or InCombatLockdown() or busy then return end
 	local now = GetTime()
 	local keep = {}
 	for _, t in ipairs(recent) do if now - t < 10 then keep[#keep + 1] = t end end
 	recent = keep
-	if #recent >= 4 then return end -- something keeps re-ordering the list: do not fight it more than this
+	if #recent >= (afterGame and 20 or 4) then sortCounts.held = sortCounts.held + 1 return end
 	local list = watched()
-	local want = sorted(list)
+	local want = wantedWatches(list)
 	if sameOrder(list, want) then return end
 	recent[#recent + 1] = now
+	if afterGame then sortCounts.game = sortCounts.game + 1 else sortCounts.ours = sortCounts.ours + 1 end
 	busy = true
 	for _, q in ipairs(want) do q.type = C_QuestLog.GetQuestWatchType(q.id) end
 	local ok, err = pcall(function()
@@ -393,7 +525,11 @@ local function styleLabel(label)
 	label:SetTextColor(color[1], color[2], color[3], tonumber(color[4]) or 1)
 	local font, size, flags = GameFontNormalSmall:GetFont()
 	font = api.fontPath and api.fontPath() or font
-	if font and size then label:SetFont(font, size * (db.zoneHeaderScale or 1), db.zoneHeaderOutline and "OUTLINE" or flags) end
+	if font and size then
+		local s, f = size * (db.zoneHeaderScale or 1), db.zoneHeaderOutline and "OUTLINE" or flags
+		local hf, hs, hfl = label:GetFont()
+		if hf ~= font or not hs or math.abs(hs - s) > 0.01 or (hfl or "") ~= (f or "") then label:SetFont(font, s, f) end
+	end
 end
 
 -- The left edge of the zone headers shown (UIParent units), for the background (Core.lua)
@@ -468,6 +604,12 @@ local function decorate()
 		local shown = {}
 		for id, block in pairs(blocks) do
 			local top = block:GetTop()
+			-- R106-42: a shown quest with no place yet (laid out later in this frame): the headers stay as they are and
+			-- are placed again shortly; placing them without it hid a header for a moment (user: the zone header flickers)
+			if not top and type(id) == "number" then
+				if api.retryZoneHeaders then api.retryZoneHeaders() end
+				return false
+			end
 			if top and type(id) == "number" then shown[#shown + 1] = { id = id, top = top, zone = headerTitle(id) or "" } end
 		end
 		table.sort(shown, function(a, b) return a.top > b.top end) -- the order Blizzard actually displays
@@ -495,12 +637,16 @@ local function decorate()
 		local label = labels[block]
 		if w.header then
 			label = getLabel(block)
-			label:ClearAllPoints()
 			-- the block itself sits questTitleX further right (Quest titles horizontal position): taken back off here
-			label:SetPoint("BOTTOMLEFT", block, "TOPLEFT", (db.zoneHeaderX or 4) - (tonumber(db.questTitleX) or 0),
-				2 + (tonumber(db.zoneHeaderY) or 0))
-			label:SetText(w.header)
-			label:Show()
+			-- only set again when something differs (nothing to redraw on most passes)
+			local x, y = (db.zoneHeaderX or 4) - (tonumber(db.questTitleX) or 0), 2 + (tonumber(db.zoneHeaderY) or 0)
+			if label.qtsX ~= x or label.qtsY ~= y then
+				label:ClearAllPoints()
+				label:SetPoint("BOTTOMLEFT", block, "TOPLEFT", x, y)
+				label.qtsX, label.qtsY = x, y
+			end
+			if label:GetText() ~= w.header then label:SetText(w.header) end
+			if not label:IsShown() then label:Show() end
 		elseif label then
 			label:Hide()
 		end
@@ -547,6 +693,17 @@ end
 
 function api.sortNow() schedule(0, true) end
 
+-- decorate() found a quest with no place yet: again in 0.1 s, at most 10 times in a row (then the next tracker
+-- update places the headers)
+local retries, lastRetry = 0, 0
+function api.retryZoneHeaders()
+	if GetTime() - lastRetry > 2 then retries = 0 end
+	lastRetry = GetTime()
+	if retries >= 10 then return end
+	retries = retries + 1
+	schedule(0.1, false)
+end
+
 -- "Sort zones": "closest" (closest zone to you first, the default) or "alpha" (A to Z)
 function api.setZoneOrder(order)
 	db.zoneOrder = order == "alpha" and "alpha" or "closest"
@@ -570,6 +727,8 @@ function api.zoneDebug(say)
 			q.zone ~= "" and q.zone or "?", yards, tostring(lastSource[q.id])))
 	end
 	say(("watch insert reversed: %s"):format(tostring(reversedAdd)))
+	say(("re-sorts: %d after the game's own sort (at once), %d of ours, %d held back"):format(sortCounts.game,
+		sortCounts.ours, sortCounts.held))
 	local module = _G.QuestObjectiveTracker
 	say(("first zone gap: fromHeaderOffsetY=%s (original %s)"):format(tostring(module and module.fromHeaderOffsetY), tostring(baseHeaderOffset)))
 end
@@ -589,19 +748,29 @@ ns.onLogin[#ns.onLogin + 1] = function()
 		schedule(1, true)
 	end)
 	-- the game's own proximity sort (C_QuestLog.SortQuestWatches, run by Blizzard's tracker) would undo ours: put
-	-- ours back right after it
+	-- ours back right after it.
+	-- CONSTRAINT: at once, inside the post-hook, not 0.2 s later: the game sorts on QUEST_POI_UPDATE (opening the world
+	-- map, a new zone), and with the delay its order showed for a moment and then ours (user: the tracker jitters when
+	-- the map opens or the zone changes; icons flash, coins jump lines). Done before the tracker draws, only one order
+	-- is ever seen. The 0.1 s pass after still places the zone headers.
 	if C_QuestLog.SortQuestWatches then
-		hooksecurefunc(C_QuestLog, "SortQuestWatches", function() if not busy then schedule(0.2, true) end end)
+		hooksecurefunc(C_QuestLog, "SortQuestWatches", function()
+			if busy then return end
+			local ok, err = pcall(sortWatches, true, true)
+			if not ok then geterrorhandler()(err) end
+			schedule(0.1, false)
+		end)
 	end
-	-- you move: re-check every few seconds (only re-orders when a different quest has become closer)
-	-- Only after you moved 20 yards or more since the last check (or every 30 s at the latest), so standing still
-	-- costs nothing; quest events re-sort on their own (above).
+	-- you move: re-check every MOVE_CHECK s (15, was 4: "calmer sorting", user) and only re-orders when a different quest
+	-- has become clearly closer (BUCKET). Only after you moved 20 yards or more since the last check (or every 30 s at
+	-- the latest), so standing still costs nothing; a new zone and quest events re-sort on their own (above).
+	local MOVE_CHECK = 15
 	local lastPlace, idle = nil, 0
-	if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(4, function()
+	if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(MOVE_CHECK, function()
 		if not (db and db.zoneSort and db.enabled) or InCombatLockdown() then return end
 		local here = playerPlace()
 		idle = idle + 1
-		if lastPlace and here and here.continent == lastPlace.continent and here.x and lastPlace.x and idle < 8 then
+		if lastPlace and here and here.continent == lastPlace.continent and here.x and lastPlace.x and idle < 2 then
 			local dx, dy = here.x - lastPlace.x, here.y - lastPlace.y
 			if dx * dx + dy * dy < 400 then return end
 		end
