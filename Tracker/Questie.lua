@@ -765,6 +765,124 @@ function api.questieUiMap(areaID)
 	return ok2 and type(map) == "number" and map or nil
 end
 
+-- 3.1 breadcrumbs (the idea from Questline): a quest that only sends you on to another quest's giver
+-- (Questie's breadcrumbForQuestId) is not worth showing once that quest is done or already in the log
+local function doneOrInLog(id)
+	if C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id) then return true end
+	local index = C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(id)
+	return index ~= nil and index > 0
+end
+function api.questieBreadcrumbDone(id)
+	local target = get("Quest", id, "breadcrumbForQuestId")
+	if type(target) == "table" then target = target[1] end
+	return type(target) == "number" and target > 0 and doneOrInLog(target) or false
+end
+
+-- 3.1 guides (Guides.lua): every quest ID Questie knows, or nil
+local function allQuestIds()
+	local lib = _G.LibQuestieDB
+	if type(lib) == "table" and type(lib.Quest) == "table" and type(lib.Quest.GetAllIds) == "function" then
+		local ok, ids = pcall(lib.Quest.GetAllIds)
+		if ok and type(ids) == "table" then return ids end
+	end
+	local qdb = module("QuestieDB")
+	if qdb and type(qdb.QuestPointers) == "table" then
+		local ids = {}
+		for id in pairs(qdb.QuestPointers) do ids[#ids + 1] = id end
+		return ids
+	end
+	return nil
+end
+
+-- The guides' data, worked out once from Questie's quests, a frame at a time; nil while building.
+--   books:   the library book quests. Such a quest starts both at a librarian NPC and at the book (an object) and is
+--            turned in at that same NPC; a librarian takes eight or more of them. { quest, name, object, item }
+--   named:   [quest name] = { quest IDs } for the names in want (the sleeping bag chain's first quest)
+local guideData, guideBuilding
+local guideWaiters = {}
+function api.questieGuideData(want, onReady)
+	if guideData then return guideData end
+	if onReady then
+		local have = false
+		for _, fn in ipairs(guideWaiters) do if fn == onReady then have = true end end
+		if not have then guideWaiters[#guideWaiters + 1] = onReady end
+	end
+	if guideBuilding or not api.questieOn() then return nil end
+	local ids = allQuestIds()
+	if not ids then return nil end
+	guideBuilding = true
+	local byNpc, named, i = {}, {}, 1
+	local wanted = {}
+	for _, n in ipairs(want or {}) do wanted[n] = true end
+	local ticker
+	ticker = C_Timer.NewTicker(0, function()
+		local stop = math.min(i + QUESTS_PER_FRAME - 1, #ids)
+		for n = i, stop do
+			local quest = ids[n]
+			local by = get("Quest", quest, "startedBy")
+			if type(by) == "table" and type(by[1]) == "table" and type(by[2]) == "table" and by[1][1] and by[2][1] then
+				local fin = get("Quest", quest, "finishedBy")
+				local npc = type(fin) == "table" and type(fin[1]) == "table" and fin[1][1]
+				if npc and npc == by[1][1] then
+					byNpc[npc] = byNpc[npc] or {}
+					table.insert(byNpc[npc], { quest = quest, object = by[2][1] })
+				end
+			end
+			if next(wanted) then
+				local name = get("Quest", quest, "name")
+				if type(name) == "string" and wanted[name] then
+					named[name] = named[name] or {}
+					table.insert(named[name], quest)
+				end
+			end
+		end
+		i = stop + 1
+		if i > #ids then
+			ticker:Cancel()
+			local books = {}
+			for _, list in pairs(byNpc) do
+				if #list >= 8 then
+					for _, e in ipairs(list) do
+						if forPlayer(e.quest) then
+							local name = get("Quest", e.quest, "name")
+							local objectives = get("Quest", e.quest, "objectives")
+							local items = type(objectives) == "table" and objectives[3]
+							local item = type(items) == "table" and type(items[1]) == "table" and items[1][1] or nil
+							books[#books + 1] = { quest = e.quest, name = type(name) == "string" and name or ("Quest " .. e.quest),
+								object = e.object, item = item }
+						end
+					end
+				end
+			end
+			table.sort(books, function(a, b) return a.name < b.name end)
+			guideData, guideBuilding = { books = books, named = named }, false
+			for _, fn in ipairs(guideWaiters) do pcall(fn) end
+			wipe(guideWaiters)
+		end
+	end)
+	return nil
+end
+
+-- the quests finishing `id` opens (Questie's preQuest links, from the unlock index); nil while it is building
+function api.questieNextQuests(id)
+	if not unlockIndex then buildUnlockIndex() return nil end
+	local out = {}
+	for _, entry in ipairs(unlockIndex[id] or {}) do
+		if forPlayer(entry.quest) then out[#out + 1] = entry.quest end
+	end
+	return out
+end
+api.questieForPlayer = function(id) return forPlayer(id) end
+
+-- the first spawn of an NPC or object: map, x, y (0-1), zone name
+function api.questieSpot(kind, id)
+	local zone, x, y = mainSpawn(get(kind, id, "spawns"))
+	if not zone then return nil end
+	local map = api.questieUiMap(zone)
+	return map, x and x / 100, y and y / 100, zoneName(zone)
+end
+function api.questieGet(kind, id, field) return get(kind, id, field) end
+
 -- 3.0 "a quest close by" (Helpers.lua): the nearest quest Questie lists as available (its AvailableQuests module's
 -- __availableQuests) whose giver NPC stands within maxYards; skip: quest IDs already shown. Grey quests are left out.
 -- The givers' world positions are worked out once per quest and kept until Questie's data reloads.
@@ -804,7 +922,7 @@ function api.questieAvailableNear(me, maxYards, skip)
 				giverPlaces[id] = places
 			end
 			local level = tonumber(get("Quest", id, "questLevel"))
-			if not (level and level > 0 and level < grey) then
+			if not (level and level > 0 and level < grey) and not api.questieBreadcrumbDone(id) then
 				for _, p in ipairs(places) do
 					if p.continent == me.continent then
 						local d = math.sqrt((p.wx - me.x) ^ 2 + (p.wy - me.y) ^ 2)

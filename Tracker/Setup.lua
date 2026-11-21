@@ -31,7 +31,7 @@ local function buildSteps()
 	local d = db()
 	local g = guide()
 	local out = {}
-	out[#out + 1] = { title = "Welcome to RXP ForeverTracker 3.0", text =
+	out[#out + 1] = { title = "Welcome to RXP ForeverTracker 3.1", text =
 		"This short setup shows every feature and lets you turn each one on or off. It takes about a minute.\n\n" ..
 		"Every choice applies at once. You can change all of it later: type |cffffd100/qt|r or click the minimap button.\n\n" ..
 		"Press |cffffd100Next|r to start, or |cffffd100Skip setup|r to keep everything as it is." }
@@ -92,6 +92,18 @@ local function buildSteps()
 		row("3D model on hover", "hover an objective: the NPC or object it names",
 			function() return d.npcPanelQuests ~= false end, function(v) d.npcPanelQuests = v end)
 	) }
+	out[#out + 1] = { title = "On screen", text = "Quest help on your screen.", rows = list(
+		row("Quest item bar", "one button per usable quest item; set a key in Key Bindings > AddOns",
+			function() return d.itemBar ~= false end, function(v) d.itemBar = v; call(api.refreshItemBar) end),
+		row("Big progress messages", "quest progress in large letters, like \"Wolves slain: 3/8\"",
+			function() return d.toasts ~= false end, function(v) d.toasts = v end),
+		row("Marker in the world", "your tracked quest's name, next step and distance over its spot",
+			function() return d.worldMarker ~= false end, function(v) d.worldMarker = v end),
+		row("Track the nearest quest by itself", "the marker moves on to the closest quest",
+			function() return d.markerAuto == true end, function(v) d.markerAuto = v end),
+		row("Say in party chat when a quest is done", "only in a party",
+			function() return d.partyDone == true end, function(v) d.partyDone = v end)
+	) }
 	out[#out + 1] = { title = "World", text = "Helpers out in the world.", rows = list(
 		row("Breath warning", "red screen edges when breath or fatigue runs low",
 			function() return d.breathWarn ~= false end, function(v) d.breathWarn = v end),
@@ -100,7 +112,7 @@ local function buildSteps()
 		row("Minimap button", "left-click opens the settings",
 			function() return not (d.minimap and d.minimap.hide) end, function(v) call(api.setMinimapShown, v) end)
 	) }
-	out[#out + 1] = { title = "Statistics", text = "Your run in numbers: Settings > Statistics.", rows = list(
+	out[#out + 1] = { title = "Statistics", text = "Your run in numbers: Settings > Statistics. Settings > Guides has the Legacy Challenges, library books and the sleeping bag chain.", rows = list(
 		row("Record statistics", "quests, experience, deaths and where your time goes, per level",
 			function() return d.statsOn ~= false end, function(v) d.statsOn = v end),
 		row("Level-up line in chat", "how long the last level took, and your time played",

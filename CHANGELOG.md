@@ -2,6 +2,18 @@
 
 All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 
+## 3.1
+New helpers on screen and a Guides section. The ideas come from the Questline addon; the code is our own.
+
+### Added
+- **Quest item bar:** one button for each usable quest item. The tracked quest's item comes first. Shift+drag moves it. Set a key in Key Bindings > AddOns > RXP ForeverTracker: "Use the first quest item".
+- **Big progress messages:** quest progress in large letters at the top of the screen, and "Ready to turn in" when a quest is done.
+- **World marker:** over your tracked quest's spot in the world: its name, next step, distance and a light beam. Hidden in combat (a switch). Optional: track the nearest quest by itself.
+- **Party chat (off by default):** say when a quest is done, or each quest step.
+- **Guides section:** Legacy Challenges (with what is still to do), Library books (done, in your bags or open; click for a waypoint) and the Cozy Sleeping Bag chain (click a step for a waypoint). Books and the chain need Questie.
+- **Breadcrumb quests:** the nearby quest card leaves out a quest that only sends you to another quest you already did or have.
+- The first-time setup has a new "On screen" step.
+
 ## 3.0
 A new settings window, statistics, helpers and a first-time setup.
 

@@ -1165,3 +1165,15 @@ Same priorities as 3.0.5 / 3.0.8 / 3.5.3: per-frame and per-update CPU first, th
 | R300-4 | First-time setup prompt that goes through all features with on/off for each | Tracker/Setup.lua: opens once per account for 3.0 (db.setupDone), /qt setup, Settings > Basics button |
 | R300-5 | Save as 3.0, pushed to dev | toc 3.0, CHANGELOG 3.0 |
 
+
+## 3.1 (Questline ideas)
+
+| ID | Requirement | Status / acceptance evidence |
+|---|---|---|
+| R310-1 | Go through the Questline addon, list its features, ask which to copy (user) | listed 16 features; user picked quest item bar, progress toasts, 3D world marker, Legacy Challenges, small extras. Questline is GPL-3.0 and this addon MIT: ideas only, own code, no Questline data (books and the sleeping bag chain are read live from Questie) |
+| R310-2 | Quest item bar with a key | Tracker/Questing.lua: secure item buttons, focused quest first, Shift+drag, changes wait for combat end; Bindings.xml "Use the first quest item". questline_test.lua |
+| R310-3 | Progress toasts | Tracker/Questing.lua: objective changes in large letters, "Ready to turn in". questline_test.lua |
+| R310-4 | 3D world marker | Tracker/WorldMarker.lua: label on C_Navigation.GetFrame (name, next step, yards, beam), hide in combat, optional nearest quest by itself (never in combat, keeps a quest you picked). questline_test.lua (auto pick) |
+| R310-5 | Legacy Challenges | Tracker/Guides.lua: achievements with flag 0x8000000 by category, criteria count, open criteria in the tooltip. questline_test.lua. Explorer map spots: not done (no game API gives unexplored area positions) |
+| R310-6 | Small extras: library books, sleeping bag guide, Forever-only quest mark, /p announcements, breadcrumb hiding | Guides.lua books + bedroll pages (Questie data, waypoints); Forever mark already in 2.0 (Extras.lua isForeverQuest); party chat switches in Questing.lua; Questie.lua questieBreadcrumbDone used by the nearby quest card. questline_test.lua |
+| Checks | full suite and globals audit pass; not run in the Forever client |
