@@ -4,7 +4,7 @@
 import os, re, subprocess, sys, zipfile
 
 repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-skip = re.compile(r'^(tests/|\.github/|REQUIREMENTS\.md$|CLAUDE\.md$|\.git|\.claude|\.pkgmeta$)')
+skip = re.compile(r'^(tests/|\.github/|REQUIREMENTS\.md$|CLAUDE\.md$|CURSEFORGE\.md$|\.git|\.claude|\.pkgmeta$)')
 files = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], cwd=repo,
                        capture_output=True, text=True, check=True).stdout.split('\n')
 files = [f for f in files if f and not skip.match(f) and os.path.isfile(os.path.join(repo, f))]
