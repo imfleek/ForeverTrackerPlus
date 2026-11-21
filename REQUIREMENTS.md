@@ -1178,3 +1178,9 @@ Same priorities as 3.0.5 / 3.0.8 / 3.5.3: per-frame and per-update CPU first, th
 | R310-6 | Small extras: library books, sleeping bag guide, Forever-only quest mark, /p announcements, breadcrumb hiding | Guides.lua books + bedroll pages (Questie data, waypoints); Forever mark already in 2.0 (Extras.lua isForeverQuest); party chat switches in Questing.lua; Questie.lua questieBreadcrumbDone used by the nearby quest card. questline_test.lua |
 | R310-7 | Every 3.1 feature in the settings window and the first-time setup (user) | Setup.lua: "On screen" and "Guides" steps, breadcrumb row in Helpers; Helpers.lua: breadcrumb switch db.breadcrumbHide (Questie.lua honours it). Hide-in-combat and party-step switches stay settings-only. questline_test.lua |
 | Checks | full suite and globals audit pass; not run in the Forever client |
+
+## 3.1.1
+
+| ID | Requirement | Status / acceptance evidence |
+|---|---|---|
+| R311-1 | Every feature has a /qt setting (user audit) | audit of every db key against the settings declarations: all features covered except the check mark transparency (db.completeCheckAlpha, no slider) and the Wowhead URL menu line (always on), both left as they are. Bug found: the 3.1 party chat steps switch shared db.partyProgress with the tooltip's party progress; now db.partyChatSteps. questline_test.lua |

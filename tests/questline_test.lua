@@ -109,11 +109,17 @@ log[1].boards[1] = { "Wolves slain: 8/8", "monster", true }
 log[1].complete = true
 fire("QUEST_LOG_UPDATE"); flush()
 check("party line when a quest is done", sent[1] and sent[1][1] == "[RXPFT] Wolf Hunt is ready to turn in" and sent[1][2] == "PARTY")
+-- the tooltip's party progress (db.partyProgress) is its own switch: on, it must not turn the chat lines on
 ns.db.partyProgress = true
 log[2].boards[1][1] = "Bears slain: 1/5"
 clock = clock + 5
 fire("QUEST_LOG_UPDATE"); flush()
-check("party line for a step when on", sent[2] and sent[2][1] == "[RXPFT] Bear Trouble: Bears slain: 1/5")
+check("tooltip party switch leaves chat steps off", #sent == 1)
+ns.db.partyChatSteps = true
+log[2].boards[1][1] = "Bears slain: 2/5"
+clock = clock + 5
+fire("QUEST_LOG_UPDATE"); flush()
+check("party line for a step when on", sent[2] and sent[2][1] == "[RXPFT] Bear Trouble: Bears slain: 2/5")
 
 -- the nearest quest by itself
 api.markerAutoPick()

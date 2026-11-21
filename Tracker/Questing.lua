@@ -6,7 +6,8 @@
 --   db.toasts         (on)  quest progress in large letters in the upper middle of the screen ("Wolves slain: 3/8"),
 --                           and "Ready to turn in" when a quest is done
 --   db.partyDone      (off) in a party: "[RXPFT] <quest> is ready to turn in" in party chat
---   db.partyProgress  (off) in a party: each objective step in party chat
+--   db.partyChatSteps (off) in a party: each objective step in party chat (not db.partyProgress: that is the
+--                           party progress in the quest tooltip, Party.lua)
 -- CONSTRAINT: the item buttons are secure (SecureActionButtonTemplate, attribute type "item"); a secure button cannot be
 -- made, moved, shown, hidden or changed in combat, so every bar change waits for PLAYER_REGEN_ENABLED. Objective texts
 -- are checked with issecretvalue before use.
@@ -269,7 +270,7 @@ local function scanProgress()
 			for j, o in ipairs(objs) do
 				if old[j] and old[j] ~= o.text and o.text:find("%d") then
 					if opt("toasts") and not complete then showToast(o.text, q.title, o.finished) end
-					if optOn("partyProgress") then party(q.title .. ": " .. o.text) end
+					if optOn("partyChatSteps") then party(q.title .. ": " .. o.text) end
 				end
 			end
 			if complete and not old.done then
@@ -337,8 +338,8 @@ function api.declareScreenPage(k)
 	k.check("Say in party chat when a quest is done", function() return db.partyDone == true end,
 		function(v) db.partyDone = v and true or false end)
 	k.help("\"[RXPFT] <quest> is ready to turn in\", only in a party (not a raid)")
-	k.check("Say each quest step in party chat", function() return db.partyProgress == true end,
-		function(v) db.partyProgress = v and true or false end)
+	k.check("Say each quest step in party chat", function() return db.partyChatSteps == true end,
+		function(v) db.partyChatSteps = v and true or false end)
 	k.help("every objective step, like \"Wolves slain: 3/8\"; this can be a lot of chat")
 	k.pageByKey.onscreen.reset = k.reset
 end

@@ -2,6 +2,11 @@
 
 All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 
+## 3.1.1
+
+### Fixed
+- **Party switches:** "Say each quest step in party chat" (Helpers > On screen) and "Show party progress" (Quest lines) no longer change each other. They used one saved setting.
+
 ## 3.1
 New helpers on screen and a Guides section. The ideas come from the Questline addon; the code is our own.
 
