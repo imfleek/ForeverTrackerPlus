@@ -5,6 +5,10 @@
 --                           bar (db.itemBarPos). Key Bindings > AddOns > RXP ForeverTracker: "Use the first quest item"
 --   db.toasts         (on)  quest progress in large letters in the upper middle of the screen ("Wolves slain: 3/8"),
 --                           and "Ready to turn in" when a quest is done
+--   db.toastsHideGame (on)  while the big messages are on: the game's small yellow quest progress line at the top
+--                           ("Verdant Leaves: 11/12") is left out. UIErrorsFrame stops listening to UI_INFO_MESSAGE;
+--                           our frame listens instead and hands every other info message to UIErrorsFrame's own
+--                           OnEvent, so they show as before. Turning the option off gives the event back.
 --   db.partyDone      (off) in a party: "[RXPFT] <quest> is ready to turn in" in party chat
 --   db.partyChatSteps (off) in a party: each objective step in party chat (not db.partyProgress: that is the
 --                           party progress in the quest tooltip, Party.lua)
@@ -268,7 +272,7 @@ local function scanProgress()
 		local old = not first and seen[q.id]
 		if old then
 			for j, o in ipairs(objs) do
-				if old[j] and old[j] ~= o.text and o.text:find("%d") then
+				if old[j] and old[j] ~= o.text and (o.text:find("%d") or o.finished) then
 					if opt("toasts") and not complete then showToast(o.text, q.title, o.finished) end
 					if optOn("partyChatSteps") then party(q.title .. ": " .. o.text) end
 				end
@@ -283,10 +287,66 @@ local function scanProgress()
 end
 
 ---------------------------------------------------------------------------------------------------------------------
+-- The game's small yellow progress line
+---------------------------------------------------------------------------------------------------------------------
+-- a game format string ("%s slain: %d/%d") as a Lua pattern
+local function formatPattern(fmt)
+	if type(fmt) ~= "string" or fmt == "" then return nil end
+	local pat = fmt:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0")
+	pat = pat:gsub("%%%%%d?%$?s", ".+"):gsub("%%%%%d?%$?d", "%%d+")
+	return "^" .. pat .. "$"
+end
+local progressPatterns
+local function isQuestProgress(msg)
+	if type(msg) ~= "string" or isSecret(msg) then return false end
+	if not progressPatterns then
+		progressPatterns = { "^.+: %d+/%d+$" }
+		for _, name in ipairs({ "ERR_QUEST_ADD_KILL_SII", "ERR_QUEST_ADD_ITEM_SII", "ERR_QUEST_ADD_FOUND_SII",
+			"ERR_QUEST_ADD_PLAYER_KILL_SII", "ERR_QUEST_OBJECTIVE_COMPLETE_S", "ERR_QUEST_UNKNOWN_COMPLETE" }) do
+			local pat = formatPattern(rawget(_G, name))
+			if pat then progressPatterns[#progressPatterns + 1] = pat end
+		end
+	end
+	for _, pat in ipairs(progressPatterns) do if msg:find(pat) then return true end end
+	return false
+end
+api.isQuestProgressMessage = isQuestProgress
+
+local relay, takenOver = nil, false
+local function onInfo(_, event, ...)
+	local messageType, message = ...
+	if type(messageType) == "string" and message == nil then message = messageType end -- older payload: the text only
+	if opt("toasts") and opt("toastsHideGame") and isQuestProgress(message) then return end
+	local handler = UIErrorsFrame and UIErrorsFrame.GetScript and UIErrorsFrame:GetScript("OnEvent")
+	if handler then
+		local ok, err = pcall(handler, UIErrorsFrame, event, ...)
+		if not ok then geterrorhandler()(err) end
+	end
+end
+local function applyHideGame()
+	local want = opt("toasts") and opt("toastsHideGame")
+	if not (UIErrorsFrame and UIErrorsFrame.UnregisterEvent) or want == takenOver then return end
+	if want then
+		if not (UIErrorsFrame.IsEventRegistered and UIErrorsFrame:IsEventRegistered("UI_INFO_MESSAGE")) then return end
+		relay = relay or CreateFrame("Frame")
+		if not pcall(relay.RegisterEvent, relay, "UI_INFO_MESSAGE") then return end
+		relay:SetScript("OnEvent", onInfo)
+		UIErrorsFrame:UnregisterEvent("UI_INFO_MESSAGE")
+		takenOver = true
+	else
+		relay:UnregisterEvent("UI_INFO_MESSAGE")
+		UIErrorsFrame:RegisterEvent("UI_INFO_MESSAGE")
+		takenOver = false
+	end
+end
+api.applyToastsHideGame = applyHideGame
+
+---------------------------------------------------------------------------------------------------------------------
 -- Start
 ---------------------------------------------------------------------------------------------------------------------
 ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
+	applyHideGame()
 	local scanQueued = false
 	onEvents({ "QUEST_LOG_UPDATE", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_DELAYED", "SUPER_TRACKING_CHANGED",
 		"BAG_UPDATE_COOLDOWN", "PLAYER_ENTERING_WORLD" }, function(event)
@@ -319,8 +379,12 @@ function api.declareScreenPage(k)
 	})
 	k.heading("Progress")
 	k.check("Big progress messages", function() return db.toasts ~= false end,
-		function(v) db.toasts = v and true or false end)
+		function(v) db.toasts = v and true or false; applyHideGame() end)
 	k.help("quest progress in large letters at the top of the screen, like \"Wolves slain: 3/8\"")
+	k.check("Hide the game's small yellow progress text", function() return db.toastsHideGame ~= false end,
+		function(v) db.toastsHideGame = v and true or false; applyHideGame() end,
+		function() return db.toasts ~= false end)
+	k.help("only the quest progress line; other yellow messages still show")
 	k.buttons("Show an example", {
 		{ "Show an example", function() showToast("Wolves slain: 3/8", "An example quest") end, 160 },
 	})

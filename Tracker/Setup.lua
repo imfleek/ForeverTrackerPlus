@@ -98,7 +98,7 @@ local function buildSteps()
 		row("Quest item bar", "one button per usable quest item; set a key in Key Bindings > AddOns",
 			function() return d.itemBar ~= false end, function(v) d.itemBar = v; call(api.refreshItemBar) end),
 		row("Big progress messages", "quest progress in large letters, like \"Wolves slain: 3/8\"",
-			function() return d.toasts ~= false end, function(v) d.toasts = v end),
+			function() return d.toasts ~= false end, function(v) d.toasts = v; call(api.applyToastsHideGame) end),
 		row("Marker in the world", "your tracked quest's name, next step and distance over its spot",
 			function() return d.worldMarker ~= false end, function(v) d.worldMarker = v end),
 		row("Track the nearest quest by itself", "the marker moves on to the closest quest",

@@ -1184,3 +1184,4 @@ Same priorities as 3.0.5 / 3.0.8 / 3.5.3: per-frame and per-update CPU first, th
 | ID | Requirement | Status / acceptance evidence |
 |---|---|---|
 | R311-1 | Every feature has a /qt setting (user audit) | audit of every db key against the settings declarations: all features covered except the check mark transparency (db.completeCheckAlpha, no slider) and the Wowhead URL menu line (always on), both left as they are. Bug found: the 3.1 party chat steps switch shared db.partyProgress with the tooltip's party progress; now db.partyChatSteps. questline_test.lua |
+| R311-2 | Hide Blizzard's yellow progress text while our big text shows (user screenshot: "Verdant Leaves: 11/12" twice) | Questing.lua: UIErrorsFrame's UI_INFO_MESSAGE taken over, quest progress lines (ERR_QUEST_ADD_* patterns and "name: n/m") dropped, every other message passed to UIErrorsFrame's own OnEvent; db.toastsHideGame (on). questline_test.lua; not checked in game |

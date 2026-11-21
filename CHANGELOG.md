@@ -4,6 +4,10 @@ All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 
 ## 3.1.1
 
+### Changed
+- **Big progress messages:** the game's small yellow quest progress line at the top of the screen is now hidden while they are on, so the progress shows once. Other yellow messages still show. Switch: Helpers > On screen > "Hide the game's small yellow progress text".
+- **Big progress messages** also show an objective that finishes without a number.
+
 ### Fixed
 - **Party switches:** "Say each quest step in party chat" (Helpers > On screen) and "Show party progress" (Quest lines) no longer change each other. They used one saved setting.
 

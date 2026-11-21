@@ -35,6 +35,11 @@ local log = {
 	{ id = 102, title = "Bear Trouble", boards = { { "Bears slain: 0/5", "monster", false } }, complete = false, dist = 100 },
 }
 local ns = { api = {}, onLogin = {}, db = {} }
+local uiErrors = { registered = true, got = {} }
+uiErrors.UnregisterEvent = function(self) self.registered = false end
+uiErrors.RegisterEvent = function(self) self.registered = true end
+uiErrors.IsEventRegistered = function(self) return self.registered end
+uiErrors.GetScript = function() return function(_, _, _, msg) uiErrors.got[#uiErrors.got + 1] = msg end end
 local env = setmetatable({
 	CreateFrame = function(_, name) local o = obj(); if name then named[name] = o end return o end,
 	GetTime = function() return clock end,
@@ -75,6 +80,7 @@ local env = setmetatable({
 	GetAchievementNumCriteria = function(id) return id == 11 and 2 or 0 end,
 	GetAchievementCriteriaInfo = function(_, k) if k == 1 then return "Entrance", 0, true else return "Boss room", 0, false end end,
 	hooksecurefunc = function() end,
+	UIErrorsFrame = uiErrors,
 }, { __index = _G })
 env._G = env
 local root = { tracker = ns }
@@ -120,6 +126,19 @@ log[2].boards[1][1] = "Bears slain: 2/5"
 clock = clock + 5
 fire("QUEST_LOG_UPDATE"); flush()
 check("party line for a step when on", sent[2] and sent[2][1] == "[RXPFT] Bear Trouble: Bears slain: 2/5")
+
+-- the game's yellow progress line
+check("progress line recognised", api.isQuestProgressMessage("Verdant Leaves: 11/12"))
+check("kill line recognised", api.isQuestProgressMessage("Wolf slain: 3/8"))
+check("other info message kept", not api.isQuestProgressMessage("You are too far away."))
+check("game's info event taken over", uiErrors.registered == false)
+uiErrors.got = {}
+fire("UI_INFO_MESSAGE", 0, "Verdant Leaves: 11/12")
+fire("UI_INFO_MESSAGE", 0, "You are too far away.")
+check("only the other message reaches the game's frame", #uiErrors.got == 1 and uiErrors.got[1] == "You are too far away.")
+ns.db.toastsHideGame = false
+api.applyToastsHideGame()
+check("switch off: the event goes back to the game", uiErrors.registered == true)
 
 -- the nearest quest by itself
 api.markerAutoPick()
