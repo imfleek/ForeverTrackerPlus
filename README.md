@@ -53,6 +53,7 @@ See the [changelog](CHANGELOG.md) for everything.
 - 📍 World marker, and an option to track the nearest quest by itself.
 - 📣 Big progress messages, and optional party chat lines.
 - 🔎 A card when a quest you can take is close by (Questie). Breadcrumb quests you do not need are left out.
+- 🤝 **Talking to NPCs** (off until you turn it on): accept quests, turn in finished ones, skip a one-option chat. Hold Shift to pause it.
 - 🫧 Breath warning, and ✈️ flight times learned for every route.
 
 ### Guides

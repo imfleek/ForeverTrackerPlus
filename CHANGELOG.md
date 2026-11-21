@@ -4,6 +4,9 @@ All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 
 ## 3.1.1
 
+### Added
+- **Talking to NPCs** (Settings > Helpers > NPCs, and a new setup step): accept quests, turn in finished quests, and skip an NPC's chat when it has only one plain chat option. All off until you turn them on. A reward choice and a turn-in that costs money are left to you. Repeatable, daily and grey quests, and dungeons and raids, each have their own switch (off). Hold Shift while you talk to an NPC: nothing is automatic that time.
+
 ### Changed
 - **Big progress messages:** the game's small yellow quest progress line at the top of the screen is now hidden while they are on, so the progress shows once. Other yellow messages still show. Switch: Helpers > On screen > "Hide the game's small yellow progress text".
 - **Big progress messages** also show an objective that finishes without a number.

@@ -299,7 +299,7 @@ local SECTIONS = {
 	{ key = "questlist", group = "quests", title = "Quest list", sub = "Scroll, count, headers", icon = "Interface\\Icons\\INV_Misc_Note_01" },
 	{ key = "questlines", group = "quests", title = "Quest lines", sub = "Distance, rewards, icons", icon = "Interface\\Icons\\INV_Scroll_03" },
 	{ key = "tracking", group = "quests", title = "Tracking", sub = "What shows, and in which order", icon = "Interface\\Icons\\INV_Misc_Map_01" },
-	{ key = "helpers", group = "quests", title = "Helpers", sub = "Bags, items, marker, flights", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
+	{ key = "helpers", group = "quests", title = "Helpers", sub = "Bags, items, NPCs, flights", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
 	{ key = "guides", group = "quests", title = "Guides", sub = "Legacy, books, sleeping bag", icon = "Interface\\Icons\\INV_Misc_Book_07" },
 	{ key = "guidesteps", group = "guide", title = "Guide", sub = "RestedXP steps", icon = "Interface\\Icons\\INV_Misc_Book_09" },
 	{ key = "arrow", group = "guide", title = "Arrow", sub = "Waypoint arrow", icon = "Interface\\Icons\\Ability_Hunter_Pathfinding" },
@@ -317,7 +317,7 @@ local PAGE_SECTION = {
 	questlist = "questlist", zoneheaders = "questlist",
 	titles = "questlines", tooltips = "questlines",
 	tracking = "tracking",
-	helpers = "helpers", onscreen = "helpers", world = "helpers",
+	helpers = "helpers", onscreen = "helpers", automation = "helpers", world = "helpers",
 	legacy = "guides", books = "guides", bedroll = "guides",
 	guidetracker = "guidesteps", guide = "guidesteps", orphans = "guidesteps",
 	arrow = "arrow",
@@ -2510,6 +2510,7 @@ local function declareItems(db)
 		declared = declared, reset = resetQuests, refresh = function() api.refreshConfig(); scheduleLayout() end }
 	if api.declareHelperPages then api.declareHelperPages(declareKit) end
 	if api.declareScreenPage then api.declareScreenPage(declareKit) end
+	if api.declareAutoQuestPage then api.declareAutoQuestPage(declareKit) end
 	if api.declareGuidePages then api.declareGuidePages(declareKit) end
 	if api.declareStatsPages then api.declareStatsPages(declareKit) end
 

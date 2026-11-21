@@ -61,6 +61,7 @@ Tracker/MoreQuests.lua
 Tracker/Stats.lua
 Tracker/Helpers.lua
 Tracker/Questing.lua
+Tracker/AutoQuest.lua
 Tracker/WorldMarker.lua
 Tracker/Guides.lua
 Tracker/Config.lua

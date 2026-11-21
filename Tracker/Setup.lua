@@ -106,6 +106,14 @@ local function buildSteps()
 		row("Say in party chat when a quest is done", "only in a party",
 			function() return d.partyDone == true end, function(v) d.partyDone = v end)
 	) }
+	out[#out + 1] = { title = "Talking to NPCs", text = "Let the addon click through quest NPCs for you. All off unless you turn them on.\n\nHold |cffffd100Shift|r while you talk to an NPC: nothing is automatic that time. More choices: Settings > Helpers > NPCs.", rows = list(
+		row("Accept quests", "talk to an NPC: its quests are accepted for you",
+			function() return d.autoAccept == true end, function(v) d.autoAccept = v end),
+		row("Turn in finished quests", "when you can pick a reward, you still pick",
+			function() return d.autoTurnIn == true end, function(v) d.autoTurnIn = v end),
+		row("Skip the chat", "an NPC with only one chat option: it is picked for you",
+			function() return d.autoGossip == true end, function(v) d.autoGossip = v end)
+	) }
 	out[#out + 1] = { title = "World", text = "Helpers out in the world.", rows = list(
 		row("Breath warning", "red screen edges when breath or fatigue runs low",
 			function() return d.breathWarn ~= false end, function(v) d.breathWarn = v end),
