@@ -85,6 +85,8 @@ local function buildSteps()
 			function() return d.rewardHint ~= false end, function(v) d.rewardHint = v end),
 		row("Quest close by", "a card when a quest you can take is near (needs Questie)",
 			function() return d.nearbyCard ~= false end, function(v) d.nearbyCard = v end, questieLoaded() and true or false),
+		row("Leave out breadcrumb quests", "a quest that only sends you to a quest you already did or have",
+			function() return d.breadcrumbHide ~= false end, function(v) d.breadcrumbHide = v end, questieLoaded() and true or false),
 		row("Rares near your quests", "a rare in your zone shows on the zone header",
 			function() return d.rareAlert ~= false end, function(v) call(api.setRareAlert, v) end),
 		row("Ctrl+click a quest: find a group", "LFM in General chat or a Looking For Group listing",
@@ -112,7 +114,15 @@ local function buildSteps()
 		row("Minimap button", "left-click opens the settings",
 			function() return not (d.minimap and d.minimap.hide) end, function(v) call(api.setMinimapShown, v) end)
 	) }
-	out[#out + 1] = { title = "Statistics", text = "Your run in numbers: Settings > Statistics. Settings > Guides has the Legacy Challenges, library books and the sleeping bag chain.", rows = list(
+	out[#out + 1] = { title = "Guides", text = "Settings > Guides has three lists:\n\n" ..
+		"|cffffd100Legacy Challenges|r: WoW Forever's challenges and what is still to do.\n" ..
+		"|cffffd100Library books|r: every book for the library; click one for a waypoint.\n" ..
+		"|cffffd100Sleeping bag|r: the Cozy Sleeping Bag quest chain, from level 14.\n\n" ..
+		(questieLoaded() and "" or "The books and the sleeping bag chain need Questie.\n\n"), rows = list(
+		row("Show finished challenges", "off: Legacy Challenges lists only the ones still to do",
+			function() return d.legacyShowDone == true end, function(v) d.legacyShowDone = v end)
+	) }
+	out[#out + 1] = { title = "Statistics", text = "Your run in numbers: Settings > Statistics.", rows = list(
 		row("Record statistics", "quests, experience, deaths and where your time goes, per level",
 			function() return d.statsOn ~= false end, function(v) d.statsOn = v end),
 		row("Level-up line in chat", "how long the last level took, and your time played",

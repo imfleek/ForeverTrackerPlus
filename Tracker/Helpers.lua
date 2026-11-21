@@ -590,6 +590,10 @@ function api.declareHelperPages(k)
 		function(v) db.nearbyCard = v and true or false; if not v and card then card:Hide() end end,
 		function() return api.questieLoaded and api.questieLoaded() end)
 	k.help("needs Questie. A quest you can take within 70 yards: a card at the top of the screen; click it for a waypoint")
+	k.check("Leave out breadcrumb quests you do not need", function() return db.breadcrumbHide ~= false end,
+		function(v) db.breadcrumbHide = v and true or false end,
+		function() return api.questieLoaded and api.questieLoaded() end)
+	k.help("a breadcrumb only sends you to another quest; hidden once you did that quest or have it")
 	k.pageByKey.helpers.reset = k.reset
 
 	k.page("world", "quests", "World")

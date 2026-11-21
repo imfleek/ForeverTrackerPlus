@@ -11,8 +11,8 @@ New helpers on screen and a Guides section. The ideas come from the Questline ad
 - **World marker:** over your tracked quest's spot in the world: its name, next step, distance and a light beam. Hidden in combat (a switch). Optional: track the nearest quest by itself.
 - **Party chat (off by default):** say when a quest is done, or each quest step.
 - **Guides section:** Legacy Challenges (with what is still to do), Library books (done, in your bags or open; click for a waypoint) and the Cozy Sleeping Bag chain (click a step for a waypoint). Books and the chain need Questie.
-- **Breadcrumb quests:** the nearby quest card leaves out a quest that only sends you to another quest you already did or have.
-- The first-time setup has a new "On screen" step.
+- **Breadcrumb quests:** the nearby quest card leaves out a quest that only sends you to another quest you already did or have. A switch for it is in Settings > Helpers > Quest helpers.
+- The first-time setup has new "On screen" and "Guides" steps, and a breadcrumb switch.
 
 ## 3.0
 A new settings window, statistics, helpers and a first-time setup.

@@ -773,6 +773,7 @@ local function doneOrInLog(id)
 	return index ~= nil and index > 0
 end
 function api.questieBreadcrumbDone(id)
+	if ns.db and ns.db.breadcrumbHide == false then return false end
 	local target = get("Quest", id, "breadcrumbForQuestId")
 	if type(target) == "table" then target = target[1] end
 	return type(target) == "number" and target > 0 and doneOrInLog(target) or false

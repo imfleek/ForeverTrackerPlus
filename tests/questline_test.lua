@@ -165,6 +165,8 @@ if okQ then
 	check("breadcrumb: its quest done -> hidden", qns.api.questieBreadcrumbDone(500) == true)
 	check("breadcrumb: its quest open -> shown", qns.api.questieBreadcrumbDone(501) == false)
 	check("not a breadcrumb -> shown", qns.api.questieBreadcrumbDone(502) == false)
+	qns.db.breadcrumbHide = false
+	check("breadcrumb switch off -> shown", qns.api.questieBreadcrumbDone(500) == false)
 end
 
 print(pass and "ALL OK" or "SOME FAILED")
