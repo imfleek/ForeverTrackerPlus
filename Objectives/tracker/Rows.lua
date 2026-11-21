@@ -97,6 +97,21 @@ local function isMissingPrereqs(line)
 		and element.icon == icons.error
 end
 
+-- R106-111: the quests of a line's step (its own, then the step's other elements'), for the model panel's lookup of a
+-- vague pick-up name ("Chest") among the objects those quests use
+local function questsOf(line)
+	local element = line.rxpElement
+	local out, seen = {}, {}
+	local function add(e)
+		local id = type(e) == "table" and tonumber(e.questId)
+		if id and not seen[id] then seen[id] = true; out[#out + 1] = id end
+	end
+	add(element)
+	local step = type(element) == "table" and element.step
+	for _, e in ipairs(type(step) == "table" and type(step.elements) == "table" and step.elements or {}) do add(e) end
+	return out
+end
+
 -- "Step skipped: XP requirements are not met" and the like: RestedXP's note on the step itself
 local function stepNoteOf(line)
 	local element = line.rxpElement
@@ -313,15 +328,51 @@ local function plain(text)
 	return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cRXP_[%u_]-_", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("^%s+", ""):gsub("%s+$", ""))
 end
 -- a name as written, then singular forms of a plural ("Potions" -> "Potion", "Berries" -> "Berry", "Boxes" -> "Box")
+-- R106-109 (a scan of the guides' pick-up names against the object and item names): also the name without a "::id"
+-- ending, "Sacks of Oats" -> "Sack of Oats" (the first word singular), and other letter cases ("mound of dirt" ->
+-- "Mound of Dirt", "Kim'Jael's Equipment" -> "Kim'jael's Equipment", "Rolf's Corpse" -> "Rolf's corpse")
+local SMALL_WORDS = { ["of"] = true, ["the"] = true, ["a"] = true, ["an"] = true, ["and"] = true, ["in"] = true,
+	["on"] = true, ["to"] = true }
+local function singular(word)
+	if word:find("ies$") then return (word:gsub("ies$", "y")) end
+	if word:find("[sxz]es$") or word:find("[cs]hes$") then return (word:gsub("es$", "")) end
+	if word:find("[^s]s$") then return (word:gsub("s$", "")) end
+	return word
+end
+local function titleCase(text)
+	local i = 0
+	return (text:lower():gsub("(%S+)", function(word)
+		i = i + 1
+		if i > 1 and SMALL_WORDS[word] then return word end
+		return (word:gsub("^%l", string.upper))
+	end))
+end
 function nameForms(name)
 	local forms = { name }
-	local function add(form) if form ~= name and form ~= "" then forms[#forms + 1] = form end end
+	local seen = { [name] = true }
+	local function add(form)
+		if form and form ~= "" and not seen[form] then
+			seen[form] = true
+			forms[#forms + 1] = form
+		end
+	end
 	-- a book's loose pages ("Green Hills of Stranglethorn - Pages"): its first page stands for them
 	local book = name:match("^(.-)%s*%-?%s*[Pp]ages$")
 	if book and book ~= "" then add(book .. " - Page 1") end
 	if name:find("ies$") then add((name:gsub("ies$", "y"))) end
 	if name:find("es$") then add((name:gsub("es$", ""))) end
 	if name:find("s$") then add((name:gsub("s$", ""))) end
+	local bases = { (name:gsub("%s*::%d+$", "")) }
+	-- "Sacks of Oats", "Bundles Of Wood": the first word singular
+	local first, rest = bases[1]:match("^(%S+)%s+([Oo][Ff]%s.+)$")
+	if first then bases[2] = singular(first) .. " " .. rest:gsub("^[Oo][Ff]", "of") end
+	for _, base in ipairs(bases) do
+		add(base)
+		local title = titleCase(base)
+		add(title)
+		add((title:gsub("'(%u)", function(c) return "'" .. c:lower() end))) -- "Kim'Jael's" -> "Kim'jael's"
+		add((base:sub(1, 1):upper() .. base:sub(2):lower()))             -- "Rolf's Corpse" -> "Rolf's corpse"
+	end
 	return forms
 end
 -- the texture a "|T...|t" tag shows: a file id or a path
@@ -444,6 +495,37 @@ function insideLink(text, at)
 	return not (second and second < at)
 end
 
+-- R106-99: the names RestedXP colours as friendly or enemy NPCs, or as objects to pick up (RXP_PICK_: "Loot the
+-- Taillasher Eggs on the ground"), become links ("rxpftnpc:<kind>:<name>"): hovering one shows its model panel
+-- (Tracker/NpcPanel.lua). Its colour code as shown (RestedXP's guideTextColors) or still as a tag.
+local NPC_TOKENS = { { "friendly", "RXP_FRIENDLY_" }, { "enemy", "RXP_ENEMY_" }, { "pick", "RXP_PICK_" } }
+local function npcLinks(out)
+	if not out:find("|c", 1, true) then return out end
+	local colors = ns.rxp and ns.rxp.guideTextColors
+	for _, pair in ipairs(NPC_TOKENS) do
+		local kind, token = pair[1], pair[2]
+		local codes = { token }
+		local hex = type(colors) == "table" and colors[token]
+		if type(hex) == "string" and hex:match("^%x+$") then codes[2] = hex end
+		for _, code in ipairs(codes) do
+			local pattern = "|c" .. code:gsub("%a", function(c) return "[" .. c:lower() .. c:upper() .. "]" end) .. "([^|]+)|r"
+			local from = 1
+			while true do
+				local at, to, name = out:find(pattern, from)
+				if not at then break end
+				local trimmed = name:match("^%s*(.-)%s*$")
+				if trimmed ~= "" and not trimmed:find(":", 1, true) and not insideLink(out, at) then
+					local link = ("|Hrxpftnpc:%s:%s|h%s|h"):format(kind, trimmed, out:sub(at, to))
+					out = out:sub(1, at - 1) .. link .. out:sub(to + 1)
+					to = at + #link - 1
+				end
+				from = to + 1
+			end
+		end
+	end
+	return out
+end
+
 local function linkText(text, element)
 	local out = castIcon(text, element)
 	if not out:find("|H", 1, true) then
@@ -514,7 +596,7 @@ local function linkText(text, element)
 			end
 		end
 	end
-	return out
+	return npcLinks(out)
 end
 
 decorate = function(text, element, line)
@@ -554,6 +636,17 @@ linkEnter = function(line, link, text, ...)
 		copyLinkEnter(line)
 		return
 	end
+	-- R106-99: an NPC's name: its model panel beside the tracker (and the line's own notes, if it has any)
+	if type(link) == "string" and link:find("^rxpftnpc:") then
+		local kind, name = link:match("^rxpftnpc:(%a+):(.+)$")
+		if GameTooltip:GetOwner() == line then GameTooltip:Hide() end
+		if urlOf(line) or nextOf(line) or noteOf(line) or stepNoteOf(line) then copyLinkEnter(line) end
+		local trackerApi = root.tracker and root.tracker.api
+		if name and trackerApi and trackerApi.showNpcPanel then
+			trackerApi.showNpcPanel(name, { kind = kind, owner = line, forms = nameForms(name), quests = questsOf(line) })
+		end
+		return
+	end
 	-- not handed to RestedXP's own row: its window is usually hidden, and a tooltip owned by a hidden frame does
 	-- not show
 	GameTooltip:SetOwner(line, "ANCHOR_CURSOR_RIGHT", 12, 0)
@@ -565,6 +658,8 @@ linkEnter = function(line, link, text, ...)
 end
 linkLeave = function(line)
 	if GameTooltip:GetOwner() == line then GameTooltip:Hide() end
+	local trackerApi = root.tracker and root.tracker.api
+	if trackerApi and trackerApi.hideNpcPanel then trackerApi.hideNpcPanel(line) end
 end
 -- click on a link: ours copy / start / open the journal (left button); the game's own as in chat (SetItemRef)
 linkClick = function(line, link, text, button)
@@ -579,6 +674,7 @@ linkClick = function(line, link, text, button)
 		copyLinkClick(line, button)
 		return
 	end
+	if type(link) == "string" and link:find("^rxpftnpc:") then return end -- an NPC's name: hover only
 	-- a quest name Shift+clicked: the game's own quest link in chat (GetQuestLink), as the quest log does
 	local questID = type(link) == "string" and tonumber(link:match("^quest:(%d+)"))
 	if questID and IsShiftKeyDown() then
@@ -647,10 +743,12 @@ local function placeSlots(row, line, uses, shift)
 	slots:SetSize(columns * (size + gap) - gap, slotsHeight)
 	slots:SetPoint("TOPRIGHT", line, "TOPLEFT", -snap(fontHeight * SLOT_MARGIN + (shift or 0), line), lift)
 	slots:Show()
+	-- R106-107: the line keeps its own height, so the step's next lines sit beside the buttons (user: "0/1 Gorishi Scent
+	-- Gland" was pushed below the whole grid); the row ends no higher than the grid's bottom (layoutRow), and a later
+	-- line with buttons of its own starts below this grid (addLine)
 	local need, height = slotsHeight - lift, line:GetHeight()
 	if need > height then
-		line:SetHeight(need)
-		row.height = row.height + need - height
+		row.slotsEnd = math.max(tonumber(row.slotsEnd) or 0, row.height + need - height)
 	end
 end
 
@@ -719,6 +817,10 @@ local function addLine(row, key, objective, entry)
 			spacing = -fontHeight * FIRST_RISE
 		end
 		row.rise = -spacing
+	end
+	-- R106-107: a line with buttons of its own starts below an earlier line's buttons
+	if active and objective.uses and objective.uses[1] and tonumber(row.slotsEnd) and row.slotsEnd > row.height then
+		spacing = spacing + (row.slotsEnd - row.height)
 	end
 	module.lineSpacing = spacing
 	local dashStyle, color
@@ -1078,7 +1180,10 @@ local function layoutRow(row, entry, lane, dividerGap)
 	row.rxpUpcomingStep = not entry.active and tonumber(entry.number) or nil
 	placeInfo(row, entry)
 	placeDone(row, entry)
+	row.slotsEnd = nil
 	for key, objective in ipairs(entry.lines) do addLine(row, key, objective, entry) end
+	-- R106-107: the row reaches down to its lowest button
+	if tonumber(row.slotsEnd) and row.slotsEnd > row.height then row.height = row.slotsEnd end
 	setNumber(row, entry)
 end
 

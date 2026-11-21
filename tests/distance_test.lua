@@ -67,7 +67,7 @@ check("no map position: no guess", api.playerWorldPos() == nil)
 
 -- Extras: the text and the arrow
 local src = io.open(dir .. "/Tracker/Extras.lua"):read("a")
-local body = src:match("(local DIST_GAP, DIST_ARROW_GAP = 6, 3\n.-\napi%.refreshQuestDistances = refreshDistances\n)")
+local body = src:match("(local DIST_GAP, DIST_ARROW_GAP = 2, 3\n.-\napi%.refreshQuestDistances = refreshDistances\n)")
 check("distance code found in Extras.lua", body ~= nil)
 local function region()
 	local r = { shown = false, points = {} }
@@ -105,7 +105,7 @@ local chunk = load(body .. "\nreturn attachDistance, refreshDistances, distanceT
 local attach, refresh, text, reserve = chunk()
 check("yards as \"120 yds\"", text(120.4) == "120 yds" and text(1530) == "1.5k yds")
 -- R106-60: the yards above the arrow: the room is the wider of the two and the gap
-check("room kept: the widest yards (wider than the arrow) and the gap", reserve("font", 12, "") == 40 + 6)
+check("room kept: the widest yards (wider than the arrow) and the gap", reserve("font", 12, "") == 40 + 2)
 
 local fs = region()
 function fs:GetParent() return parent end
@@ -117,7 +117,7 @@ attach(fs, 77)
 local w = fs.qtsDistance
 check("the gold arrow texture", w.arrow.texture:find("Textures\\DirArrow", 1, true) ~= nil)
 check("the yards at the title's right edge, the arrow under them", w.text.points[1][1] == "TOPRIGHT"
-	and w.text.points[1][4] == fs.qtsReserve - 6 and w.arrow.points[1][1] == "TOP" and w.arrow.points[1][2] == w.text
+	and w.text.points[1][4] == fs.qtsReserve - 2 and w.arrow.points[1][1] == "TOP" and w.arrow.points[1][2] == w.text
 	and w.arrow.points[1][3] == "BOTTOM" and w.arrow.points[1][5] == -1)
 refresh(true)
 check("shows \"120 yds\"", w.text.shown and w.text.text == "120 yds")
@@ -239,13 +239,13 @@ fs4.qtsReserve = reserve("font", 12, "")
 attach(fs4, 77)
 check("100 %: the arrow is the title's font size, fully opaque", fs4.qtsDistance.arrow.w == 12 and fs4.qtsDistance.arrow.alpha == 1)
 db.distArrowScale, db.distArrowAlpha = 1.5, 0.4
-check("150 %: the title's room does not change", reserve("font", 12, "") == 40 + 6)
+check("150 %: the title's room does not change", reserve("font", 12, "") == 40 + 2)
 fs4.qtsReserve = reserve("font", 12, "")
 attach(fs4, 77)
 check("150 %, 40 % opacity: the arrow drawn 18 px and see-through", fs4.qtsDistance.arrow.w == 18
 	and fs4.qtsDistance.arrow.h == 18 and math.abs(fs4.qtsDistance.arrow.alpha - 0.4) < 1e-9)
 check("150 %: the yards stay where they were; the arrow grows downwards under them",
-	fs4.qtsDistance.text.points[1][4] == fs4.qtsReserve - 6 and fs4.qtsDistance.arrow.points[1][1] == "TOP"
+	fs4.qtsDistance.text.points[1][4] == fs4.qtsReserve - 2 and fs4.qtsDistance.arrow.points[1][1] == "TOP"
 	and fs4.qtsDistance.arrow.points[1][2] == fs4.qtsDistance.text)
 db.distArrowScale, db.distArrowAlpha = 5, 0
 attach(fs4, 77)
@@ -263,14 +263,14 @@ function fs7:GetFont() return "font", 12, "" end
 function fs7:IsVisible() return true end
 where[79] = { 120, 0 }
 db.distanceText = false
-check("distance hidden: the room is the arrow and the gap", reserve("font", 12, "") == 12 + 6)
+check("distance hidden: the room is the arrow and the gap", reserve("font", 12, "") == 12 + 2)
 fs7.qtsReserve = reserve("font", 12, "")
 attach(fs7, 79)
 refresh(true)
 check("distance hidden: no yards, the arrow shown in their place", not fs7.qtsDistance.text.shown
 	and fs7.qtsDistance.arrow.shown and fs7.qtsDistance.arrow.points[1][1] == "TOPRIGHT")
 db.distanceText, db.distanceArrow = true, false
-check("arrow hidden: the room is the yards and the gap", reserve("font", 12, "") == 40 + 6)
+check("arrow hidden: the room is the yards and the gap", reserve("font", 12, "") == 40 + 2)
 fs7.qtsReserve = reserve("font", 12, "")
 attach(fs7, 79)
 refresh(true)

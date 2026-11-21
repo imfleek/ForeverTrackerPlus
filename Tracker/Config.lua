@@ -1798,6 +1798,20 @@ local function declareItems(db)
 		function(v) db.distArrowScale = v; applyDistance() end, distanceOn, 24)
 	percent("Arrow opacity", 10, 100, function() return db.distArrowAlpha or 1 end,
 		function(v) db.distArrowAlpha = v; applyDistance() end, distanceOn, 24)
+	-- R106-84: the dungeon card at the top (Dungeon.lua), with DungeonJournal's run tracker inside it
+	check("Dungeon card at the top", function() return db.dungeonCard ~= false end,
+		function(v) if api.setDungeonCard then api.setDungeonCard(v) end end, nil, nil,
+		"in a dungeon or raid: its name, the group's size and deaths, and DungeonJournal's tracker inside it")
+	-- R106-116: the card's "Dungeon" / "Raid" header and the line under it
+	check("Dungeon header and its line", function() return db.dungeonHeader ~= false end,
+		function(v) db.dungeonHeader = v and true or false; api.applyLayout() end,
+		function() return db.dungeonCard ~= false end, 16,
+		"the \"Dungeon\" or \"Raid\" header over the card, with its line and collapse button; off: hidden, the card stays where it is, always open")
+	-- R106-100: the card's instance line (InstanceCap.lua)
+	check("Instances this hour and saved lockout", function() return db.instanceCap ~= false end,
+		function(v) db.instanceCap = v and true or false; api.applyLayout() end,
+		function() return db.dungeonCard ~= false end, 16,
+		"on the dungeon card: instances entered this hour of the limit of 10, and this dungeon's lockout")
 	-- R106-74: the watched reputation at the top of the quest list (Reputation.lua), the game's bar hidden meanwhile
 	check("Tracked reputation at the top", function() return db.repTrack ~= false end,
 		function(v) if api.setRepTrack then api.setRepTrack(v) end end, nil, nil,
@@ -1901,6 +1915,27 @@ local function declareItems(db)
 		return { { "closest", "Closest quest first" }, { "alpha", "Alphabetical (A to Z)" } }
 	end, function() return db.zoneOrder or "closest" end,
 		function(v) if api.setZoneOrder then api.setZoneOrder(v) end end, function() return db.zoneSort end)
+	-- R106-86: only the player's zone open; the other zones folded in More quests (click a zone to open it)
+	check("Expand current zone only", function() return db.expandCurrentZone end,
+		function(v)
+			db.expandCurrentZone = v and true or false
+			if api.sortNow then api.sortNow() end
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+		end,
+		function() return db.trackMode == "all" and db.zoneSort and not db.zoneFilter end, nil,
+		"other zones are folded under their header; click a zone to open it")
+	-- R106-95: Ctrl+left-click a quest: General message + Looking For Group listing (GroupFinder.lua)
+	check("Ctrl+click a quest: find a group", function() return db.questGroupFinder ~= false end,
+		function(v) db.questGroupFinder = v and true or false end, nil, nil,
+		"asks: LFM in General chat, a Looking For Group listing, or both; whisper 'inv' to join")
+	-- R106-99: hover an objective naming an NPC or an object: its 3D model beside the tracker (NpcPanel.lua)
+	check("Hover an objective: show its 3D model", function() return db.npcPanelQuests ~= false end,
+		function(v) db.npcPanelQuests = v and true or false; if not v and api.hideNpcPanel then api.hideNpcPanel() end end,
+		nil, nil, "an NPC or object the objective names, as in the guide steps")
+	-- R106-101: a rare spotted in your zone, on its zone header (Rares.lua)
+	check("Rares near your quests", function() return db.rareAlert ~= false end,
+		function(v) if api.setRareAlert then api.setRareAlert(v) end end, nil, nil,
+		"a rare in your zone shows on the zone's header with its distance; hover: its 3D model; click: waypoint")
 	check("List quests past the tracking limit", function() return db.moreQuests ~= false end,
 		function(v) db.moreQuests = v; if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
 		function() return db.trackMode == "all" end)
@@ -1932,6 +1967,10 @@ local function declareItems(db)
 		check("NPC automation while RestedXP is hidden", function() return g.get("hiddenAutomation") end,
 			function(v) g.setFlag("hiddenAutomation", v) end, function() return g.get("enabled") end, 24,
 			"quests, gossip, flights, hearthstone, buying and training, with its window hidden")
+		-- R106-87: the target buttons ping what they target (Objectives/Core.lua ns.pingLine)
+		check("Ping what you target", function() return g.get("targetPing") ~= false end,
+			function(v) g.setFlag("targetPing", v) end, function() return g.get("enabled") end, 24,
+			"the step's target buttons /ping the unit they target, for your group")
 		check("Own window", function() return db.guideDetached end,
 			function(v) if api.setGuideDetached then api.setGuideDetached(v) end end,
 			function() return g.get("enabled") end, 24, "out of the quest tracker; drag its bar to move it")

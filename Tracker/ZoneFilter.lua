@@ -62,6 +62,21 @@ local function inZone(questID, names, onMap)
 	return names[title:lower()] == true
 end
 
+-- R106-86: whether a quest belongs to the zone the player is in ("Expand current zone only", ZoneSort.lua and
+-- MoreQuests.lua); the zone read at most once a second
+local zoneAt, zoneNames, zoneOnMap
+function api.inCurrentZone(questID)
+	if not zoneAt or GetTime() - zoneAt > 1 then zoneNames, zoneOnMap = currentZone(); zoneAt = GetTime() end
+	if not next(zoneNames) then return true end
+	return inZone(questID, zoneNames, zoneOnMap)
+end
+-- a quest log heading is the player's zone
+function api.isCurrentZoneName(name)
+	if type(name) ~= "string" then return false end
+	if not zoneAt or GetTime() - zoneAt > 1 then zoneNames, zoneOnMap = currentZone(); zoneAt = GetTime() end
+	return zoneNames[name:lower()] == true
+end
+
 local function maxWatches()
 	return (Constants and Constants.QuestWatchConsts and Constants.QuestWatchConsts.MAX_QUEST_WATCHES) or 25
 end

@@ -1,6 +1,6 @@
 -- 3.5.70: the quest tooltip's gold includes the vendor value of the most valuable item reward
 local src = io.open(arg[1] .. "/Tracker/Extras.lua"):read("a")
-local block = src:match("(local function itemLine%(name, texture, count, quality, value%).-\nlocal function addRewards%(id%).-\nend)\n")
+local block = src:match("(local function qualityHex%(quality%).-\nlocal function addRewards%(id%).-\nend)\n")
 assert(block, "reward code not found")
 local lines = {}
 local fonts = {}
@@ -12,7 +12,7 @@ setmetatable(_G, { __index = function(_, k)
 	if n then return { SetFontObject = function(_, f) fonts[n] = f end } end
 end })
 local values = { [1] = 300, [2] = 4500, [3] = 1200 } -- copper per item id
-local env = setmetatable({
+local env = setmetatable({ api = {}, isSecret = function() return false end,
 	GameTooltip = tip, db = {}, REWARDS = "Rewards",
 	vendorValue = function(id, _, count) return (values[id] or 0) * (count or 1) end,
 	tipGold = function(c) return tostring(c) .. "c" end,

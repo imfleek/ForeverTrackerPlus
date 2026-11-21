@@ -407,6 +407,31 @@ check("a book's \"Pages\" shows its first page", pages:find("|Hitem:2725|h", 1, 
 local pages2 = decorate("|T134332:0|t[Green Hills of Stranglethorn Pages]", { step = { elements = {} } }, {})
 check("also written without the dash", pages2:find("|Hitem:2725|h", 1, true) ~= nil)
 check("an item named in the plural links to the item", out:find("|Hitem:3928|h|T134833:0|t[Superior Healing Potions]|h", 1, true) ~= nil)
+-- R106-99: names RestedXP colours as NPCs or pick-ups become model-panel links; hover shows the panel
+do
+	ns.rxp.guideTextColors = { RXP_ENEMY_ = "FFFF5722", RXP_FRIENDLY_ = "FF00FF25", RXP_PICK_ = "FFDB2EEF" }
+	local npcOut = decorate("Kill |cffff5722Zalazane|r and talk to |cFF00FF25Vol'jin|r, loot the |cFFDB2EEFTaillasher Eggs|r", { step = { elements = {} } }, {})
+	print("     " .. npcOut)
+	check("an enemy's name: a model link", npcOut:find("|Hrxpftnpc:enemy:Zalazane|h|cffff5722Zalazane|r|h", 1, true) ~= nil)
+	check("a friendly NPC's name: a model link", npcOut:find("|Hrxpftnpc:friendly:Vol'jin|h", 1, true) ~= nil)
+	check("a pick-up: a model link", npcOut:find("|Hrxpftnpc:pick:Taillasher Eggs|h", 1, true) ~= nil)
+	local tagged = decorate("Kill |cRXP_ENEMY_Kobold Vermin|r", { step = { elements = {} } }, {})
+	check("still as a tag: linked too", tagged:find("|Hrxpftnpc:enemy:Kobold Vermin|h", 1, true) ~= nil)
+	local other = decorate("|cffe6cc80Not an NPC|r", { step = { elements = {} } }, {})
+	check("another colour: no link", not other:find("rxpftnpc", 1, true))
+	local panelCalls = {}
+	root.tracker.api.showNpcPanel = function(name, opts) panelCalls[#panelCalls + 1] = { name = name, opts = opts } end
+	root.tracker.api.hideNpcPanel = function(owner) panelCalls.hidden = owner end
+	local hoverLine = {}
+	enter(hoverLine, "rxpftnpc:pick:Taillasher Eggs", "x")
+	local call = panelCalls[1]
+	check("hover: the panel for the name, its kind and the line", call and call.name == "Taillasher Eggs"
+		and call.opts.kind == "pick" and call.opts.owner == hoverLine)
+	check("with its singular to look up", call and call.opts.forms and call.opts.forms[2] == "Taillasher Egg")
+	upv(addLine, "linkLeave")(hoverLine)
+	check("leave: the panel hidden for the line", panelCalls.hidden == hoverLine)
+	ns.rxp.guideTextColors = nil
+end
 -- R105-5: a spell a line names without its step casting or training it ("cast |T135920:0|t[Holy Light] if needed")
 do
 	local keepGuide = ns.rxp.currentGuide

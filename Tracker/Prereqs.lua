@@ -5,7 +5,8 @@ local _, root = ...; local ns = root.tracker
 if not ns or root.disabledAll then return end
 local api = ns.api
 
-local WIDTH, HEIGHT, MIN_W, MIN_H, MAX_W, MAX_H = 620, 600, 460, 360, 1200, 1100
+-- R106-96: wider, for the list of quests on the left and the chosen quest's page on the right
+local WIDTH, HEIGHT, MIN_W, MIN_H, MAX_W, MAX_H = 860, 600, 640, 360, 1400, 1100
 local MAX_QUESTS = 250 -- accept steps checked per refresh
 local PAD, INDENT = 14, 18
 
@@ -22,6 +23,7 @@ local STEP_ICONS = {
 }
 
 local frame, scroll, content, subtitle, scrollbar, prevGuideButton, nextGuideButton, guideMenuButton, guideMenu
+local listScroll, listContent, listLabel, listBar -- R106-96: the list of quests on the left
 local pool, used = {}, 0
 
 local function rxp()
@@ -449,6 +451,8 @@ local STYLE = {
 	quest = { "GameFontNormalLarge", { 1, 0.82, 0 } },
 	info = { "GameFontHighlightSmall", nil },
 	prereq = { "GameFontNormal", { 0.941, 0.902, 0.824 } },
+	body = { "GameFontHighlight", { 0.941, 0.902, 0.824 } },
+	section = { "GameFontNormal", { 1, 0.82, 0 } },
 	step = { "GameFontHighlight", { 0.847, 0.812, 0.749 } },
 	note = { "GameFontHighlight", { 0.69, 0.663, 0.612 } },
 }
@@ -639,6 +643,128 @@ local function cachedCollect(fresh)
 	return cached.list, cached.reason, cached.guide, cached.progress
 end
 
+-- R106-96: the left list (user's reference, "Missing Prerequisites"): one row per quest you cannot pick up, with its
+-- name (coloured by its level against yours), the whole chain's experience, and "Level - Step - N missing". A click
+-- shows that quest's page on the right; the chosen row is gold.
+local selected -- the quest whose page is shown
+local listRows = {}
+local function listWidth()
+	local w = frame and frame:GetWidth() or WIDTH
+	return math.floor(math.min(math.max(w * 0.36, 220), 340))
+end
+local function difficultyColor(level)
+	if level and GetQuestDifficultyColor then
+		local ok, c = pcall(GetQuestDifficultyColor, level)
+		if ok and type(c) == "table" and c.r then return c.r, c.g, c.b end
+	end
+	return 1, 0.82, 0
+end
+-- experience: the whole chain, the quests before it, the quest itself
+local function entryXP(entry)
+	if not api.questRewardTotals then return 0, 0, 0 end
+	local pre = {}
+	for _, p in ipairs(entry.plan) do pre[#pre + 1] = p.quest end
+	local before = (api.questRewardTotals(pre)) or 0
+	local own = (api.questRewardTotals({ entry.quest })) or 0
+	return before + own, before, own
+end
+-- the quests before it that neither this guide nor a guide on the way does
+local function missingCount(entry)
+	local n = 0
+	for _, p in ipairs(entry.plan) do
+		if not entry.covered[p.quest] and not (entry.doneBy and entry.doneBy[p.quest]) then n = n + 1 end
+	end
+	return n
+end
+local function formatXP(xp)
+	if FormatLargeNumber then
+		local ok, s = pcall(FormatLargeNumber, xp)
+		if ok and type(s) == "string" then return s .. " XP" end
+	end
+	return tostring(xp) .. " XP"
+end
+local function questLevel(id) return api.prereqQuestLevel and api.prereqQuestLevel(id) or nil end
+
+local function drawList(list)
+	local k = kit()
+	local C = k.C
+	local width = math.max((listScroll:GetWidth() or listWidth()) - 2, 100)
+	listContent:SetWidth(width)
+	local rowH = math.floor(46 * textScale() + 0.5)
+	local iconSize = math.floor(16 * textScale() + 0.5)
+	local GAP = 6
+	local top = 0
+	for i, entry in ipairs(list or {}) do
+		local row = listRows[i]
+		if not row then
+			row = CreateFrame("Button", nil, listContent)
+			row.bg = k.solid(row, "BACKGROUND", C.ctrlBottom, 1)
+			row.bg:SetAllPoints()
+			row.sel = k.solid(row, "BORDER", { 1, 0.82, 0 }, 0.14)
+			row.sel:SetAllPoints()
+			row.edges = k.border(row, C.ctrlEdge) or {}
+			row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+			row.hl:SetAllPoints()
+			row.hl:SetColorTexture(1, 0.9, 0.6, 0.08)
+			row.icon = row:CreateTexture(nil, "ARTWORK")
+			row.icon:SetTexture(STEP_ICONS.accept)
+			row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			row.name:SetJustifyH("LEFT")
+			row.name:SetWordWrap(false)
+			row.xp = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			row.xp:SetJustifyH("RIGHT")
+			row.info = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			row.info:SetJustifyH("LEFT")
+			row.info:SetWordWrap(false)
+			row:SetScript("OnClick", function(self)
+				if not self.quest or self.quest == selected then return end
+				selected = self.quest
+				if scroll then scroll:SetVerticalScroll(0) end
+				render()
+			end)
+			listRows[i] = row
+		end
+		styleText(row.name, "GameFontNormal")
+		styleText(row.xp, "GameFontHighlight")
+		styleText(row.info, "GameFontHighlightSmall")
+		local isSel = entry.quest == selected
+		local level = questLevel(entry.quest)
+		local total = entryXP(entry)
+		local missing = missingCount(entry)
+		row.quest = entry.quest
+		row:ClearAllPoints()
+		row:SetPoint("TOPLEFT", listContent, "TOPLEFT", 0, -top)
+		row:SetSize(width, rowH)
+		row.icon:SetSize(iconSize, iconSize)
+		row.icon:ClearAllPoints()
+		row.icon:SetPoint("LEFT", row, "LEFT", 8, 0)
+		row.xp:ClearAllPoints()
+		row.xp:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -7)
+		row.xp:SetText(total > 0 and formatXP(total) or "")
+		row.name:ClearAllPoints()
+		row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 16 + iconSize, -7)
+		row.name:SetPoint("RIGHT", row.xp, "LEFT", -6, 0)
+		row.name:SetText(entry.name)
+		if isSel then row.name:SetTextColor(1, 0.82, 0) else row.name:SetTextColor(difficultyColor(level)) end
+		row.info:ClearAllPoints()
+		row.info:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 16 + iconSize, 7)
+		row.info:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+		row.info:SetText((level and ("Level " .. level .. "  -  ") or "") .. "Step " .. entry.step .. "  -  "
+			.. (missing > 0 and (missing .. " missing") or "done on the way"))
+		row.info:SetTextColor(0.847, 0.812, 0.749)
+		row.sel:SetShown(isSel)
+		for _, t in ipairs(row.edges) do
+			if isSel then t:SetColorTexture(1, 0.82, 0, 0.9) else t:SetColorTexture(C.ctrlEdge[1], C.ctrlEdge[2], C.ctrlEdge[3], 1) end
+		end
+		row:Show()
+		top = top + rowH + GAP
+	end
+	for i = #(list or {}) + 1, #listRows do listRows[i]:Hide() end
+	listContent:SetHeight(math.max(top - GAP, 1))
+	if listScroll.UpdateScrollChildRect then listScroll:UpdateScrollChildRect() end
+	if listBar then listBar:SetShown((listScroll:GetVerticalScrollRange() or 0) > 0.5) end
+end
+
 -- fresh: build the list again (otherwise the cached one for the same guide and step is drawn)
 function render(fresh)
 	if not frame then return end
@@ -659,8 +785,11 @@ function render(fresh)
 		guideMenuButton:SetEnabled(known.menu)
 	end
 	local later = viewGuide ~= nil and isLater(viewGuide)
+	if frame.listPanel then frame.listPanel:SetWidth(listWidth()) end
 	if not list then
 		subtitle:SetText("")
+		listLabel:SetText("")
+		drawList(nil)
 		addLine("note", reason, 0)
 	else
 		local addon = rxp()
@@ -668,10 +797,16 @@ function render(fresh)
 		later = not current and later
 		subtitle:SetText(guide .. (current and "  |cff9a9285(current guide)|r"
 			or later and "  |cff9a9285(later guide, higher level)|r" or "  |cff9a9285(previous guide)|r"))
-		if #list == 0 then
+		-- R106-96: the chosen quest (kept while it is in the list), else the first
+		local entry
+		for _, e in ipairs(list) do if e.quest == selected then entry = e end end
+		if not entry then entry = list[1]; selected = entry and entry.quest or nil end
+		listLabel:SetText(#list == 0 and "No quests you cannot pick up"
+			or #list == 1 and "1 quest you cannot pick up" or (#list .. " quests you cannot pick up"))
+		drawList(list)
+		if not entry then
 			addLine("note", "Every quest still ahead in this guide has its prerequisites done, or the guide does them first.", 0)
-		end
-		for qIndex, entry in ipairs(list) do
+		else
 			-- what skipping it costs: this quest and every prerequisite in its plan
 			local ids = { entry.quest }
 			for _, pre in ipairs(entry.plan) do ids[#ids + 1] = pre.quest end
@@ -681,32 +816,41 @@ function render(fresh)
 				local xp, money = api.questRewardTotals(ids)
 				rewards = api.formatRewardTotals(xp, money + vendorMoney, true) -- a space before each coin icon
 			end
-			local heading = addLine("quest", entry.name .. (rewards ~= "" and ("   " .. rewards) or ""), 0, nil, nil, nil,
-				qIndex > 1 and 16 or 0)
-			addItemIcons(heading, items, 0)
-			-- a later guide: the zone guide(s) on the way that hand in its prerequisites
-			local wants = ("Guide step %d wants this quest."):format(entry.step)
-			if entry.doneBy then
-				local names, seenName = {}, {}
-				for _, pre in ipairs(entry.plan) do
-					local by = entry.doneBy[pre.quest]
-					if by and not seenName[by.guide] then seenName[by.guide] = true; names[#names + 1] = by.guide end
-				end
-				if #names > 0 and entry.notOnTheWay == 0 then
-					wants = wants .. " Its prerequisites are done in |cffffd100" .. table.concat(names, "|r, |cffffd100") .. "|r on the way."
-				elseif #names > 0 then
-					wants = wants .. " Some prerequisites are done in |cffffd100" .. table.concat(names, "|r, |cffffd100")
-						.. "|r on the way; the rest no guide before it does. Do those first:"
-				else
-					wants = wants .. " No guide before it does its prerequisites. Do these first:"
-				end
-			else
-				wants = wants .. " Do these first:"
+			local level = questLevel(entry.quest)
+			local missing = missingCount(entry)
+			addLine("quest", entry.name, 0)
+			-- where the guide wants it, and what is missing before it
+			local text = ("The guide picks this quest up in step %d."):format(entry.step)
+				.. (level and (" It is a level %d quest."):format(level) or "")
+			local names, seenName = {}, {}
+			for _, pre in ipairs(entry.plan) do
+				local by = entry.doneBy and entry.doneBy[pre.quest]
+				if by and not seenName[by.guide] then seenName[by.guide] = true; names[#names + 1] = by.guide end
 			end
-			addLine("info", wants, INDENT)
+			if missing > 0 then
+				text = text .. (" %d %s before it %s not done, and %s does not do %s."):format(missing,
+					missing == 1 and "quest" or "quests", missing == 1 and "is" or "are",
+					entry.doneBy and "no guide before it" or "this guide", missing == 1 and "it" or "them")
+			end
+			if #names > 0 then
+				text = text .. " |cffffd100" .. table.concat(names, "|r, |cffffd100") .. "|r " .. (#names == 1 and "does" or "do")
+					.. (missing > 0 and " the others" or " the quests before it") .. " on the way."
+			elseif missing == 0 then
+				text = text .. " The guide does the quests before it first."
+			end
+			addLine("body", text, 0, nil, nil, nil, 8)
+			local total, before, own = entryXP(entry)
+			if total > 0 then
+				local n = #entry.plan
+				addLine("body", ("The whole chain is worth %s at your level: %s for the %s before it, %s for it."):format(
+					formatXP(total), formatXP(before), n == 1 and "quest" or (n .. " quests"), formatXP(own)), 0, nil, nil, nil, 8)
+			end
 			if rewards ~= "" or #items > 0 then
-				addLine("info", "Skipping it and these misses the experience, gold and items shown (gold includes the best-selling reward of each quest).", INDENT)
+				local line = addLine("info", "Rewards of the chain:" .. (rewards ~= "" and ("  " .. rewards) or ""), 0, nil, nil, nil, 8)
+				addItemIcons(line, items, 0)
+				addLine("info", "Skipping it misses these (gold includes the best-selling reward of each quest).", 0)
 			end
+			addLine("section", "Do these first, in this order", 0, nil, nil, nil, 14)
 			for pIndex, pre in ipairs(entry.plan) do
 				local tags = {}
 				if pre.inLog then tags[#tags + 1] = "in your quest log" end
@@ -717,17 +861,25 @@ function render(fresh)
 					tags[#tags + 1] = pre.alternatives == 1 and "or 1 other quest" or ("or one of " .. pre.alternatives .. " other quests")
 				end
 				local label = ("%d. %s"):format(pIndex, pre.name) .. (#tags > 0 and ("  |cff9a9285(" .. table.concat(tags, ", ") .. ")|r") or "")
-				addLine("prereq", label, INDENT * 2, nil, nil, nil, 8)
+				addLine("prereq", label, INDENT, nil, nil, nil, 8)
+				local pLevel = questLevel(pre.quest)
+				local pXP = api.questRewardTotals and (api.questRewardTotals({ pre.quest })) or 0
+				local facts = {}
+				if pLevel then facts[#facts + 1] = "Level " .. pLevel end
+				if pXP > 0 then facts[#facts + 1] = formatXP(pXP) end
+				if #facts > 0 then addLine("info", table.concat(facts, "  -  "), INDENT * 2) end
 				for _, step in ipairs(pre.steps) do
-					addLine("step", step.text, INDENT * 3, step.map, step.x, step.y, nil, STEP_ICONS[step.kind])
+					addLine("step", step.text, INDENT * 2, step.map, step.x, step.y, nil, STEP_ICONS[step.kind])
 				end
 			end
+			addLine("note", ("Then the guide's quest: %s (step %d)."):format(entry.name, entry.step), 0, nil, nil, nil, 14)
 		end
 	end
 	content:SetHeight(math.max(-y + 8, 1))
 	if subtitle.fitWidth then subtitle.fitWidth() end
 	-- a later guide (higher level) is slightly greyed out, still readable and clickable
 	content:SetAlpha(later and LATER_ALPHA or 1)
+	listContent:SetAlpha(later and LATER_ALPHA or 1)
 	-- no scrollbar when everything fits (the template re-checks its range a frame later)
 	if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
 	if scrollbar then
@@ -1084,8 +1236,38 @@ local function build()
 		subtitle:SetWidth(math.max(math.min(math.ceil(subtitle:GetStringWidth() or 0) + 2, room), 40))
 	end
 
+	-- R106-96: left, the quests you cannot pick up (a row each); right, the chosen quest's page
+	local listPanel = CreateFrame("Frame", nil, f)
+	listPanel:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -(32 + 36))
+	listPanel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", PAD, 50)
+	listPanel:SetWidth(listWidth())
+	f.listPanel = listPanel
+	listLabel = listPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	listLabel:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 2, -2)
+	listLabel:SetPoint("RIGHT", listPanel, "RIGHT", 0, 0)
+	listLabel:SetJustifyH("LEFT")
+	listLabel:SetTextColor(1, 0.82, 0)
+	staticTexts[#staticTexts + 1] = { listLabel, "GameFontNormal" }
+	local listNative
+	listScroll, listNative = k.create("ScrollFrame", "RXPForeverTrackerPrereqsList", listPanel, "UIPanelScrollFrameTemplate")
+	if listNative then
+		listBar = listScroll.ScrollBar or _G.RXPForeverTrackerPrereqsListScrollBar
+		listScroll.scrollBarHideable = true
+		if listBar then root.scrollSkin.native(listBar) end
+	end
+	listScroll:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 0, -24)
+	listScroll:SetPoint("BOTTOMRIGHT", listPanel, "BOTTOMRIGHT", -18, 0)
+	listScroll:EnableMouseWheel(true)
+	listScroll:SetScript("OnMouseWheel", function(self, delta)
+		local range = self:GetVerticalScrollRange()
+		self:SetVerticalScroll(math.min(math.max(self:GetVerticalScroll() - delta * 48, 0), range))
+	end)
+	listContent = CreateFrame("Frame", nil, listScroll)
+	listContent:SetSize(listWidth() - 20, 1)
+	listScroll:SetScrollChild(listContent)
+
 	local panel = CreateFrame("Frame", nil, f)
-	panel:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -(32 + 36))
+	panel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 8, 0)
 	panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD, 50)
 	local panelBg = k.solid(panel, "BACKGROUND", C.panel)
 	panelBg:SetAllPoints()
@@ -1175,6 +1357,7 @@ local function build()
 	local EVENTS = { "GET_ITEM_INFO_RECEIVED", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED" }
 	f:SetScript("OnShow", function()
 		viewGuide = nil
+		selected = nil
 		wipe(history)
 		for _, e in ipairs(EVENTS) do pcall(f.RegisterEvent, f, e) end
 		applyStaticFonts()

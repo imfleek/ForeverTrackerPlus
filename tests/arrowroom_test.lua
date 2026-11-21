@@ -51,6 +51,21 @@ check("both sides anchored: the right anchor moved in by the room (-2 - 46)", bo
 title.qtsReserve = nil
 prepareText(both, block)
 check("both sides anchored, no distance: Blizzard's right anchor back", both.points[2][4] == -2)
+-- R106-81: a progress bar at its right (room 72) and the distance beside it (46): the text stops before the wider
+both.qtsReserve = 72
+title.qtsReserve = 46
+prepareText(both, block)
+check("both sides anchored, a bar and the distance: the wider room (-2 - 72)", both.points[2][4] == -74)
+both.qtsReserve = nil
+title.qtsReserve = nil
+prepareText(both, block)
+check("both sides anchored, the bar gone: Blizzard's right anchor back", both.points[2][4] == -2)
+local single = text(486, 110)
+single.qtsReserve = 72
+title.qtsReserve = 46
+prepareText(single, block)
+check("one anchor, a bar and the distance: the wider room (290 - 4 - 72), not both added", single.width == 214)
+title.qtsReserve = nil
 -- R106-66: with a place, the arrow's real bottom decides (the user's Felwood quest: a line starting under it)
 local arrow = { GetBottom = function() return 470 end }
 title.qtsReserve, title.qtsDistance = 46, { arrow = arrow, text = arrow }

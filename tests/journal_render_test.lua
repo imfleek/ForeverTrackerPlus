@@ -212,9 +212,29 @@ do
 	local pool = up(up(render, "addLine"), "acquire") and up(up(up(render, "addLine"), "acquire"), "pool")
 	for _, line in ipairs(pool or {}) do
 		local t = line.text and rawget(line.text, "_text")
-		if t and t:find("wants this quest", 1, true) and line._shown ~= false then hint = hint or t end
+		if t and t:find("picks this quest up", 1, true) and line._shown ~= false then hint = hint or t end
 	end
 	print("     " .. tostring(hint))
-	check("later guide: the guide on the way that hands in the prerequisite is named", hint and hint:find("done in |cffffd10047%-48 Tanaris") ~= nil)
+	check("later guide: the guide on the way that hands in the prerequisite is named", hint and hint:find("|cffffd10047%-48 Tanaris|r does the quests before it on the way", 1) ~= nil)
+end
+-- R106-96: the list of quests on the left (a row each) and the chosen quest's page on the right
+do
+	local drawList = up(render, "drawList")
+	local rows = drawList and up(drawList, "listRows")
+	local shownRows = {}
+	for _, r in ipairs(rows or {}) do if r._shown then shownRows[#shownRows + 1] = r end end
+	check("one row per quest you cannot pick up", #shownRows == 1 and shownRows[1].quest ~= nil)
+	local r = shownRows[1]
+	check("the row: name, the chain's experience, step and missing", r and r.name._text == "Gahz'rilla"
+		and r.xp._text == "7000 XP" and r.info._text:find("Step 1", 1, true) ~= nil)
+	check("the first quest chosen, its name gold", r and r.name._color[1] == 1 and r.name._color[2] == 0.82)
+	local pool = up(up(render, "addLine"), "acquire") and up(up(up(render, "addLine"), "acquire"), "pool")
+	local title, section
+	for _, line in ipairs(pool or {}) do
+		local t = line.text and rawget(line.text, "_text")
+		if line._shown ~= false and t == "Gahz'rilla" then title = true end
+		if line._shown ~= false and t == "Do these first, in this order" then section = true end
+	end
+	check("the page: the chosen quest's title and \"Do these first, in this order\"", title and section)
 end
 print(pass and "PASS" or "FAILED")

@@ -1073,7 +1073,26 @@ end
 
 -- after Blizzard's own right-click (its menu for the quest): Ctrl held, the menu closes and the links go to chat
 local function onQuestMouseUp(block, button)
-	if button ~= "RightButton" or not (IsControlKeyDown and IsControlKeyDown()) then return end
+	if not (IsControlKeyDown and IsControlKeyDown()) then return end
+	-- R106-95: Ctrl+left-click: look for players (GroupFinder.lua), straight from the click; Blizzard's left-click
+	-- opened the quest on the map: closed again when it was closed before the click
+	if button == "LeftButton" and api.findGroupForQuest and api.questGroupFinderOn and api.questGroupFinderOn() then
+		local id = questIDOf(block)
+		if not id then return end
+		local pressed = api.lastQuestPressed
+		local mapWasOpen = pressed and pressed.mapOpen
+		pcall(api.findGroupForQuest, id)
+		if not mapWasOpen then
+			C_Timer.After(0, function()
+				local map = _G.WorldMapFrame
+				if map and map:IsShown() and not InCombatLockdown() then
+					if HideUIPanel then pcall(HideUIPanel, map) else map:Hide() end
+				end
+			end)
+		end
+		return
+	end
+	if button ~= "RightButton" then return end
 	local id = questIDOf(block)
 	if not id then return end
 	C_Timer.After(0, function()
@@ -1088,9 +1107,20 @@ end
 local function hookTooltipOn(frame, block)
 	if tipHooked[frame] or not frame.HookScript then return end
 	tipHooked[frame] = true
-	frame:HookScript("OnEnter", function() pcall(showTip, block) end)
-	frame:HookScript("OnLeave", function() if db.tooltips then GameTooltip:Hide() end end)
+	frame:HookScript("OnEnter", function()
+		pcall(showTip, block)
+		if api.npcHoverStart then pcall(api.npcHoverStart, block, questIDOf(block)) end -- R106-99 (NpcPanel.lua)
+	end)
+	frame:HookScript("OnLeave", function()
+		if db.tooltips then GameTooltip:Hide() end
+		if api.npcHoverStop then pcall(api.npcHoverStop, block) end
+	end)
 	frame:HookScript("OnMouseUp", function(_, button) onQuestMouseUp(block, button) end) -- R106-73
+	-- R106-85: the quest the right-click menu is for (QuestMenu.lua: the menu does not say)
+	frame:HookScript("OnMouseDown", function()
+		local map = _G.WorldMapFrame
+		api.lastQuestPressed = { id = questIDOf(block), at = GetTime(), mapOpen = map and map:IsShown() or false }
+	end)
 end
 
 local function hookTooltip(block)
@@ -1149,6 +1179,16 @@ local function hookItem(item)
 		local block = self.qtsBlock
 		if block and api.itemSide and api.itemSide() == "left" and itemMovable(self) then putLeft(self, block) end
 	end)
+end
+
+-- R106-121: the room Blizzard keeps at the right of the title for the quest's item button (its width and the quest
+-- module's 2 px spacing) when the button has been moved to the left; 0 otherwise
+local ITEM_EDGE_SPACING = 2
+function api.movedItemRoom(block)
+	local item = block and itemButtonOf(block)
+	if not item or item.qtsSide ~= "left" or not (item.IsShown and item:IsShown()) then return 0 end
+	local w = item.GetWidth and item:GetWidth()
+	return (type(w) == "number" and w > 0) and (w + ITEM_EDGE_SPACING) or 0
 end
 
 local function placeItem(block)
@@ -1211,7 +1251,7 @@ local function squeezeTitle(fs, room)
 			elseif type(relPoint) == "number" then x, y, relPoint = relPoint, x, nil end
 			self.qtsBlizz[point] = { rel or self:GetParent(), relPoint or point, x or 0, y or 0 }
 			self.qtsRoomSet = nil -- Blizzard's again: ours goes on top of it at once
-			if point:find("RIGHT", 1, true) and (self.qtsRoomWanted or 0) > 0 then squeezeTitle(self, self.qtsRoomWanted) end
+			if point:find("RIGHT", 1, true) and (self.qtsRoomWanted or 0) ~= 0 then squeezeTitle(self, self.qtsRoomWanted) end
 		end)
 		hooksecurefunc(fs, "ClearAllPoints", function(self)
 			if not self.qtsSqueezing then self.qtsBlizz = {}; self.qtsRoomSet = nil end
@@ -1287,19 +1327,26 @@ function prepareText(fs, block)
 	elseif fs ~= title then
 		fs.qtsDistRoom = nil
 	end
-	if (wrap or fs.qtsReserve or distRoom > 0) and fs:GetNumPoints() <= 1 then
+	-- R106-81: the progress bar and the distance column both sit at the quest's right edge: the text stops before the
+	-- wider of the two (user: the objective ran under the bar on a line anchored on both sides, where only the
+	-- arrow's room was kept)
+	local room = math.max(fs.qtsReserve or 0, distRoom)
+	if (wrap or room > 0) and fs:GetNumPoints() <= 1 then
 		local left, blockRight = fs:GetLeft(), block:GetRight()
 		if left and blockRight then
 			local right = (api.itemSide and api.itemSide() == "right") and 30 or 0
-			local want = (blockRight - left) - 4 - right - (fs.qtsReserve or 0) - distRoom -- the progress count's room (below)
+			local want = (blockRight - left) - 4 - right - room -- the progress count's room (below)
 			if want > 20 and math.abs(fs:GetWidth() - want) > 1 then pcall(fs.SetWidth, fs, want) end
 		end
 	elseif fs == block.HeaderText and fs:GetNumPoints() > 1 then
-		squeezeTitle(fs, fs.qtsReserve or 0)
-	elseif fs ~= block.HeaderText and fs:GetNumPoints() > 1 and (distRoom > 0 or fs.qtsSqueezeHooked) then
+		-- R106-121: Blizzard ends the title before the quest's item button (SetHeader: its RIGHT point at the block's
+		-- rightEdgeOffset, less the button's width and 2 px); the button moved to the left, that room is the title's again
+		-- (user: the coins wrapped after "(Dungeon)" with room to spare)
+		squeezeTitle(fs, (fs.qtsReserve or 0) - api.movedItemRoom(block))
+	elseif fs ~= block.HeaderText and fs:GetNumPoints() > 1 and (room > 0 or fs.qtsSqueezeHooked) then
 		-- an objective line anchored on both sides (SetWidth does nothing, user: still under the arrow): its right-side
 		-- anchors move in by the room, as a title's do; room 0 puts Blizzard's back
-		squeezeTitle(fs, distRoom)
+		squeezeTitle(fs, room)
 	end
 end
 
@@ -1514,7 +1561,8 @@ api.placeProgress = placeProgress
 -- arrow). The place is read twice a second, the arrow turns 20 times a second, only while titles show it. Inside an
 -- instance (no map position) or on another continent nothing is shown. The title keeps a fixed room for it, so it does
 -- not re-wrap as the number changes. Quest list > "Distance and direction after quest titles" (db.questDistance).
-local DIST_GAP, DIST_ARROW_GAP = 6, 3
+-- R106-126: 2 px between a title and its yards (was 6: "40 (silver)" wrapped though it fitted before the yards, user)
+local DIST_GAP, DIST_ARROW_GAP = 2, 3
 local DIR_ARROW = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\DirArrow"
 local distanceShown = setmetatable({}, { __mode = "k" }) -- title FontString -> quest ID
 
@@ -1577,9 +1625,26 @@ api.hideQuestDistance = hideDistance
 -- The room is kept only on titles of quests that show a distance (the rest keep their full width and do not wrap for
 -- nothing). Whether one does: the same lookup as the display, with the player's place read at most twice a second.
 local meCache, meAt
+-- R106-83: quests done inside a dungeon or raid (the game's Dungeon or Raid tag) get no distance or arrow (user):
+-- outside, they could only point at the instance's map spot
+local function isInstanceQuest(id)
+	local getTag = C_QuestLog and C_QuestLog.GetQuestTagInfo
+	if not getTag then return false end
+	local ok, tag = pcall(getTag, id)
+	if not ok or type(tag) ~= "table" then return false end
+	local name = type(tag.tagName) == "string" and not isSecret(tag.tagName) and tag.tagName:lower() or ""
+	local enum = Enum and Enum.QuestTag or {}
+	local tagID = tag.tagID
+	if name:find("dungeon", 1, true) or name:find("raid", 1, true) then return true end
+	return tagID ~= nil and (tagID == enum.Dungeon or tagID == enum.Raid or tagID == TAG_ID.dungeon
+		or tagID == TAG_ID.raid or tagID == enum.Raid10 or tagID == enum.Raid25)
+end
+api.isInstanceQuest = isInstanceQuest
+
 local function hasDistance(id)
 	if not (db and db.questDistance ~= false) or type(id) ~= "number" or not api.questDirection then return false end
 	if not (showYards() or showArrow()) then return false end -- both hidden: no room kept
+	if isInstanceQuest(id) then return false end
 	local now = GetTime()
 	if not meAt or now - meAt > 0.5 then
 		meCache, meAt = api.playerWorldPos and api.playerWorldPos() or nil, now
@@ -1688,7 +1753,8 @@ local function refreshDistances(spot)
 		if w and fs:IsVisible() then
 			if spot then
 				local yards, angle
-				if me and api.questDirection then yards, angle = api.questDirection(id, me) end
+				-- (an instance quest has none: R106-83; else its room would be asked for again and again)
+				if me and api.questDirection and not isInstanceQuest(id) then yards, angle = api.questDirection(id, me) end
 				fs.qtsYards, fs.qtsAngle = yards, angle
 				-- no positions when it was attached: from the quest's edge now (R106-55)
 				if w.block and not w.placedFromEdge then placeDistanceText(fs, w) end
@@ -1869,6 +1935,9 @@ end
 
 function api.applyProgressBars()
 	eachBlock(fitText)
+	-- R106-82: the objectives' texts changed (the bar's room line under them added or taken away): Blizzard measures
+	-- the lines again (user: switching "Under the objective" left the old spacing, the text over the bars)
+	wrapDirty = true
 	if api.applyExtras then api.applyExtras() end
 end
 

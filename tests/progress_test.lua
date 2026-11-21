@@ -228,4 +228,7 @@ do
 	for y = H - 8, H - 1 do if red(y) >= 115 and red(y) <= 135 then bottom = bottom + 1 end end -- full bottom bronze (125)
 	check("BarBG: the bronze is 2 full rows at the top and at the bottom: " .. top .. " / " .. bottom, top == 2 and bottom == 2)
 end
+-- R106-82: switching the bars' options lays the tracker out again (the objectives' texts changed)
+check("the options lay the tracker out again", src:find("eachBlock(fitText)\n\t-- R106-82", 1, true) ~= nil
+	and src:find("\twrapDirty = true\n\tif api.applyExtras then api.applyExtras() end\nend", 1, true) ~= nil)
 print(pass and "PASS" or "FAILED")

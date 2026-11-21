@@ -29,6 +29,29 @@ fs:SetPoint("TOPRIGHT", block, "TOPRIGHT", -5, 0)
 check("Blizzard's anchor set again: moved in at once (-5 - 46)", at("TOPRIGHT")[4] == -51)
 squeeze(fs, 0)
 check("no room (no distance): Blizzard's own anchor back", at("TOPRIGHT")[4] == -5)
-check("prepareText uses it for a title anchored on both sides",
-	src:find("elseif fs == block.HeaderText and fs:GetNumPoints() > 1 then\n\t\tsqueezeTitle(fs, fs.qtsReserve or 0)", 1, true) ~= nil)
+-- R106-121: the item button moved to the left: its room (negative) widens the title again
+fs:SetPoint("TOPRIGHT", block, "TOPRIGHT", -32, 0) -- Blizzard: the title ends before the item button (30 + 2)
+squeeze(fs, -32)
+check("item room given back: the right anchor at the block's edge again (-32 + 32)", at("TOPRIGHT")[4] == 0)
+fs:SetPoint("TOPRIGHT", block, "TOPRIGHT", -32, 0)
+check("Blizzard's anchor set again: widened at once", at("TOPRIGHT")[4] == 0)
+squeeze(fs, 46 - 32)
+check("distance room and item room together (-32 - 14)", at("TOPRIGHT")[4] == -46)
+check("prepareText uses it for a title anchored on both sides, less the moved item's room",
+	src:find("squeezeTitle(fs, (fs.qtsReserve or 0) - api.movedItemRoom(block))", 1, true) ~= nil)
+-- the moved item's room: its width and 2 px, only when moved to the left and shown
+local roomBody = src:match("(local ITEM_EDGE_SPACING = 2\nfunction api.movedItemRoom%(block%).-\nend\n)")
+check("movedItemRoom found", roomBody ~= nil)
+local api2 = {}
+local item = { qtsSide = "left", shown = true }
+function item:IsShown() return self.shown end
+function item:GetWidth() return 26 end
+local env2 = setmetatable({ api = api2, itemButtonOf = function(b) return b.item end }, { __index = _G })
+load(roomBody, "r", "t", env2)()
+check("moved left: 26 + 2", api2.movedItemRoom({ item = item }) == 28)
+item.qtsSide = nil
+check("still on the right: 0", api2.movedItemRoom({ item = item }) == 0)
+item.qtsSide, item.shown = "left", false
+check("hidden: 0", api2.movedItemRoom({ item = item }) == 0)
+check("no item: 0", api2.movedItemRoom({}) == 0)
 print(pass and "PASS" or "FAILED")

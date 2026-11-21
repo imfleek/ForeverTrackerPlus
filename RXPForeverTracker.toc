@@ -50,6 +50,13 @@ Tracker/Questie.lua
 Tracker/Track.lua
 Tracker/Party.lua
 Tracker/Reputation.lua
+Tracker/Dungeon.lua
+Tracker/QuestMenu.lua
+Tracker/GroupFinder.lua
+Tracker/NpcPanel.lua
+Tracker/ObjectModels.lua
+Tracker/InstanceCap.lua
+Tracker/Rares.lua
 Tracker/MoreQuests.lua
 Tracker/Config.lua
 Tracker/DebugWindow.lua

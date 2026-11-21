@@ -325,6 +325,17 @@ local function setAction(button, use)
 	clearAttributes(button)
 	if use.type == "unit" then
 		configureTarget(button, use.name, use.kind)
+		-- R106-87: a ping on what the click targeted, so the group sees it (user): the client's own /ping word
+		-- (SLASH_PING1, localized) on the target, after RestedXP's targeting lines. With no target the client sends
+		-- nothing. Only where the client has the command, the option is on and the macro stays within 255 characters.
+		local ping = ns.pingLine and ns.pingLine()
+		if ping then
+			local macro = button:GetAttribute("macrotext")
+			-- (once: a redraw that left RestedXP's macro as it was must not add a second ping)
+			if type(macro) == "string" and #macro + #ping + 1 <= 255 and not macro:find("\n" .. ping, 1, true) then
+				button:SetAttribute("macrotext", macro .. "\n" .. ping)
+			end
+		end
 		if use.useItem then
 			-- CONSTRAINT: one click targets the unit then uses the step's item (Uses.lua combineUses): the /use
 			-- line rides the same secure macro button, so the combat rules stay the target button's.

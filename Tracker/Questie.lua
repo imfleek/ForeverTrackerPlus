@@ -954,6 +954,109 @@ function api.prereqPlan(id)
 end
 
 api.prereqQuestName = function(id) return questName(id) end
+-- R106-96: a quest's level (Questie's questLevel), for the journal's list and page
+api.prereqQuestLevel = function(id)
+	if not api.prereqDataReady() then return nil end
+	local level = tonumber(get("Quest", id, "questLevel"))
+	return level and level > 0 and level or nil
+end
+
+-- R106-99: an NPC's details for the model panel (NpcPanel.lua): name, title, level range, rank; nil without Questie
+function api.questieNpc(id)
+	if not (id and api.questieOn()) then return nil end
+	local name = get("Npc", id, "name")
+	if type(name) ~= "string" then return nil end
+	local sub = get("Npc", id, "subName")
+	return { name = name, subName = type(sub) == "string" and sub ~= "" and sub or nil,
+		minLevel = tonumber(get("Npc", id, "minLevel")), maxLevel = tonumber(get("Npc", id, "maxLevel")),
+		rank = tonumber(get("Npc", id, "rank")) }
+end
+-- R106-99: the NPCs and objects a quest's objectives name (creatures, kill credit: { id, name, text }; objects to use
+-- or pick up: { objectId, name, text })
+function api.questObjectiveNpcs(questId)
+	if not (questId and api.questieOn()) then return {} end
+	local objectives = get("Quest", questId, "objectives")
+	local list = {}
+	for _, o in ipairs(objectiveEntries(objectives, 1)) do
+		local id = tonumber(o[1])
+		if id then list[#list + 1] = { id = id, name = get("Npc", id, "name"), text = o[2] } end
+	end
+	for _, o in ipairs(objectiveEntries(objectives, 5)) do
+		local id = tonumber(o[2])
+		if id then list[#list + 1] = { id = id, name = get("Npc", id, "name"), text = o[3] } end
+	end
+	-- objects to use or pick up: shown with the object's model
+	for _, o in ipairs(objectiveEntries(objectives, 2)) do
+		local id = tonumber(o[1])
+		if id then list[#list + 1] = { objectId = id, name = get("Object", id, "name"), text = o[2] } end
+	end
+	-- R106-108: items to collect that come from an object ("Un'Goro Soil" from an "Un'Goro Dirt Pile"): the first such
+	-- object with a model, matched by the item's name
+	local models = ns.objectModels or {}
+	for _, o in ipairs(objectiveEntries(objectives, 3)) do
+		local itemId = tonumber(o[1])
+		local itemName = itemId and get("Item", itemId, "name")
+		if type(itemName) == "string" then
+			for _, source in ipairs(api.itemObjectSources(itemId)) do
+				if models[source.objectId] then
+					list[#list + 1] = { objectId = source.objectId, name = source.name, item = itemName, text = itemName }
+					break
+				end
+			end
+		end
+	end
+	return list
+end
+
+-- R106-108: the objects an item is picked up from (Questie's Item.objectDrops): { objectId, name }
+function api.itemObjectSources(itemId)
+	if not (itemId and api.questieOn()) then return {} end
+	local drops = get("Item", itemId, "objectDrops")
+	local list = {}
+	for _, id in ipairs(type(drops) == "table" and drops or {}) do
+		id = tonumber(id)
+		if id then list[#list + 1] = { objectId = id, name = get("Object", id, "name") } end
+	end
+	return list
+end
+
+-- R106-111: every object a quest uses (objectives, the objects its items come from, the objects that start or end
+-- it): { objectId, name }, for a guide's vague pick-up name ("Chest") on that quest's step
+function api.questObjects(questId)
+	if not (questId and api.questieOn()) then return {} end
+	local list, seen = {}, {}
+	local function add(id)
+		id = tonumber(id)
+		if id and not seen[id] then
+			seen[id] = true
+			local name = get("Object", id, "name")
+			if type(name) == "string" then list[#list + 1] = { objectId = id, name = name } end
+		end
+	end
+	local objectives = get("Quest", questId, "objectives")
+	for _, o in ipairs(objectiveEntries(objectives, 2)) do add(o[1]) end
+	for _, o in ipairs(objectiveEntries(objectives, 3)) do
+		local drops = get("Item", tonumber(o[1]), "objectDrops")
+		for _, id in ipairs(type(drops) == "table" and drops or {}) do add(id) end
+	end
+	for _, field in ipairs({ "startedBy", "finishedBy" }) do
+		local by = get("Quest", questId, field)
+		for _, id in ipairs(type(by) == "table" and type(by[2]) == "table" and by[2] or {}) do add(id) end
+	end
+	return list
+end
+
+-- R106-111: an object's name and the game maps it spawns on ({ [uiMapID] = true })
+function api.questieObjectName(id) return get("Object", id, "name") end
+function api.questieObjectMaps(id)
+	local maps = {}
+	local spawns = get("Object", id, "spawns")
+	for zone in pairs(type(spawns) == "table" and spawns or {}) do
+		local map = api.questieUiMap(zone)
+		if map then maps[map] = true end
+	end
+	return maps
+end
 
 -- Experience (Questie's QuestXP, level-adjusted) and gold (the game's quest data) of a list of quests together
 -- A quest's reward items from Questie's item data (Item.questRewards; Questie does not tell choices from fixed

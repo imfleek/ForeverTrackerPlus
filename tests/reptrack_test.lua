@@ -111,7 +111,8 @@ check("reward lines use the item's quality", ex:find("itemLine(name, texture, co
 -- R106-73: Ctrl + right-click
 check("Ctrl + right-click on a quest puts its reward links in chat",
 	ex:find('frame:HookScript("OnMouseUp", function(_, button) onQuestMouseUp(block, button) end)', 1, true) ~= nil
-	and ex:find('if button ~= "RightButton" or not (IsControlKeyDown and IsControlKeyDown()) then return end', 1, true) ~= nil)
+	and ex:find('if not (IsControlKeyDown and IsControlKeyDown()) then return end', 1, true) ~= nil
+	and ex:find('if button ~= "RightButton" then return end', 1, true) ~= nil)
 
 -- R106-72: surnames in the party lines
 local party = io.open(dir .. "/Tracker/Party.lua"):read("a")

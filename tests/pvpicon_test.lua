@@ -13,15 +13,15 @@ if body then
 		{ isHeader = true, title = "Battle for the Darkspear Islands" }, { title = "A Darkspear quest", questID = 3 },
 	}
 	local env = setmetatable({ api = {}, isSecret = function() return false end, BATTLEGROUNDS = "Battlegrounds",
-		C_Map = { GetAreaInfo = function(id) return ({ [3277] = "Warsong Gulch", [2597] = "Alterac Valley", [16606] = "Bataille des 95bles Sombrelance" })[id] end },
+		C_Map = { GetAreaInfo = function(id) return ({ [3277] = "Warsong Gulch", [2597] = "Alterac Valley", [16606] = "Bataille des \195\142les Sombrelance" })[id] end },
 		C_QuestLog = { GetInfo = function(i) return log[i] end,
 			GetLogIndexForQuestID = function(id) for i, q in ipairs(log) do if q.questID == id then return i end end end },
 	}, { __index = _G })
 	load(body, "bg", "t", env)()
 	check("a quest under \"Warsong Gulch\": a battleground quest", env.api.isBattlegroundQuest(2) == true)
 	check("a quest under Forever's \"Battle for the Darkspear Islands\": a battleground quest", env.api.isBattlegroundQuest(3) == true)
-	log[#log + 1] = { isHeader = true, title = "Bataille des 95bles Sombrelance" }
-	log[#log + 1] = { title = "Une qu95xte", questID = 4 }
+	log[#log + 1] = { isHeader = true, title = "Bataille des \195\142les Sombrelance" }
+	log[#log + 1] = { title = "Une qu\195\170te", questID = 4 }
 	check("Darkspear Islands by its area 16606, in the client's language", env.api.isBattlegroundQuest(4) == true)
 	check("a quest under \"Ashenvale\": not one", env.api.isBattlegroundQuest(1) == false)
 end

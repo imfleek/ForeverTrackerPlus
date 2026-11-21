@@ -441,6 +441,16 @@ local function candidates(list)
 end
 local function wantedWatches(list)
 	local want = sorted(candidates(list))
+	-- R106-86: "Expand current zone only": only the quests of the player's zone are tracked (shown open); the rest go to
+	-- More quests, under folded zone headers (MoreQuests.lua). The super-tracked quest stays.
+	if db.expandCurrentZone and db.trackMode == "all" and api.inCurrentZone then
+		local sup = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
+		local keep = {}
+		for _, q in ipairs(want) do
+			if q.id == sup or api.inCurrentZone(q.id) then keep[#keep + 1] = q end
+		end
+		want = keep
+	end
 	local limit = maxWatches()
 	if db.trackMode == "all" then
 		for i = #want, limit + 1, -1 do want[i] = nil end
@@ -546,6 +556,14 @@ function api.zoneLabelsLeft()
 		end
 	end
 	return left
+end
+
+-- R106-101: the zone header shown for a zone name (Rares.lua puts its tag on it); nil when that zone has none
+function api.zoneLabelFor(zone)
+	if type(zone) ~= "string" then return nil end
+	for _, label in pairs(labels) do
+		if label:IsShown() and label:GetText() == zone then return label end
+	end
 end
 
 -- for MoreQuests.lua: the same zone header look and room

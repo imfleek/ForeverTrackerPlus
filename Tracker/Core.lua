@@ -36,7 +36,7 @@ ns.api.moveTracker = moveTracker
 local EXTRA, MAX_EXTRA = 3000, 8000
 local GUIDE_SLOT = 1.5 -- AllObjectives RXP puts its module after uiOrder 1 (Scenario)
 local BAR_WIDTH = 10 -- default; /qt Quest list "Scrollbar width" (db.scrollbarWidth)
-local DEFAULTS = { enabled = true, step = 40, height = 500, scale = 1, locked = true, zoneSort = true, zoneFilter = false, spacing = 0, zoneHeaderScale = 1, zoneHeaderOutline = false, guideDetached = false, scrollbarWidth = 10, questCount = true, questCountSize = 0, questCountCustom = false, questCountColor = { 1, 1, 1, 1 }, questsHeaderColor = false, questsLineColor = false, zoneHeaderX = 4, zoneHeaderY = 0, questTitleX = 0, zoneHeaderColor = { 0.2, 0.85, 0.55 }, tooltips = true, widthExtra = 0, condense = true, progressBars = true, progressBarUnder = false, progressBarBlue = false, titleOutline = false, objectiveOutline = false, pinQuestsHeader = false, distanceText = true, distanceArrow = true, repTrack = true, profAbove = true, profScrollbar = true, profScrollbarMouseover = false, profScrollbarWidth = 10, profX = 0, profY = 0, questDistance = true, distArrowScale = 1, distArrowAlpha = 1, showXP = true, wordWrap = true, showGold = true, scrollbar = true, scrollbarMouseover = false, zoneHeaderPadY = 6, xpColor = { 0.69, 0.53, 1 }, trackMode = "all", partyProgress = true, configTextSize = 1.15, rewardOrder = { "xp", "gold" }, iconScale = 1, iconAlpha = 1, completeCheck = true, completeCheckScale = 1, completeCheckAlpha = 1, completeCheckColor = false, completeCheckOutline = false, orphanSort = "level", orphanReverse = false, layer = 1, goldCoins = false, xpOrb = false, itemsLeft = true, guideScale = 1, questScale = 1, moreQuests = true, tooltipCoins = false,
+local DEFAULTS = { enabled = true, step = 40, height = 500, scale = 1, locked = true, zoneSort = true, zoneFilter = false, spacing = 0, zoneHeaderScale = 1, zoneHeaderOutline = false, guideDetached = false, scrollbarWidth = 10, questCount = true, questCountSize = 0, questCountCustom = false, questCountColor = { 1, 1, 1, 1 }, questsHeaderColor = false, questsLineColor = false, zoneHeaderX = 4, zoneHeaderY = 0, questTitleX = 0, zoneHeaderColor = { 0.2, 0.85, 0.55 }, tooltips = true, widthExtra = 0, condense = true, progressBars = true, progressBarUnder = false, progressBarBlue = false, titleOutline = false, objectiveOutline = false, pinQuestsHeader = false, distanceText = true, distanceArrow = true, dungeonCard = true, dungeonHeader = true, questGroupFinder = true, npcPanelQuests = true, instanceCap = true, rareAlert = true, expandCurrentZone = false, repTrack = true, profAbove = true, profScrollbar = true, profScrollbarMouseover = false, profScrollbarWidth = 10, profX = 0, profY = 0, questDistance = true, distArrowScale = 1, distArrowAlpha = 1, showXP = true, wordWrap = true, showGold = true, scrollbar = true, scrollbarMouseover = false, zoneHeaderPadY = 6, xpColor = { 0.69, 0.53, 1 }, trackMode = "all", partyProgress = true, configTextSize = 1.15, rewardOrder = { "xp", "gold" }, iconScale = 1, iconAlpha = 1, completeCheck = true, completeCheckScale = 1, completeCheckAlpha = 1, completeCheckColor = false, completeCheckOutline = false, orphanSort = "level", orphanReverse = false, layer = 1, goldCoins = false, xpOrb = false, itemsLeft = true, guideScale = 1, questScale = 1, moreQuests = true, tooltipCoins = false,
 	tooltipXpOrb = false, zoneOrder = "closest", font = "default", questsPadY = 0, questie = true,
 	questieChain = true, questieChainReward = true, questieUnlocks = true, attunementStar = true,
 	background = false, backgroundColor = { 0, 0, 0, 0.4 }, backgroundPad = 6, trackerAlpha = 1, guideAlpha = 1, questAlpha = 1 }
@@ -99,6 +99,7 @@ local guide                       -- the visible foreign module, if any
 local pinGuide = false            -- guide sits directly under the header and stays fixed
 local pinned = 0                  -- height of the fixed strip (header + guide), screen pixels
 local follower                    -- first visible module under the strip: the one that is moved to scroll
+local guideShift = 0              -- R106-92: the pinned guide moved down by the dungeon card above it, screen pixels
 local profHeld                    -- R106-57: the Professions section while it sits in its own box above the tracker
 local placeProf                   -- (below) puts it at its scroll position in that box
 local layoutProfessions           -- (below) the box: place, height for 2 recipes, scrollbar
@@ -812,6 +813,7 @@ local function anchorOffsetFor(module)
 	local px = 0
 	if module == follower then px = px + (offset - drop) end
 	if module == pushed then px = px - pushPx end
+	if module == guide and pinGuide then px = px - guideShift end
 	return px
 end
 
@@ -867,7 +869,7 @@ local function hookModule(module)
 		bases[self][point] = { rel or self:GetParent(), relPoint or point, x or 0, y or 0 }
 		-- Blizzard re-anchors its modules on every tracker update (zone changes, quest and aura events...). Re-apply the
 		-- scroll offset in the same frame, so the list never shows one frame at the unscrolled position (the flicker).
-		local px = (self == follower or self == pushed) and anchorOffsetFor(self) or 0
+		local px = (self == follower or self == pushed or self == guide) and anchorOffsetFor(self) or 0
 		if px ~= 0 and canMove(self) then setAnchorOffset(self, px) end
 	end)
 	if module.parentContainer == tracker then
@@ -1285,8 +1287,33 @@ local function refresh()
 	watchStrip()
 	-- the Professions section in its own box above the tracker (R106-57), before the first section is picked
 	if layoutProfessions then layoutProfessions() end
+	-- the dungeon card at the very top (R106-84, Dungeon.lua), then the tracked reputation (R106-74,
+	-- Reputation.lua): their room joins the fixed strip, and the scrolling sections move down by it (R106-77).
+	-- R106-92: above the RXP guide too (user): a pinned guide is moved down by the card's room (its anchor offset, as
+	-- the scroll offset), so the strip measured under it already holds the card, and the sections chained under the
+	-- guide move with it. Without a pinned guide the card goes where the strip ends, as before.
+	local cardRoom, cardOverGuide = 0, pinGuide and guide ~= nil
+	if ns.api.layoutDungeonCard then
+		local base = cardOverGuide and 0 or measurePinned()
+		local ok, room = pcall(ns.api.layoutDungeonCard, ghost, base, trackerAlpha() * questAlpha())
+		if ok and type(room) == "number" then cardRoom = room end
+	end
+	-- R106-102: the guide may already sit below the strip's top by itself (a section above it, the tracker's top
+	-- padding): it moves down only by the part of the card's room it does not already have (user: empty space under
+	-- the card). Its own place = where it is now, less the shift it has now.
+	local shift = 0
+	if cardOverGuide and cardRoom > 0 then
+		local own = 0
+		local top, gTop = ghost:GetTop(), guide:IsVisible() and guide:GetTop()
+		if top and gTop then own = math.max(top - toScreen(guide, gTop) - guideShift, 0) end
+		shift = math.max(cardRoom - own, 0)
+	end
+	if shift ~= guideShift or cardOverGuide then
+		guideShift = shift
+		if guide then setAnchorOffset(guide, anchorOffsetFor(guide)) end
+	end
 	pinned = measurePinned()
-	-- the tracked reputation at the top of the quest list (R106-74, Reputation.lua): its room joins the fixed strip
+	if not cardOverGuide then pinned = pinned + cardRoom; drop = drop + cardRoom end
 	if ns.api.layoutTrackedReputation then
 		local ok, room = pcall(ns.api.layoutTrackedReputation, ghost, pinned, trackerAlpha() * questAlpha())
 		-- R106-77: the scrolling sections move down by the same room (user: the top quest was cut off: it stayed
@@ -2193,6 +2220,7 @@ SlashCmdList.ALLTRACKERRXP = function(msg)
 	elseif cmd == "debug" then
 		local lines = {}
 		debugLines(function(text) lines[#lines + 1] = tostring(text) end)
+		if ns.api.npcPanelDebug then ns.api.npcPanelDebug(function(text) lines[#lines + 1] = tostring(text) end) end
 		if ns.api.showDebugWindow then
 			ns.api.showDebugWindow(lines)
 		else

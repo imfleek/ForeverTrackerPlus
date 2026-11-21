@@ -267,6 +267,47 @@ local function zoneLabel(i)
 	return label
 end
 
+-- R106-86: "Expand current zone only": the zones other than the player's are folded here (their header with a "+" and
+-- how many quests it holds); clicking a header opens or folds it again. Opened zones are remembered until you change
+-- zone. Without the option every zone is open, as before.
+local openZones = {}
+local function folding() return db and db.expandCurrentZone and db.zoneSort and true or false end
+local function isFolded(zone)
+	if not folding() or not zone or zone == "" then return false end
+	if openZones[zone] then return false end
+	return not (api.isCurrentZoneName and api.isCurrentZoneName(zone))
+end
+api.moreQuestsZoneFolded = isFolded
+local zoneButtons = {}
+local function zoneButton(i, label, zone)
+	local b = zoneButtons[i]
+	if not b then
+		b = CreateFrame("Button", nil, frame)
+		b:RegisterForClicks("LeftButtonUp")
+		b:SetScript("OnClick", function(self)
+			local z = self.zone
+			if not z then return end
+			if isFolded(z) then openZones[z] = true else openZones[z] = nil end
+			-- the player's own zone cannot be folded: it stays open
+			if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+		end)
+		b:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+			GameTooltip:SetText(self.zone or "", 1, 1, 1)
+			GameTooltip:AddLine(isFolded(self.zone) and "Click to show its quests." or "Click to fold it.", 0.8, 0.8, 0.8)
+			GameTooltip:Show()
+		end)
+		b:SetScript("OnLeave", function(self) if GameTooltip:GetOwner() == self then GameTooltip:Hide() end end)
+		zoneButtons[i] = b
+	end
+	b.zone = zone
+	b:ClearAllPoints()
+	b:SetPoint("TOPLEFT", label, "TOPLEFT", -2, 2)
+	b:SetPoint("BOTTOMRIGHT", label, "BOTTOMRIGHT", 2, -2)
+	b:Show()
+	return b
+end
+
 local dashes = {}
 local function dashText(i)
 	local d = dashes[i]
@@ -314,6 +355,7 @@ local function build()
 		end
 		for _, b in ipairs(clickers) do b:Hide() end
 		for _, l in ipairs(labels) do l:Hide() end
+		for _, b in ipairs(zoneButtons) do b:Hide() end
 		for _, d in ipairs(dashes) do d:Hide() end
 		for _, b in ipairs(progressBits) do api.hideProgressBar(b) end
 		progressUsed = 0
@@ -338,7 +380,7 @@ local function build()
 	-- everything to draw, first as data
 	local entries = {}
 	local parts = { width, qs, tostring(db.zoneSort), db.zoneHeaderX or 4, tonumber(db.questTitleX) or 0, tonumber(db.zoneHeaderY) or 0,
-		tostring(api.lastTrackedZone),
+		tostring(api.lastTrackedZone), tostring(folding()),
 		look.header[1], look.header[2], look.line[1], look.line[2], look.headerX, look.dashX, look.textX, look.lineGap,
 		look.blockGap, colorKey(look.headerColor), colorKey(look.normalColor), colorKey(look.completeColor) }
 	for _, quest in ipairs(list) do
@@ -363,7 +405,7 @@ local function build()
 			end
 		end
 		entries[#entries + 1] = { quest = quest, title = title, icons = icons, complete = complete, lines = lines }
-		parts[#parts + 1] = quest.id .. "|" .. tostring(quest.header) .. "|" .. title .. (star and "*" or "") .. (forever and "~" or "") .. (complete and "v" or "")
+		parts[#parts + 1] = (isFolded(quest.header) and "F" or "") .. quest.id .. "|" .. tostring(quest.header) .. "|" .. title .. (star and "*" or "") .. (forever and "~" or "") .. (complete and "v" or "")
 		for _, line in ipairs(lines) do parts[#parts + 1] = (line[2] and "+" or "-") .. line[1] end
 	end
 	local signature = table.concat(parts, "\n")
@@ -400,9 +442,17 @@ local function build()
 	end
 
 	local lastZone = db.zoneSort and api.lastTrackedZone or nil
-	for index, entry in ipairs(entries) do
+	-- R106-86: how many quests each zone holds (shown on a folded zone's header)
+	local zoneCount = {}
+	for _, entry in ipairs(entries) do
+		local z = entry.quest.header
+		if z then zoneCount[z] = (zoneCount[z] or 0) + 1 end
+	end
+	local shownAny = false
+	for _, entry in ipairs(entries) do
 		local quest = entry.quest
-		if index > 1 then y = y + look.blockGap - look.lineGap end
+		local folded = isFolded(quest.header)
+		if shownAny then y = y + look.blockGap - look.lineGap end
 		if db.zoneSort and quest.header and quest.header ~= lastZone then
 			lastZone = quest.header
 			-- the same room and place as ZoneSort's headers above Blizzard's quests
@@ -412,9 +462,22 @@ local function build()
 			label:ClearAllPoints()
 			label:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", look.headerX + (db.zoneHeaderX or 4) - 4 - (tonumber(db.questTitleX) or 0),
 				-y + 2 + (tonumber(db.zoneHeaderY) or 0))
-			label:SetText(quest.header)
+			if folding() then
+				-- folded: "+ Zone (3)"; open (not the player's zone): "- Zone"
+				local own = api.isCurrentZoneName and api.isCurrentZoneName(quest.header)
+				label:SetText(folded and ("+ %s (%d)"):format(quest.header, zoneCount[quest.header] or 0)
+					or own and quest.header or ("- " .. quest.header))
+				if not own then zoneButton(zones, label, quest.header) end
+			else
+				label:SetText(quest.header)
+			end
 			label:Show()
+			shownAny = true
 		end
+		if folded then
+			-- its quests are not drawn (only the header above)
+		else
+		shownAny = true
 		-- room at the title's right edge for the distance and arrow (Extras.lua), as on Blizzard's quests
 		-- (only for a quest that shows a distance, so the other titles keep their full width)
 		local reserve = api.questHasDistance and api.questHasDistance(quest.id) and api.questDistanceReserve
@@ -466,6 +529,7 @@ local function build()
 				add(line[1], look.line, look.textX, line[2])
 			end
 		end
+		end -- (not folded)
 	end
 	frame:SetHeight(math.max(y, 1))
 	api.layoutMoreQuests()
@@ -546,7 +610,11 @@ ns.onLogin[#ns.onLogin + 1] = function()
 		"QUEST_REMOVED", "UNIT_QUEST_LOG_CHANGED", "ZONE_CHANGED_NEW_AREA" }) do
 		pcall(events.RegisterEvent, events, e)
 	end
-	events:SetScript("OnEvent", schedule)
+	events:SetScript("OnEvent", function(_, event)
+		-- a new zone: the zones opened by hand fold again (R106-86)
+		if event == "ZONE_CHANGED_NEW_AREA" then wipe(openZones) end
+		schedule()
+	end)
 	schedule()
 	-- folding or unfolding the "Quests" section hides or shows these quests at once (the next layout pass places them)
 	local questModule = _G.QuestObjectiveTracker

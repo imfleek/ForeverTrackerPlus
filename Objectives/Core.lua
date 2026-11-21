@@ -41,6 +41,8 @@ local DEFAULTS = {
 	-- RestedXP's NPC automation (quests, gossip, flights, hearthstone, buying, training) while its window is hidden and
 	-- RxpAwake.lua keeps its guide running
 	hiddenAutomation = false,
+	-- R106-87: the target buttons ping what they target
+	targetPing = true,
 }
 
 local db = type(_G.RXPForeverTrackerGuideDB) == "table" and _G.RXPForeverTrackerGuideDB or {}
@@ -57,6 +59,15 @@ db.upcomingShown = Clamp(math.floor(tonumber(db.upcomingShown) or DEFAULTS.upcom
 db.upcomingScrollbarColor = nil -- removed: every scrollbar uses the Forever art (ScrollSkin.lua)
 ns.db = db
 ns.DEFAULTS = DEFAULTS
+
+-- R106-87: the /ping line for the target buttons (Action.lua): the client's own command word (SLASH_PING1, localized)
+-- on the target; nil while "Ping what you target" is off or the client has no /ping
+function ns.pingLine()
+	if db.targetPing == false then return nil end
+	local cmd = _G.SLASH_PING1
+	if type(cmd) ~= "string" or not cmd:find("^/[^%s%c]+$") then return nil end
+	return cmd .. " [@target]"
+end
 
 -- Forever Style: the guide drawn like the game's own quest tracker sections (Header.lua, Rows.lua).
 function ns.forever()
