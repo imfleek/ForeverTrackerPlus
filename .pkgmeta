@@ -8,3 +8,4 @@ ignore:
   - REQUIREMENTS.md
   - tests
   - .github
+  - CURSEFORGE.md

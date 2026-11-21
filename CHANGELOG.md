@@ -5,6 +5,8 @@ All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 ## 3.1
 New helpers on screen and a Guides section. The ideas come from the Questline addon; the code is our own.
 
+This is the first release since 2.0. It also includes 3.0 (below), which was not released on its own.
+
 ### Added
 - **Quest item bar:** one button for each usable quest item. The tracked quest's item comes first. Shift+drag moves it. Set a key in Key Bindings > AddOns > RXP ForeverTracker: "Use the first quest item".
 - **Big progress messages:** quest progress in large letters at the top of the screen, and "Ready to turn in" when a quest is done.
@@ -27,6 +29,11 @@ A new settings window, statistics, helpers and a first-time setup.
 - **Quest close by** (Questie): a card when a quest you can take is within 70 yards. Click: waypoint. Right-click: close.
 - **Breath warning:** red pulsing screen edges when breath or fatigue has 10 seconds or less left.
 - **Flight times:** learns each flight; shows the time left while flying and the time on the flight map.
+- **3D model panel:** hover a quest objective (or a RestedXP step) that names an NPC or object: a panel beside the tracker shows its name and a slowly turning 3D model.
+- **Dungeon card:** inside a dungeon or raid, a card at the top of the tracker with the instance name, party size, the party's deaths and DungeonJournal's run tracker (when installed). It also shows instances entered this hour against the hourly limit, and your saved lockout.
+- **Find a group:** Ctrl+click a quest to post LFM in General chat, list it in Looking For Group, or both.
+- **Rares near your quests:** a rare spotted in your zone shows on the zone header with its distance. Hover for its 3D model; click for a waypoint.
+- **Wowhead link:** right-click a quest in the tracker > "Wowhead URL" gives the quest's WoW Forever Wowhead link to copy.
 
 ### Changed
 - The minimap button and tracker lock moved to Settings > Basics.

@@ -2161,6 +2161,8 @@ local QT_HELP = {
 	{ "on", "turn the quest tracker on (then /reload)" },
 	{ "off", "turn the quest tracker off (then /reload)" },
 	{ "setup", "the first-time setup: every feature, on or off" },
+	{ "stats", "open the statistics overview" },
+	{ "run", "open the run analysis" },
 	{ "help", "this list" },
 }
 local function printHelp()

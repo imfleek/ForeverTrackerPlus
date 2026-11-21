@@ -14,45 +14,86 @@
 
 ## 📦 How to Install
 
-1. Download **`RXPForeverTracker.zip`** from the [latest release](https://github.com/imfleek/RXPForeverTracker/releases/latest).
+1. Download **`RXPForeverTracker.zip`** from the [latest release](https://github.com/imfleek/RXPForeverTracker/releases/latest) or from CurseForge.
 2. Extract the `RXPForeverTracker` folder into:
 
    ```
    BattleNet/World of Warcraft/_forever_/Interface/AddOns/
    ```
 
-### ✨ Highlights
+3. Log in. A short **first-time setup** walks you through every feature, with an on/off switch for each.
 
-- 🖱️ **Mouse-wheel scrolling** for Blizzard's own tracker, with an optional scrollbar. The tracker itself is kept as it is, inside a frame that scrolls, so long quest lists never run off the screen.
-- 🗺️ **Zone sorting**: quests grouped under zone headers, with the closest quest first.
-- 💰 **Rewards at a glance**: experience and gold after each quest title, a check on finished quests, and tooltips with objectives, rewards and the gold an item reward sells for.
-- 📜 **Your RestedXP guide in the tracker**: the current and upcoming steps with click-to-use item and spell buttons, a waypoint arrow, back / restart / forward buttons (Shift+click for the previous or next zone guide), and a check to mark a step done.
-- 🔗 **Links everywhere**: items, spells and quests in guide steps show their tooltips; Shift+click a quest to link it in chat.
-- 📖 **Prerequisite Journal** (with Questie): for every quest still ahead in your guide, the prerequisites you are missing, where to do them, and which later guide does them on the way.
-- ❓ **"Why did guide skip?"** (`/qt why`): a plain-words list of every guide and step move, who made it and why, ready to copy into a bug report.
-- 🧹 **Orphaned quest cleanup**: quests your guide no longer uses, coloured by difficulty, with their zone, sortable, and abandoned one by one or all at once.
-- 🎨 **Forever Style settings window** with search, profiles you can import and export, and per-page Defaults.
+## ✨ What's new in 3.1
 
-> **Optional Integrated addons:**
+- 🎒 **Quest item bar**: one button for each usable quest item, with a key binding.
+- 📣 **Big progress messages**: "Wolves slain: 3/8" in large letters, and "Ready to turn in".
+- 📍 **World marker**: your tracked quest's name, next step, distance and a light beam over its spot in the world.
+- 📚 **Guides**: Legacy Challenges, library books and the Cozy Sleeping Bag chain.
+- ⚙️ **New settings window** (3.0): a sidebar of sections, tabs, folding cards and a help line under most settings.
+- 📊 **Statistics** (3.0): an overview, a run analysis, level splits and **Copy for Discord**.
+
+See the [changelog](CHANGELOG.md) for everything.
+
+## 🌟 Features
+
+### Quest tracker
+- 🖱️ **Mouse-wheel scrolling** for Blizzard's own tracker, with an optional scrollbar. Long quest lists never run off the screen.
+- 🗺️ **Zone sorting**: quests under zone headers, the closest quest first. Distance arrows on each quest.
+- 💰 **Rewards at a glance**: experience and gold after each title, progress bars, a check on finished quests, and tooltips with objectives and rewards.
+- 🏷️ **Icons**: elite, group, dungeon, raid, PvP and new-in-Forever quests.
+- 🧊 **3D model panel**: hover an objective that names an NPC or object to see its model.
+- 🏰 **Dungeon card**: in a dungeon or raid, its name, party, deaths, instances this hour and your lockout.
+- ⭐ **Rares near your quests** on the zone header, with distance and a waypoint.
+- 👥 **Find a group**: Ctrl+click a quest to post LFM or list it in Looking For Group.
+- 🔗 **Wowhead link**: right-click a quest for its WoW Forever Wowhead URL.
+
+### Helpers
+- 🎒 Quest item bar, and quest items marked in your bags (with a warning if you sell or delete one).
+- 🪙 A gold coin on the quest reward that sells for the most.
+- 📍 World marker, and an option to track the nearest quest by itself.
+- 📣 Big progress messages, and optional party chat lines.
+- 🔎 A card when a quest you can take is close by (Questie). Breadcrumb quests you do not need are left out.
+- 🫧 Breath warning, and ✈️ flight times learned for every route.
+
+### Guides
+- 🏆 **Legacy Challenges**: every challenge, with what is still to do.
+- 📖 **Library books**: done, in your bags or open; click for a waypoint (Questie).
+- 🛏️ **Cozy Sleeping Bag** chain, from level 14; click a step for a waypoint (Questie).
+
+### Statistics
+- 📊 **Overview**: quests done, experience from quests, quest times, quests per hour, top zones.
+- ⏱️ **Run analysis**: where your time went (combat, running, mounted, flying, NPCs, dead, AFK, standing) and time per level.
+- 📈 **Level splits**: time per level from /played, compared with another character.
+- 💬 **Copy for Discord**, and a level-up line in chat.
+
+### RestedXP guide (needs RestedXP Guides)
+- 📜 The current and upcoming steps in the tracker, with click-to-use item and spell buttons, a waypoint arrow, and back / restart / forward buttons.
+- 📖 **Prerequisite Journal** (with Questie): the prerequisites you are missing for quests ahead in your guide.
+- ❓ **"Why did guide skip?"** (`/qt why`): every guide and step move, who made it and why.
+- 🧹 **Orphaned quest cleanup**: quests your guide no longer uses.
+
+> **Optional addons:**
 > - **RestedXP Guides**: guide steps in the tracker
-> - **Questie**: quest giver, turn-in and objective locations, chains, attunement star, party progress, closest-quest sorting
+> - **Questie**: quest locations, chains, party progress, closest-quest sorting, nearby quests, library books, the sleeping bag chain
+> - **DungeonJournal**, **NovaInstanceTracker**: extra lines on the dungeon card
 
 ## ⚙️ Settings: `/qt`
 
-The categories are on the left of the settings window:
-
-| Category | Pages |
+| Group | Sections |
 | --- | --- |
-| 📋 **Quest Tracker** | Quest list (lock, extra length, scrollbar, items, quest count, header colours) · Zone headers · Quest titles · Tooltips · Tracking and sorting (track mode, zone sort) |
-| 🧭 **RXP Tracker** | Tracker settings (including Own window) · Waypoint arrow · Themes & guide (theme, status, choose, restart or reset guides) · Orphaned quests |
-| 🪟 **Settings Window** | Text and font · Advanced · Background · Profiles (save, load, delete, import, export; starts on "Default") · Minimap button |
+| **General** | Basics (lock, minimap button, run the setup again) · Look (text, size, background) |
+| **Quests** | Quest list · Quest lines · Tracking · Helpers (quest helpers, on screen, world) · Guides (Legacy Challenges, library books, sleeping bag) |
+| **RestedXP** | Guide · Arrow |
+| **Statistics** | Overview · Run analysis · Level splits |
+| **Addon** | Profiles (save, load, import, export) |
 
 > 💡 **Tips**
-> - Colours have presets, a custom colour and an opacity slider.
 > - The search box finds any setting.
+> - Each section has tabs at the top; cards fold open and closed.
 > - **Shift+right-click** the guide in the tracker to open this window; **right-click** opens the guide menu.
+> - Set the quest item key in **Key Bindings > AddOns > RXP ForeverTracker**.
 
-## Commands (Backup to /qt Config)
+## Commands
 
 <details>
 <summary><b>Show all commands</b></summary>
@@ -65,7 +106,10 @@ Type `/qt help` in game for this list.
 | --- | --- |
 | `/qt` | Opens or closes the settings window. |
 | `/qt config` | The same as `/qt`. |
-| `/qt guide` | Opens the settings window at the guide (RXP Tracker) settings. |
+| `/qt setup` | Opens the first-time setup again. |
+| `/qt stats` | Opens the statistics overview. |
+| `/qt run` | Opens the run analysis. |
+| `/qt guide` | Opens the settings window at the guide (RestedXP) settings. |
 | `/qt quests` | Opens the settings window at the quest tracker settings. |
 | `/qt orphan` | Opens the settings window at Orphaned quests. |
 | `/qt height <px>` | Sets how tall the quest list is (`0` = automatic). |
@@ -74,12 +118,13 @@ Type `/qt help` in game for this list.
 | `/qt zone` | Turns sorting quests by zone on or off. |
 | `/qt sort` | Sorts the quests now. |
 | `/qt lock` | Locks the tracker in place. |
-| `/qt unlock` | Unlocks the tracker so you can drag it by the green bar. |
+| `/qt unlock` | Unlocks the tracker so you can drag it. |
+| `/qt distance` | Tells why a quest shows or hides its distance arrow. |
 | `/qt reset` | Scrolls the tracker back to the top. |
 | `/qt on` / `/qt off` | Turns the quest tracker on or off (then type `/reload`). |
 | `/qt debug` | Opens the tracker's layout details in a window, to copy into a bug report. |
 
-### RXP Tracker (needs RestedXP Guides)
+### RestedXP guide (needs RestedXP Guides)
 
 | Command | What it does |
 | --- | --- |
@@ -95,3 +140,7 @@ Type `/qt help` in game for this list.
 | `/qt why` | Opens "Why did guide skip?": the latest guide and step moves and what caused them. |
 
 </details>
+
+## 🙏 Credits
+
+Some feature ideas come from the **QuestMaster** and **Questline** addons. All code here is our own. Quest data is read live from **Questie** when it is installed.
