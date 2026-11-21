@@ -765,6 +765,66 @@ function api.questieUiMap(areaID)
 	return ok2 and type(map) == "number" and map or nil
 end
 
+-- 3.0 "a quest close by" (Helpers.lua): the nearest quest Questie lists as available (its AvailableQuests module's
+-- __availableQuests) whose giver NPC stands within maxYards; skip: quest IDs already shown. Grey quests are left out.
+-- The givers' world positions are worked out once per quest and kept until Questie's data reloads.
+local giverPlaces = {}
+function api.questieAvailableNear(me, maxYards, skip)
+	if not (me and api.questieOn() and C_Map.GetWorldPosFromMapPos) then return nil end
+	local aq = module("AvailableQuests")
+	local list = aq and aq.__availableQuests
+	if type(list) ~= "table" then return nil end
+	local myLevel = UnitLevel("player") or 1
+	local grey = myLevel - ((GetQuestGreenRange and GetQuestGreenRange()) or 8)
+	local best
+	for id in pairs(list) do
+		if not (skip and skip[id]) then
+			local places = giverPlaces[id]
+			if places == nil then
+				places = {}
+				local by = get("Quest", id, "startedBy")
+				local npcs = type(by) == "table" and by[1]
+				for _, npc in ipairs(type(npcs) == "table" and npcs or {}) do
+					local spawns = get("Npc", npc, "spawns")
+					for area, points in pairs(type(spawns) == "table" and spawns or {}) do
+						local map = api.questieUiMap(area)
+						for _, pt in ipairs(map and type(points) == "table" and points or {}) do
+							if type(pt) == "table" and tonumber(pt[1]) and tonumber(pt[2]) then
+								local x, y = pt[1] / 100, pt[2] / 100
+								local ok, continent, pos = pcall(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(x, y))
+								if ok and pos then
+									local px, py = pos.x, pos.y
+									if pos.GetXY then px, py = pos:GetXY() end
+									places[#places + 1] = { npc = npc, continent = continent, wx = px, wy = py, map = map, x = x, y = y }
+								end
+							end
+						end
+					end
+				end
+				giverPlaces[id] = places
+			end
+			local level = tonumber(get("Quest", id, "questLevel"))
+			if not (level and level > 0 and level < grey) then
+				for _, p in ipairs(places) do
+					if p.continent == me.continent then
+						local d = math.sqrt((p.wx - me.x) ^ 2 + (p.wy - me.y) ^ 2)
+						if d <= maxYards and (not best or d < best.d) then
+							best = { id = id, d = d, map = p.map, x = p.x, y = p.y, npc = p.npc, level = level }
+						end
+					end
+				end
+			end
+		end
+	end
+	if best then
+		local title = get("Quest", best.id, "name")
+		best.title = type(title) == "string" and title or nil
+		local giver = get("Npc", best.npc, "name")
+		best.giver = type(giver) == "string" and giver or nil
+	end
+	return best
+end
+
 ---------------------------------------------------------------------------------------------------------------------
 -- Missing prerequisites (the Prerequisite Journal, Prereqs.lua). All from Questie's quest data: preQuestSingle (any
 -- one of them must be done) and preQuestGroup (every one), startedBy/finishedBy for where to accept and turn in,
@@ -1121,7 +1181,7 @@ function api.applyQuestie()
 end
 
 clearCaches = function()
-	wipe(getters); wipe(zoneNames); wipe(zoneCache); wipe(zoneCacheComplete); wipe(pointCache); wipe(pointComplete)
+	wipe(getters); wipe(zoneNames); wipe(zoneCache); wipe(zoneCacheComplete); wipe(pointCache); wipe(pointComplete); wipe(giverPlaces)
 	wipe(attuneCache)
 	attunementSet = nil
 end

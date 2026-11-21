@@ -2,6 +2,24 @@
 
 All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 
+## 3.0
+A new settings window, statistics, helpers and a first-time setup.
+
+### Added
+- **New settings window:** a sidebar of sections with icons and a short line of what each holds (General, Quests, RestedXP, Statistics, Addon), tabs at the top of each section, and cards that fold. Fine-tune cards (positions, spacing, colours) start folded. Most settings now have a grey help line. Search still finds every setting.
+- **First-time setup:** walks through every feature with an on/off switch for each. It opens once on 3.0 (also for existing users, starting from your current settings). Open it again with `/qt setup` or Settings > Basics.
+- **Statistics:** an Overview (completed quests, experience from quests, average and fastest quest time, quests per hour, session quests, abandoned, level progress, top quest zones), a **Run analysis** (where the time went: combat, running, mounted, flight, NPCs, dead, AFK, standing; tips; time per level; **Copy for Discord**) and **Level splits** (time per level from /played, compared with another of your characters). `/qt stats`, `/qt run`.
+- **Level-up line in chat:** the new level, how long the last level took and your time played.
+- **Quest items in your bags** get a quest sign; selling one warns you, and the delete question names the quest.
+- **Best reward marker:** a gold coin on the quest reward that sells for the most.
+- **Quest close by** (Questie): a card when a quest you can take is within 70 yards. Click: waypoint. Right-click: close.
+- **Breath warning:** red pulsing screen edges when breath or fatigue has 10 seconds or less left.
+- **Flight times:** learns each flight; shows the time left while flying and the time on the flight map.
+
+### Changed
+- The minimap button and tracker lock moved to Settings > Basics.
+- The settings window no longer opens by itself on first use: the setup does.
+
 ## 2.0
 A big update to the quest tracker. It also includes 1.0.4, which was not released on its own.
 

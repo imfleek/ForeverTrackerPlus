@@ -14,7 +14,8 @@ local MAX_NAME = 40
 -- not settings: per-session or bookkeeping values, never copied into or out of a profile
 local EXCLUDE_TRACKER = { profiles = true, activeProfile = true, ahValue = true, conflictKept = true,
 	savedAutoWatch = true, zoneHidden = true, configPage = true, configTab = true, extra = true, guideScrolls = true,
-	showRep = true, instanceRuns = true, npcTypes = true }
+	showRep = true, instanceRuns = true, npcTypes = true,
+	statsRuns = true, statsCompare = true, flightLog = true, setupDone = true, configFolded = true }
 local EXCLUDE_GUIDE = { onboarded = true, questFocus = true, questFocusSaved = true, hidden = true, npcIds = true }
 
 local function trackerDB() return ns.db end

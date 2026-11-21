@@ -2160,6 +2160,7 @@ local QT_HELP = {
 	{ "reset", "scroll the tracker back to the top" },
 	{ "on", "turn the quest tracker on (then /reload)" },
 	{ "off", "turn the quest tracker off (then /reload)" },
+	{ "setup", "the first-time setup: every feature, on or off" },
 	{ "help", "this list" },
 }
 local function printHelp()
@@ -2182,6 +2183,10 @@ SlashCmdList.ALLTRACKERRXP = function(msg)
 	if not db then return end
 	if cmd == "" or cmd == "config" then
 		if ns.api.toggleConfig then ns.api.toggleConfig() end
+	elseif cmd == "setup" then
+		if ns.api.showSetup then ns.api.showSetup(true) end
+	elseif cmd == "stats" or cmd == "run" then
+		if ns.api.openConfigTab then ns.api.openConfigTab(cmd == "run" and "statsrun" or "statsoverview") end
 	elseif cmd == "guide" or cmd == "quests" then
 		if ns.api.openConfigTab then ns.api.openConfigTab(cmd) end
 	elseif cmd == "orphan" or cmd == "orphans" then
@@ -2261,8 +2266,7 @@ frame:SetScript("OnEvent", function(_, event)
 		-- no saved spot yet (first use): the middle of the screen, so the window is on screen from the start
 		if type(db.pos) ~= "table" then db.pos = homePosition() end
 		if db.enabled then enable() end
-		-- the very first time the addon loads, open the settings so the options are found
-		if fresh and ns.api.toggleConfig then C_Timer.After(3, ns.api.toggleConfig) end
+		-- the very first time the addon loads, the first-time setup opens (Setup.lua, on its own login hook)
 	elseif viewport then
 		if event == "PLAYER_REGEN_ENABLED" then needsLayout = true end
 		schedule()

@@ -20,7 +20,7 @@ local activePage = "questlist"
 local declaringPage = "questlist"
 local MIN_W, MIN_H, MAX_W, MAX_H = 720, 480, 1400, 1100
 local DEFAULT_W, DEFAULT_H = 880, 660
-local SIDEBAR_W = 196
+local SIDEBAR_W = 214
 
 -- colours from the accepted mock-up
 local C = {
@@ -266,6 +266,13 @@ local function applyFonts()
 	-- the Prerequisite Journal follows the same text size and font
 	if api.refreshPrereqsFonts then api.refreshPrereqsFonts() end
 end
+-- for the statistics widgets, the setup window and other windows in this look
+api.themeKit.ts = ts
+api.themeKit.refreshFonts = applyFonts
+api.themeKit.circle = circle
+api.themeKit.paint = paint
+api.themeKit.hGradient = hGradient
+api.themeKit.controlBg = controlBg
 api.applyConfigFonts = function()
 	if not frame then return end
 	applyFonts()
@@ -276,15 +283,51 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 -- Pages and items (declared in display order; widgets are created once and re-positioned on every layout)
 ---------------------------------------------------------------------------------------------------------------------
+-- 3.0 "Codex" layout (accepted option A): the category list holds sections (an icon, a name and a grey line of what
+-- is in it) under small gold group names; a section's pages are tabs at the top of the page panel; each page is made
+-- of cards (one per heading) that fold, and the fine-tune cards start folded.
 local GROUPS = {
-	{ key = "quests", title = "Quest Tracker", icon = "Interface\\GossipFrame\\AvailableQuestIcon" },
-	-- RestedXP's classic logo (its default theme's rxp_logo-64, as on RestedXP's own windows)
-	{ key = "guide", title = "RXP Tracker", icon = "Interface\\AddOns\\RXPGuides\\Textures\\rxp_logo-64" },
-	{ key = "window", title = "Settings Window", icon = "Interface\\Buttons\\UI-OptionsButton" },
+	{ key = "general", title = "GENERAL" },
+	{ key = "quests", title = "QUESTS" },
+	{ key = "guide", title = "RESTEDXP" },
+	{ key = "stats", title = "STATISTICS" },
+	{ key = "addon", title = "ADDON" },
+}
+local SECTIONS = {
+	{ key = "basics", group = "general", title = "Basics", sub = "Lock, minimap, setup", icon = "Interface\\Icons\\Trade_Engineering" },
+	{ key = "look", group = "general", title = "Look", sub = "Text, size, background", icon = "Interface\\Icons\\INV_Misc_Gem_Pearl_04" },
+	{ key = "questlist", group = "quests", title = "Quest list", sub = "Scroll, count, headers", icon = "Interface\\Icons\\INV_Misc_Note_01" },
+	{ key = "questlines", group = "quests", title = "Quest lines", sub = "Distance, rewards, icons", icon = "Interface\\Icons\\INV_Scroll_03" },
+	{ key = "tracking", group = "quests", title = "Tracking", sub = "What shows, and in which order", icon = "Interface\\Icons\\INV_Misc_Map_01" },
+	{ key = "helpers", group = "quests", title = "Helpers", sub = "Bags, rewards, flights", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
+	{ key = "guidesteps", group = "guide", title = "Guide", sub = "RestedXP steps", icon = "Interface\\Icons\\INV_Misc_Book_09" },
+	{ key = "arrow", group = "guide", title = "Arrow", sub = "Waypoint arrow", icon = "Interface\\Icons\\Ability_Hunter_Pathfinding" },
+	{ key = "overview", group = "stats", title = "Overview", sub = "Your quests in numbers", icon = "Interface\\Icons\\INV_Misc_Coin_02" },
+	{ key = "run", group = "stats", title = "Run analysis", sub = "Where the time went", icon = "Interface\\Icons\\INV_Misc_PocketWatch_01" },
+	{ key = "splits", group = "stats", title = "Level splits", sub = "Time per level", icon = "Interface\\Icons\\Spell_Holy_BorrowedTime" },
+	{ key = "profiles", group = "addon", title = "Profiles", sub = "Save, share, import", icon = "Interface\\Icons\\INV_Misc_Book_11" },
+}
+local sectionByKey = {}
+for _, s in ipairs(SECTIONS) do sectionByKey[s.key] = s end
+-- which section each page is a tab of
+local PAGE_SECTION = {
+	main = "basics",
+	text = "look", sizing = "look", background = "look",
+	questlist = "questlist", zoneheaders = "questlist",
+	titles = "questlines", tooltips = "questlines",
+	tracking = "tracking",
+	helpers = "helpers", world = "helpers",
+	guidetracker = "guidesteps", guide = "guidesteps", orphans = "guidesteps",
+	arrow = "arrow",
+	statsoverview = "overview", statsoptions = "overview",
+	statsrun = "run",
+	statssplits = "splits",
+	profiles = "profiles",
 }
 local pages, pageByKey = {}, {}
+-- group: the older group name ("quests", "guide", "window", "stats"), still what db.configTab holds
 local function page(key, group, title)
-	local p = { key = key, group = group, title = title }
+	local p = { key = key, group = group, title = title, section = PAGE_SECTION[key] or "basics" }
 	pages[#pages + 1] = p
 	pageByKey[key] = p
 	declaringPage = key
@@ -292,8 +335,12 @@ end
 
 local declared = {}
 local function declare(item) item.page = declaringPage; declared[#declared + 1] = item end
--- a sub-heading inside a page (e.g. "Upcoming steps")
-local function heading(label) declare({ kind = "heading", label = label, full = true }) end
+-- a card inside a page (e.g. "Upcoming steps"); folded: starts folded (fine-tune settings)
+local function heading(label, folded) declare({ kind = "heading", label = label, full = true, foldDefault = folded and true or nil }) end
+-- a grey help line under the last row's name
+local function help(text) local item = declared[#declared]; if item then item.sub = text end end
+-- a widget drawn by another file (the statistics): make(holder, kit) -> { draw(width) -> height, refresh() }
+local function custom(label, make, live) declare({ kind = "custom", label = label, make = make, live = live, full = true }) end
 -- an on/off switch; sub: an optional grey second line under the label
 local function check(label, get, set, enabled, indent, sub)
 	declare({ kind = "check", label = label, get = get, set = set, enabled = enabled, indent = indent, sub = sub })
@@ -1134,6 +1181,26 @@ local function buildNote(item, parent)
 	item.setEnabled = function() end
 end
 
+-- A widget of another file (Stats.lua): it draws itself in a holder as wide as the card
+local function buildCustom(item, parent)
+	local holder = CreateFrame("Frame", nil, parent)
+	local ok, widget = pcall(item.make, holder, api.themeKit)
+	if not ok then geterrorhandler()(widget); widget = nil end
+	widget = type(widget) == "table" and widget or { draw = function() return 1 end }
+	item.place = function(x, y, w)
+		holder:ClearAllPoints()
+		holder:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
+		local okDraw, h = pcall(widget.draw, w)
+		if not okDraw then geterrorhandler()(h); h = 1 end
+		h = math.max(tonumber(h) or 1, 1)
+		holder:SetSize(math.max(w, 1), h)
+		item.height = h + 8
+	end
+	item.setShown = function(on) holder:SetShown(on) end
+	item.refresh = function() if widget.refresh then pcall(widget.refresh) end end
+	item.setEnabled = function() end
+end
+
 -- Label/value rows read from item.read() on every refresh (and once a second while its page is shown).
 local function buildStatus(item, parent)
 	local holder = CreateFrame("Frame", nil, parent)
@@ -1535,11 +1602,108 @@ local function query()
 	return (searchBox and searchBox:GetText() or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
 end
 
+-- Cards: drawn on the scroll child itself (its own textures sit under the rows' labels, which are its font strings);
+-- the header is a transparent button that folds the card. Folded state: db.configFolded["page:heading"].
+local CARD_PAD, CARD_GAP = 12, 10
+local cardPool, cardsUsed = {}, 0
+local function foldKey(pageKey, label) return tostring(pageKey) .. ":" .. tostring(label) end
+local function isFolded(pageKey, label, default)
+	local saved = ns.db and type(ns.db.configFolded) == "table" and ns.db.configFolded[foldKey(pageKey, label)]
+	if saved == nil then return default and true or false end
+	return saved and true or false
+end
+local function setFolded(pageKey, label, on)
+	if not ns.db then return end
+	if type(ns.db.configFolded) ~= "table" then ns.db.configFolded = {} end
+	ns.db.configFolded[foldKey(pageKey, label)] = on and true or false
+end
+local function getCard(i)
+	local c = cardPool[i]
+	if c then return c end
+	c = {}
+	c.bg = content:CreateTexture(nil, "BACKGROUND", nil, -6)
+	gradient(c.bg, { 0.09, 0.075, 0.06 }, { 0.055, 0.045, 0.036 })
+	c.edges = {}
+	for e = 1, 4 do c.edges[e] = content:CreateTexture(nil, "BACKGROUND", nil, -5) end
+	for _, t in ipairs(c.edges) do t:SetColorTexture(C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1) end
+	c.accent = content:CreateTexture(nil, "BACKGROUND", nil, -4)
+	c.accent:SetColorTexture(C.on[1], C.on[2], C.on[3], 1)
+	c.line = content:CreateTexture(nil, "BACKGROUND", nil, -4)
+	hGradient(c.line, C.on, 0.35, 0)
+	c.title = text(content, "GameFontNormal", 1.05, C.on)
+	c.title:SetJustifyH("LEFT")
+	c.chevron = arrowTexture(content, false, 14)
+	c.button = CreateFrame("Button", nil, content)
+	local hl = c.button:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	hl:SetColorTexture(1, 0.9, 0.6, 0.05)
+	c.button:SetScript("OnClick", function(self)
+		if not self.pageKey then return end
+		local folded = not isFolded(self.pageKey, self.label, self.default)
+		setFolded(self.pageKey, self.label, folded)
+		sound(not folded)
+		layout()
+	end)
+	cardPool[i] = c
+	return c
+end
+local function hideCards(from)
+	for i = from, #cardPool do
+		local c = cardPool[i]
+		c.bg:Hide(); c.accent:Hide(); c.line:Hide(); c.title:Hide(); c.chevron:Hide(); c.button:Hide()
+		for _, t in ipairs(c.edges) do t:Hide() end
+	end
+end
+-- a card's header at y (its body is sized by closeCard); returns the header's height
+local function openCard(i, pageKey, label, default, y, w)
+	local c = getCard(i)
+	local k = ts()
+	local hh = math.floor(30 * k + 0.5)
+	local folded = isFolded(pageKey, label, default)
+	c.top, c.width, c.headH, c.folded = y, w, hh, folded
+	c.title:SetText(tostring(label or ""):upper())
+	c.title:ClearAllPoints()
+	c.title:SetPoint("LEFT", content, "TOPLEFT", CARD_PAD + 4, -y - hh / 2)
+	c.title:SetPoint("RIGHT", content, "TOPLEFT", w - 30, -y - hh / 2)
+	c.chevron:ClearAllPoints()
+	c.chevron:SetPoint("CENTER", content, "TOPLEFT", w - 16, -y - hh / 2)
+	if c.chevron.SetRotation then pcall(c.chevron.SetRotation, c.chevron, folded and 0 or -math.pi / 2) end
+	c.button:ClearAllPoints()
+	c.button:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+	c.button:SetSize(w, hh)
+	c.button.pageKey, c.button.label, c.button.default = pageKey, label, default
+	c.title:Show(); c.chevron:Show(); c.button:Show()
+	return hh, folded
+end
+local function closeCard(i, bottom)
+	local c = cardPool[i]
+	local top, w = c.top, c.width
+	local h = bottom - top
+	c.bg:ClearAllPoints()
+	c.bg:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
+	c.bg:SetSize(w, h)
+	local e = c.edges
+	e[1]:ClearAllPoints(); e[1]:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); e[1]:SetSize(w, 1)
+	e[2]:ClearAllPoints(); e[2]:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -bottom + 1); e[2]:SetSize(w, 1)
+	e[3]:ClearAllPoints(); e[3]:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); e[3]:SetSize(1, h)
+	e[4]:ClearAllPoints(); e[4]:SetPoint("TOPLEFT", content, "TOPLEFT", w - 1, -top); e[4]:SetSize(1, h)
+	c.accent:ClearAllPoints()
+	c.accent:SetPoint("TOPLEFT", content, "TOPLEFT", 1, -top - 7)
+	c.accent:SetSize(3, math.max(c.headH - 14, 4))
+	c.line:ClearAllPoints()
+	c.line:SetPoint("TOPLEFT", content, "TOPLEFT", 1, -top - c.headH)
+	c.line:SetSize(w - 2, 1)
+	c.line:SetShown(not c.folded)
+	c.bg:Show(); c.accent:Show()
+	for _, t in ipairs(e) do t:Show() end
+end
+
 layout = function()
 	if not frame or not content then return end
 	local q = query()
 	local width = math.max((scroll:GetWidth() or 400) - 6, 200)
 	local y = 0
+	local cardsShown = 0
 	-- hide only what leaves the view (hiding a shown picker would close its open list)
 	local visible = {}
 	if q == "" then
@@ -1562,16 +1726,47 @@ layout = function()
 	for _, item in ipairs(items) do if not visible[item] then item.setShown(false) end end
 	if q == "" then
 		local p = pageByKey[activePage]
-		pageTitle:SetText(p and p.title or "")
+		local s = p and sectionByKey[p.section]
+		pageTitle:SetText(s and s.title or (p and p.title) or "")
+		if frame.qtsPageSub then frame.qtsPageSub:SetText(s and s.sub or "") end
+		-- every row sits in a card: the page's first card is named after the page, each heading starts another
+		local inner = width - 2 * CARD_PAD
+		local folded = false
+		local function startCard(label, default)
+			if cardsShown > 0 then
+				local pad = folded and 0 or CARD_PAD / 2
+				closeCard(cardsShown, y + pad)
+				y = y + pad + CARD_GAP
+			end
+			cardsShown = cardsShown + 1
+			local hh
+			hh, folded = openCard(cardsShown, activePage, label, default, y, width)
+			y = y + hh + (folded and 0 or 6)
+		end
 		for _, item in ipairs(items) do
 			if visible[item] then
-				item.setShown(true)
-				item.place(0, y, width)
-				y = y + item.height
+				if item.kind == "heading" then
+					item.setShown(false)
+					startCard(item.label, item.foldDefault)
+				else
+					if cardsShown == 0 then startCard(p and (p.cardTitle or p.title) or "") end
+					if folded then
+						item.setShown(false)
+					else
+						item.setShown(true)
+						item.place(CARD_PAD, y, inner)
+						y = y + item.height
+					end
+				end
 			end
+		end
+		if cardsShown > 0 then
+			closeCard(cardsShown, y + (folded and 0 or CARD_PAD / 2))
+			y = y + (folded and 0 or CARD_PAD / 2)
 		end
 	else
 		pageTitle:SetText("Search results")
+		if frame.qtsPageSub then frame.qtsPageSub:SetText("Every setting whose name matches") end
 		for _, p in ipairs(pages) do
 			local list = {}
 			for _, item in ipairs(items) do
@@ -1591,6 +1786,8 @@ layout = function()
 		end
 		if y == 0 then pageTitle:SetText("No settings match") end
 	end
+	hideCards(cardsShown + 1)
+	if frame.qtsArrangeTabs then frame.qtsArrangeTabs(q == "") end
 	content:SetSize(width, math.max(y + 8, 10))
 	local range = math.max(y - scroll:GetHeight(), 0)
 	if scrollbar and scrollbar.qtsOwn then
@@ -1684,10 +1881,24 @@ local function declareItems(db)
 	wipe(pages); wipe(pageByKey)
 	local resetQuests = function() api.resetDefaults() end
 
-	-- Quest Tracker ------------------------------------------------------------------------------------------------
-	page("questlist", "quests", "Quest list")
+	-- Basics --------------------------------------------------------------------------------------------------------
+	page("main", "window", "Main")
 	check("Lock tracker position", function() return db.locked end, function(v) api.setLocked(v) end,
 		nil, nil, "unlocked: drag the tracker like a frame in Edit Mode")
+	check("Show minimap button", function() return not db.minimap.hide end,
+		function(v) if api.setMinimapShown then api.setMinimapShown(v) end end)
+	help("left-click opens this window")
+	heading("Setup and help")
+	buttons("Run the setup again", {
+		{ "Run the setup again", function() if api.showSetup then api.showSetup(true) end end, 180 },
+	})
+	note("The setup walks through every feature and lets you turn each on or off. Type |cffffd100/qt setup|r to open it from chat, |cffffd100/qt help|r for every command.")
+	pageByKey.main.reset = resetQuests
+	pageByKey.main.cardTitle = "Main settings"
+
+	-- Quest Tracker ------------------------------------------------------------------------------------------------
+	page("questlist", "quests", "List")
+	heading("Scrolling")
 	slider("Extra length", 0, 1500, 1, function(v) return v == 0 and "Auto" or ("%d px"):format(v) end,
 		function() return db.height end, function(v) db.height = v; api.applyLayout() end)
 	note("Extra length sets how tall the quest list is; 0 is automatic.")
@@ -1697,6 +1908,8 @@ local function declareItems(db)
 	slider("Scrollbar width", 2, 30, 1, "%d px", function() return db.scrollbarWidth or 10 end,
 		function(v) if api.setScrollbarWidth then api.setScrollbarWidth(v) end end, function() return db.scrollbar end, 24)
 	check("Usable quest items on the left", function() return db.itemsLeft ~= false end, function(v) api.setItemsLeft(v) end)
+	help("the quest's item button sits left of its title; off: at the right")
+	heading("Quest count")
 	-- the "31/40" quest count on the "Quests" header (MoreQuests.lua updateQuestCount)
 	local function countChanged() if api.updateQuestCount then pcall(api.updateQuestCount) end end
 	local function countOn() return db.questCount ~= false end
@@ -1716,6 +1929,7 @@ local function declareItems(db)
 			if not ok then geterrorhandler()(err) end
 		end
 	end
+	heading("\"Quests\" header", true)
 	color("\"Quests\" header and collapse button", function()
 		return type(db.questsHeaderColor) == "table" and db.questsHeaderColor or { 1, 0.82, 0, 1 }
 	end, function(v) db.questsHeaderColor = v; headerLook() end, nil, nil, 1)
@@ -1731,6 +1945,7 @@ local function declareItems(db)
 	check("Keep the \"Quests\" header at the top", function() return db.pinQuestsHeader end,
 		function(v) api.setPinQuestsHeader(v) end, nil, nil, "off: it scrolls with the quests")
 	-- R106-57: Blizzard's Professions section in its own box above the quest tracker, 2 recipes tall, then it scrolls
+	heading("Professions", true)
 	check("Professions beside the quest tracker", function() return db.profAbove ~= false end,
 		function(v) api.setProfessionsAbove(v) end, nil, nil, "tracked recipes in their own box left of the Quests header; 2 show, more scroll")
 	local profOn = function() return db.profAbove ~= false end
@@ -1745,7 +1960,9 @@ local function declareItems(db)
 		function(v) api.setProfScrollbarMouseover(v) end, function() return profOn() and db.profScrollbar ~= false end, 48)
 	slider("Professions scrollbar width", 2, 30, 1, "%d px", function() return db.profScrollbarWidth or 10 end,
 		function(v) api.setProfScrollbarWidth(v) end, function() return profOn() and db.profScrollbar ~= false end, 24)
+	heading("Position")
 	slider("Scroll speed", 10, 200, 1, "%d px", function() return db.step end, function(v) db.step = v end)
+	help("how far one turn of the mouse wheel scrolls")
 	buttons("Reset position Scroll to top", {
 		{ "Reset position", function() api.resetPosition() end, 120 },
 		{ "Scroll to top", function() SlashCmdList.ALLTRACKERRXP("reset") end, 120 },
@@ -1763,6 +1980,7 @@ local function declareItems(db)
 		function(v) db.zoneHeaderPadY = v; if api.applyZoneHeaders then api.applyZoneHeaders() end end, sortOn)
 	percent("Zone header size", 70, 200, function() return db.zoneHeaderScale end,
 		function(v) db.zoneHeaderScale = v; if api.applyZoneHeaders then api.applyZoneHeaders() end end, sortOn)
+	heading("Fine-tune", true)
 	slider("Zone header horizontal position", -20, 150, 1, "%+d px", function() return db.zoneHeaderX end,
 		function(v) db.zoneHeaderX = v; if api.applyZoneHeaders then api.applyZoneHeaders() end end, sortOn)
 	-- moves the header text only; "Space above zone headers" makes room for it
@@ -1770,7 +1988,8 @@ local function declareItems(db)
 		function(v) db.zoneHeaderY = v; if api.applyZoneHeaders then api.applyZoneHeaders() end end, sortOn)
 	pageByKey.zoneheaders.reset = resetQuests
 
-	page("titles", "quests", "Quest titles")
+	page("titles", "quests", "Lines")
+	heading("Text")
 	check("Word wrap titles and objectives", function() return db.wordWrap end,
 		function(v) db.wordWrap = v; if api.applyWrap then api.applyWrap() end end)
 	-- R106-48: a dark edge around the text (Fonts.lua keeps it like the font)
@@ -1780,6 +1999,7 @@ local function declareItems(db)
 	check("Outline quest objectives", function() return db.objectiveOutline end,
 		function(v) db.objectiveOutline = v and true or false; if api.applyFont then api.applyFont() end end, nil, nil,
 		"a thin dark edge around the objective lines")
+	heading("Distance")
 	check("Distance and direction after quest titles", function() return db.questDistance ~= false end,
 		function(v) db.questDistance = v; if api.applyQuestDistance then api.applyQuestDistance() end
 			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil,
@@ -1799,6 +2019,7 @@ local function declareItems(db)
 	percent("Arrow opacity", 10, 100, function() return db.distArrowAlpha or 1 end,
 		function(v) db.distArrowAlpha = v; applyDistance() end, distanceOn, 24)
 	-- R106-84: the dungeon card at the top (Dungeon.lua), with DungeonJournal's run tracker inside it
+	heading("Dungeon and reputation")
 	check("Dungeon card at the top", function() return db.dungeonCard ~= false end,
 		function(v) if api.setDungeonCard then api.setDungeonCard(v) end end, nil, nil,
 		"in a dungeon or raid: its name, the group's size and deaths, and DungeonJournal's tracker inside it")
@@ -1816,6 +2037,7 @@ local function declareItems(db)
 	check("Tracked reputation at the top", function() return db.repTrack ~= false end,
 		function(v) if api.setRepTrack then api.setRepTrack(v) end end, nil, nil,
 		"the faction you watch, with its bar, above the quests; the game's reputation bar is hidden while it shows")
+	heading("Progress bars")
 	check("Progress bars on objectives", function() return db.progressBars ~= false end,
 		function(v) db.progressBars = v; if api.applyProgressBars then api.applyProgressBars() end
 			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil,
@@ -1829,16 +2051,20 @@ local function declareItems(db)
 		function(v) db.progressBarUnder = v; if api.applyProgressBars then api.applyProgressBars() end
 			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
 		function() return db.progressBars ~= false end, 24, "on a line of its own under the text, not at its right")
+	heading("Rewards")
 	check("Experience reward after titles", function() return db.showXP end, function(v) api.setReward("xp", v) end)
+	help("the experience the quest gives, after its title")
 	color("Experience colour", function() return db.xpColor or { 0.69, 0.53, 1 } end,
 		function(v) db.xpColor = v; if api.applyExtras then api.applyExtras() end end, function() return db.showXP end, 24)
 	check("Show xp orb", function() return db.xpOrb end,
 		function(v) db.xpOrb = v; if api.applyExtras then api.applyExtras() end end, function() return db.showXP end, 24)
 	check("Gold reward after titles", function() return db.showGold end, function(v) api.setReward("gold", v) end)
+	help("the money the quest gives, after its title")
 	check("Show coins instead", function() return db.goldCoins end,
 		function(v) db.goldCoins = v; if api.applyExtras then api.applyExtras() end end, function() return db.showGold end, 24)
 	-- the green check left of a finished quest's title (Extras.lua placeCheck)
 	local function checksOn() return db.completeCheck ~= false end
+	heading("Finished quests")
 	check("Checks on finished quests", checksOn,
 		function(v) db.completeCheck = v; if api.applyExtras then api.applyExtras() end
 			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil, "a green tick left of the title")
@@ -1855,6 +2081,7 @@ local function declareItems(db)
 	end, function(v) db.completeCheckColor = v; applyChecks() end, checksOn, 24, 1)
 	check("Outline the check", function() return db.completeCheckOutline end,
 		function(v) db.completeCheckOutline = v; applyChecks() end, checksOn, 24, "a thin dark edge, as the zone header outline")
+	heading("Icons")
 	check("Icon Classifications", function() return db.condense end,
 		function(v) db.condense = v; if api.applyExtras then api.applyExtras() end end, nil, nil,
 		"elite, group, dungeon, raid, PvP, added in WoW Forever")
@@ -1876,6 +2103,7 @@ local function declareItems(db)
 		function(v) db.iconAlpha = v; if api.applyExtras then api.applyExtras() end
 			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
 		function() return db.condense end, 24)
+	heading("Fine-tune", true)
 	slider("Spacing between quests", -10, 30, 1, "%+d px", function() return db.spacing end,
 		function(v) db.spacing = v; if api.applyExtras then api.applyExtras() end end)
 	slider("Quest titles horizontal position", -20, 150, 1, "%+d px", function() return db.questTitleX or 0 end,
@@ -1909,8 +2137,10 @@ local function declareItems(db)
 	pageByKey.tooltips.reset = resetQuests
 
 	page("tracking", "quests", "Tracking and sorting")
+	heading("What shows")
 	choice("Track", function() return TRACK_OPTIONS end, function() return trackGet(db) end,
 		function(v) trackSet(db, v) end)
+	help("which quests the tracker lists")
 	choice("Sort zones", function()
 		return { { "closest", "Closest quest first" }, { "alpha", "Alphabetical (A to Z)" } }
 	end, function() return db.zoneOrder or "closest" end,
@@ -1925,6 +2155,7 @@ local function declareItems(db)
 		function() return db.trackMode == "all" and db.zoneSort and not db.zoneFilter end, nil,
 		"other zones are folded under their header; click a zone to open it")
 	-- R106-95: Ctrl+left-click a quest: General message + Looking For Group listing (GroupFinder.lua)
+	heading("Extras")
 	check("Ctrl+click a quest: find a group", function() return db.questGroupFinder ~= false end,
 		function(v) db.questGroupFinder = v and true or false end, nil, nil,
 		"asks: LFM in General chat, a Looking For Group listing, or both; whisper 'inv' to join")
@@ -1954,14 +2185,14 @@ local function declareItems(db)
 	-- RXP Tracker: every /rt option and command (Objectives/Settings.lua) ----------------------------------------
 	local g = root.objectives.settings
 	if not g then
-		page("guidetracker", "guide", "Tracker settings")
+		page("guidetracker", "guide", "Steps")
 		note(root.standaloneObjectives
 			and "The separate AllObjectives RXP addon is running, so its settings are not shown here. Disable that addon in the AddOns list and /reload to use the built-in RXP Tracker."
 			or "RestedXP Guides is not available, so the guide settings cannot be shown.")
 	else
 		local resetGuide = function() g.reset() end
 		local function arrowOn() return g.get("arrowButton") end
-		page("guidetracker", "guide", "Tracker settings")
+		page("guidetracker", "guide", "Steps")
 		check("Show RestedXP steps in the tracker", function() return g.get("enabled") end,
 			function(v) g.setEnabled(v) end, nil, nil, "off brings back RestedXP's own windows")
 		check("NPC automation while RestedXP is hidden", function() return g.get("hiddenAutomation") end,
@@ -1982,8 +2213,10 @@ local function declareItems(db)
 		local function stepsFormat(v) return v >= allSteps and "All" or ("%d"):format(v) end
 		slider("Steps shown ahead", 0, allSteps, 1, stepsFormat,
 			function() return g.get("followingSteps") end, function(v) g.setSteps(v) end)
+		help("how many of the next steps are listed under the current one")
 		slider("Steps shown at once", 1, allSteps, 1, stepsFormat, function() return g.get("upcomingShown") or 2 end,
 			function(v) g.setUpcoming("upcomingShown", v) end)
+		help("the rest scroll with the mouse wheel")
 		-- the "N/M" step counter in the header (Header.lua)
 		local function countOn() return g.get("stepCountShown") ~= false end
 		check("Step counter (N/total)", countOn, function(v) g.setUpcoming("stepCountShown", v and true or false) end,
@@ -2009,10 +2242,10 @@ local function declareItems(db)
 			slider(name .. " vertical position", yR[1], yR[2], 1, "%+d px", function() return g.get(prefix .. "Y") or 0 end,
 				function(v) g.setUpcoming(prefix .. "Y", v) end)
 		end
-		heading("Current step(s)")
+		heading("Current step(s)", true)
 		lookSliders("current", "Current step")
 		-- upcoming steps scroll (Rows.lua): this many at once, the mouse wheel over them shows the rest
-		heading("Upcoming steps")
+		heading("Upcoming steps", true)
 		lookSliders("upcoming", "Upcoming steps")
 		check("Scrollbar", function() return g.get("upcomingScrollbar") ~= false end,
 			function(v) g.setUpcoming("upcomingScrollbar", v) end, nil, nil, "beside the upcoming steps when there are more to scroll")
@@ -2031,6 +2264,7 @@ local function declareItems(db)
 
 		page("arrow", "guide", "Waypoint arrow")
 		check("Use RestedXP's arrow as the objective button", arrowOn, function(v) g.setFlag("arrowButton", v) end)
+		help("click the arrow to use the step's item or target")
 		check("Small objective buttons around the arrow", function() return g.get("arrowSatellites") end,
 			function(v) g.setFlag("arrowSatellites", v) end, arrowOn, 24)
 		check("Collapse two or more into one +N badge", function() return g.get("arrowCollapse") end,
@@ -2041,6 +2275,7 @@ local function declareItems(db)
 				function(v) g.setArrowScale(v / 100) end)
 		end
 		-- colour of the arrow's body (the theme's when not chosen) and its opacity
+		heading("Colour and lock")
 		check("Custom arrow colour", function() return type(g.get("arrowColor")) == "table" end,
 			function(v) g.setUpcoming("arrowColor", v and { 0.45, 0.55, 0.62, 1 } or false) end)
 		color("Arrow colour", function()
@@ -2053,7 +2288,7 @@ local function declareItems(db)
 			function(v) g.setFlag("arrowLocked", v) end, function() return arrowOn() and not g.lockedByRestedXP() end)
 		pageByKey.arrow.reset = resetGuide
 
-		page("guide", "guide", "Themes & guide")
+		page("guide", "guide", "Themes and guide")
 		choice("Theme", function()
 			return { { "forever", "Forever Style (default)" }, { "rxp", "RXP Style" } }
 		end, function() return g.get("theme") == "rxp" and "rxp" or "forever" end, function(v) g.setTheme(v) end)
@@ -2137,7 +2372,7 @@ local function declareItems(db)
 	note("The font is used by the quest tracker, the RXP Tracker and this window.")
 	pageByKey.text.reset = resetQuests
 
-	page("sizing", "window", "Advanced")
+	page("sizing", "window", "Size and layer")
 	percent("General scale", 50, 150, function() return db.scale end, function(v) db.scale = v; api.applyScale() end)
 	-- both multiply the general scale (100% = same size as the general scale)
 	percent("RXP Tracker scale", 50, 150, function() return db.guideScale or 1 end,
@@ -2155,7 +2390,7 @@ local function declareItems(db)
 		function(v) db.widthExtra = v; api.applyWidth() end)
 	note("Extra width widens the tracker's frame. |cffff5a3cTo make text bigger or smaller use the scale sliders above (and the RXP Tracker's step scales in Tracker settings) instead, and turn on \"Word wrap titles and objectives\" (Quest titles) so long quest text wraps instead of being cut off.|r")
 	-- last on the page: it changes how the tracker stacks with every other window
-	heading("Layer")
+	heading("Layer", true)
 	note("|cffff5a3cWarning: only change this if you know what you're doing.|r It sets which windows the tracker draws above or below; a wrong value can hide the tracker behind other frames or put it over windows you need. 1-25 behind the minimap, 51-75 normal, 76 and up on top. The Defaults button on this page puts it back.")
 	slider("Layer", 1, 100, 1, "%d", function() return db.layer or api.currentLayerValue() end,
 		function(v) db.layer = v; api.applyLevel() end)
@@ -2267,10 +2502,12 @@ local function declareItems(db)
 		})
 	end
 
-	page("minimap", "window", "Minimap button")
-	check("Show minimap button", function() return not db.minimap.hide end,
-		function(v) if api.setMinimapShown then api.setMinimapShown(v) end end)
-	pageByKey.minimap.reset = resetQuests
+	-- Helpers and statistics (Helpers.lua, Stats.lua) -------------------------------------------------------------
+	local declareKit = { page = page, heading = heading, check = check, help = help, note = note, buttons = buttons,
+		choice = choice, slider = slider, custom = custom, input = input, statusBox = statusBox, pageByKey = pageByKey,
+		declared = declared, reset = resetQuests, refresh = function() api.refreshConfig(); scheduleLayout() end }
+	if api.declareHelperPages then api.declareHelperPages(declareKit) end
+	if api.declareStatsPages then api.declareStatsPages(declareKit) end
 
 	-- page names, shown above each page's settings while searching
 	for _, p in ipairs(pages) do
@@ -2309,51 +2546,71 @@ local function buildSidebar(f, top)
 	local rows = {} -- every header and entry, with its place in the list: { frame, top, bottom }
 	for _, group in ipairs(GROUPS) do
 		local list = {}
-		for _, p in ipairs(pages) do if p.group == group.key then list[#list + 1] = p end end
-		if #list > 0 then
-			local head = CreateFrame("Frame", nil, content)
-			local bg = head:CreateTexture(nil, "BACKGROUND")
-			bg:SetAllPoints()
-			gradient(bg, C.headTop, C.headBottom)
-			border(head, C.headEdge)
-			local icon
-			if group.icon then
-				icon = head:CreateTexture(nil, "ARTWORK")
-				icon:SetTexture(group.icon)
-				icon:SetPoint("LEFT", 8, 0)
+		for _, s in ipairs(SECTIONS) do
+			if s.group == group.key then
+				for _, p in ipairs(pages) do
+					if p.section == s.key then list[#list + 1] = s break end
+				end
 			end
-			local t = text(head, "GameFontNormalLarge", 1, C.headText)
+		end
+		if #list > 0 then
+			-- a group: its name in small gold capitals, as QuestMaster's sidebar
+			local head = CreateFrame("Frame", nil, content)
+			local t = text(head, "GameFontNormalSmall", 1.05, C.on)
 			t:SetJustifyH("LEFT")
 			t:SetText(group.title)
-			headers[#headers + 1] = { frame = head, text = t, icon = icon, group = group }
-			for _, p in ipairs(list) do
+			headers[#headers + 1] = { frame = head, text = t, group = group }
+			for _, s in ipairs(list) do
 				local b = CreateFrame("Button", nil, content)
 				b.sel = b:CreateTexture(nil, "BACKGROUND")
 				b.sel:SetAllPoints()
-				hGradient(b.sel, { 1, 0.82, 0 }, 0.24, 0.02)
+				hGradient(b.sel, { 1, 0.82, 0 }, 0.2, 0.02)
+				b.bar = b:CreateTexture(nil, "ARTWORK")
+				b.bar:SetColorTexture(C.on[1], C.on[2], C.on[3], 1)
+				b.bar:SetPoint("TOPLEFT", 0, -3)
+				b.bar:SetPoint("BOTTOMLEFT", 0, 3)
+				b.bar:SetWidth(3)
 				local hl = b:CreateTexture(nil, "HIGHLIGHT")
 				hl:SetAllPoints()
 				hGradient(hl, { 1, 0.9, 0.6 }, 0.1, 0.0)
-				b.text = text(b, "GameFontNormal", 1.15)
-				b.text:SetPoint("LEFT", 28, 0)
-				b.text:SetPoint("RIGHT", -4, 0)
+				b.icon = b:CreateTexture(nil, "ARTWORK")
+				b.icon:SetTexture(s.icon)
+				b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+				b.text = text(b, "GameFontNormal", 1.12)
 				b.text:SetJustifyH("LEFT")
-				b.text:SetWordWrap(true)
-				b.text:SetText(p.title)
+				b.text:SetWordWrap(false)
+				b.text:SetText(s.title)
+				b.sub = text(b, "GameFontDisableSmall", 1.0)
+				b.sub:SetJustifyH("LEFT")
+				b.sub:SetWordWrap(false)
+				b.sub:SetText(s.sub or "")
 				b:SetScript("OnClick", function()
 					if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then pcall(PlaySound, SOUNDKIT.IG_CHARACTER_INFO_TAB) end
-					selectPage(p.key)
+					selectPage(s.key)
 				end)
-				-- greyed (still clickable, the page still opens) when the page does not apply now: p.dimmed()
+				-- greyed (still clickable) when none of its pages applies now (p.dimmed())
+				b.isDim = function()
+					local any, all = false, true
+					for _, p in ipairs(pages) do
+						if p.section == s.key then
+							any = true
+							if not (p.dimmed and p.dimmed()) then all = false end
+						end
+					end
+					return any and all
+				end
 				b.setSelected = function(on)
 					b.selected = on
 					b.sel:SetShown(on)
-					local dim = p.dimmed and p.dimmed()
+					b.bar:SetShown(on)
+					local dim = b.isDim()
 					if dim then b.text:SetTextColor(0.5, 0.5, 0.5)
-					elseif on then b.text:SetTextColor(1, 1, 1) else b.text:SetTextColor(1, 0.82, 0) end
+					elseif on then b.text:SetTextColor(1, 1, 1) else b.text:SetTextColor(C.headText[1], C.headText[2], C.headText[3]) end
+					if b.icon.SetDesaturated then b.icon:SetDesaturated(dim and true or false) end
+					b.icon:SetAlpha(dim and 0.5 or 1)
 				end
-				b.page = p
-				nav[p.key] = b
+				b.section = s
+				nav[s.key] = b
 				entries[#entries + 1] = { frame = b, head = head }
 			end
 		end
@@ -2361,57 +2618,56 @@ local function buildSidebar(f, top)
 	sidebar.arrange = function()
 		wipe(rows)
 		local k = ts()
-		sidebar:SetWidth(sidebarWidth())
+		local sw = sidebarWidth()
+		sidebar:SetWidth(sw)
 		local y = 0
 		local lastHead
 		for _, e in ipairs(entries) do
 			if e.head ~= lastHead then
-				if lastHead then y = y + 14 end
+				if lastHead then y = y + 8 end
 				for _, h in ipairs(headers) do
 					if h.frame == e.head then
-						local hh = math.floor(30 * k + 0.5)
+						local hh = math.floor(20 * k + 0.5)
 						h.frame:ClearAllPoints()
 						h.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
-						rows[#rows + 1] = { h.frame, y, y + hh }
-						h.frame:SetSize(sidebarWidth(), hh)
-						if h.icon then h.icon:SetSize(hh - 10, hh - 10) end
+						h.frame:SetSize(sw, hh)
 						h.text:ClearAllPoints()
-						h.text:SetPoint("LEFT", h.icon and (hh + 2) or 12, 0)
+						h.text:SetPoint("BOTTOMLEFT", 10, 2)
 						h.text:SetPoint("RIGHT", -6, 0)
+						rows[#rows + 1] = { h.frame, y, y + hh }
 						y = y + hh
 					end
 				end
 				lastHead = e.head
 			end
 			local b = e.frame
-			b:SetWidth(sidebarWidth())
-			b.text:SetHeight(0)
-			local bh = math.max(math.floor(26 * k + 0.5), math.ceil((b.text:GetStringHeight() or 14) + 8))
+			local iconSize = math.floor(20 * k + 0.5)
+			b:SetWidth(sw)
+			b.icon:SetSize(iconSize, iconSize)
+			b.icon:ClearAllPoints()
+			b.icon:SetPoint("LEFT", 10, 0)
+			local textH = (b.text:GetStringHeight() or 14) + 1 + (b.sub:GetStringHeight() or 10)
+			local bh = math.max(math.floor(38 * k + 0.5), math.ceil(textH + 10))
 			b:SetHeight(bh)
+			b.text:ClearAllPoints()
+			b.text:SetPoint("TOPLEFT", b, "TOPLEFT", 10 + iconSize + 8, -math.floor((bh - textH) / 2))
+			b.text:SetPoint("RIGHT", -4, 0)
+			b.sub:ClearAllPoints()
+			b.sub:SetPoint("TOPLEFT", b.text, "BOTTOMLEFT", 0, -1)
+			b.sub:SetPoint("RIGHT", -4, 0)
 			b:ClearAllPoints()
 			b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
 			rows[#rows + 1] = { b, y, y + bh }
 			y = y + bh
 		end
-		content:SetSize(sidebarWidth(), math.max(y, 1))
+		content:SetSize(sw, math.max(y, 1))
 		sidebar.fit()
 	end
-	-- grey the pages that do not apply now (and a group header whose pages all do not)
+	-- grey the sections that do not apply now
 	sidebar.refreshDim = function()
-		local groupDim = {}
 		for _, e in ipairs(entries) do
 			local b = e.frame
 			if b.setSelected then b.setSelected(b.selected and true or false) end
-			local dim = b.page and b.page.dimmed and b.page.dimmed() and true or false
-			if groupDim[e.head] == nil then groupDim[e.head] = dim else groupDim[e.head] = groupDim[e.head] and dim end
-		end
-		for _, h in ipairs(headers) do
-			local dim = groupDim[h.frame]
-			if dim then h.text:SetTextColor(0.5, 0.5, 0.5) else h.text:SetTextColor(C.headText[1], C.headText[2], C.headText[3]) end
-			if h.icon then
-				if h.icon.SetDesaturated then h.icon:SetDesaturated(dim and true or false) end
-				h.icon:SetAlpha(dim and 0.5 or 1)
-			end
 		end
 	end
 	-- keep the scroll within the list, and show only the rows that fit in full
@@ -2754,9 +3010,88 @@ local function build()
 	end
 	reg(pageTitle)
 	pageTitle:SetTextColor(C.pageTitle[1], C.pageTitle[2], C.pageTitle[3])
-	pageTitle:SetPoint("TOPLEFT", 22, -14)
+	pageTitle:SetPoint("TOPLEFT", 22, -12)
 	pageTitle:SetPoint("RIGHT", panel, "RIGHT", -150, 0)
 	pageTitle:SetJustifyH("LEFT")
+	-- the section's grey line under its name
+	local pageSub = text(panel, "GameFontHighlightSmall", 1.1, C.subLabel)
+	pageSub:SetPoint("TOPLEFT", pageTitle, "BOTTOMLEFT", 0, -3)
+	pageSub:SetPoint("RIGHT", panel, "RIGHT", -150, 0)
+	pageSub:SetJustifyH("LEFT")
+	pageSub:SetWordWrap(false)
+	f.qtsPageSub = pageSub
+	-- the section's pages as tabs: gold pills, the open one filled
+	local tabs = {}
+	local tabRow = CreateFrame("Frame", nil, panel)
+	tabRow:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -60)
+	tabRow:SetPoint("RIGHT", panel, "RIGHT", -20, 0)
+	tabRow:SetHeight(24)
+	local function tabButton(i)
+		if tabs[i] then return tabs[i] end
+		local b = CreateFrame("Button", nil, tabRow)
+		local function pill(layer, sub)
+			return { left = circle(b, layer, sub), right = circle(b, layer, sub), mid = b:CreateTexture(nil, layer, nil, sub) }
+		end
+		b.edge, b.fill = pill("BORDER", 0), pill("ARTWORK", 0)
+		b.label = text(b, "GameFontNormal", 1.05)
+		b.label:SetPoint("CENTER")
+		b.place = function(h, active)
+			local function placePill(p, inset, c)
+				local d = h - 2 * inset
+				p.left:SetSize(d, d); p.left:ClearAllPoints(); p.left:SetPoint("LEFT", inset, 0)
+				p.right:SetSize(d, d); p.right:ClearAllPoints(); p.right:SetPoint("RIGHT", -inset, 0)
+				p.mid:ClearAllPoints()
+				p.mid:SetPoint("TOPLEFT", inset + d / 2, -inset)
+				p.mid:SetPoint("BOTTOMRIGHT", -(inset + d / 2), inset)
+				paint(p.left, c); paint(p.right, c); paint(p.mid, c)
+			end
+			placePill(b.edge, 0, active and { 0.55, 0.43, 0.18 } or C.ctrlEdge)
+			placePill(b.fill, 1, active and C.on or (b.hover and { 0.2, 0.17, 0.13 } or { 0.13, 0.11, 0.09 }))
+			if active then b.label:SetTextColor(0.1, 0.07, 0.03) else b.label:SetTextColor(C.value[1], C.value[2], C.value[3]) end
+		end
+		b:SetScript("OnEnter", function(self) self.hover = true; if frame.qtsArrangeTabs then frame.qtsArrangeTabs(true) end end)
+		b:SetScript("OnLeave", function(self) self.hover = false; if frame.qtsArrangeTabs then frame.qtsArrangeTabs(true) end end)
+		b:SetScript("OnClick", function(self)
+			if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then pcall(PlaySound, SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+			if self.pageKey then selectPage(self.pageKey) end
+		end)
+		tabs[i] = b
+		return b
+	end
+	local lastTabsShown
+	f.qtsArrangeTabs = function(show)
+		local p = pageByKey[activePage]
+		local list = {}
+		if show and p then
+			for _, other in ipairs(pages) do if other.section == p.section then list[#list + 1] = other end end
+		end
+		local shown = #list > 1
+		local k = ts()
+		local h = math.floor(22 * k + 0.5)
+		tabRow:SetHeight(h)
+		local x = 0
+		for i, other in ipairs(list) do
+			local b = tabButton(i)
+			b.pageKey = other.key
+			b.label:SetText(other.title)
+			local w = math.ceil((b.label:GetStringWidth() or 60) + 26 * k)
+			b:SetSize(w, h)
+			b:ClearAllPoints()
+			b:SetPoint("LEFT", tabRow, "LEFT", x, 0)
+			b.place(h, other.key == activePage)
+			b:SetShown(shown)
+			x = x + w + 6
+		end
+		for i = #list + 1, #tabs do tabs[i]:Hide() end
+		-- the page starts under the tabs, or right under the title without them
+		if lastTabsShown ~= shown then
+			lastTabsShown = shown
+			scroll:ClearAllPoints()
+			scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, shown and -(60 + h + 10) or -60)
+			scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 10)
+			scheduleLayout()
+		end
+	end
 	defaultsButton = makeButton(panel, "Defaults", 110, function()
 		-- only the settings this page shows
 		local p = pageByKey[activePage]
@@ -2788,7 +3123,7 @@ local function build()
 	-- scroll area: Forever's UIPanelScrollFrameTemplate (its scroll bar sits just right of the frame)
 	local nativeScroll
 	scroll, nativeScroll = create("ScrollFrame", "RXPForeverTrackerConfigScroll", panel, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, -54)
+	scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -60)
 	scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 10)
 	content = CreateFrame("Frame", nil, scroll)
 	content:SetSize(10, 10)
@@ -2923,6 +3258,7 @@ local function build()
 		elseif item.kind == "check" then buildCheck(item, content)
 		elseif item.kind == "color" then buildColor(item, content)
 		elseif item.kind == "note" then buildNote(item, content)
+		elseif item.kind == "custom" then buildCustom(item, content)
 		elseif item.kind == "status" then buildStatus(item, content)
 		elseif item.kind == "orphans" then buildOrphans(item, content)
 		elseif item.kind == "buttons" then buildButtons(item, content)
@@ -2939,7 +3275,9 @@ local function build()
 		if sinceStatus < 1 then return end
 		sinceStatus = 0
 		for _, item in ipairs(items) do
-			if (item.kind == "status" or item.kind == "orphans") and item.page == activePage then item.refresh(); scheduleLayout() end
+			if (item.kind == "status" or item.kind == "orphans" or (item.kind == "custom" and item.live)) and item.page == activePage then
+				item.refresh(); scheduleLayout()
+			end
 		end
 	end)
 	f:Hide() -- new frames start shown; toggleConfig decides when to show
@@ -2948,12 +3286,21 @@ end
 local HINTS = {
 	quests = "/qt off then /reload restores Blizzard's tracker.",
 	guide = "In chat: /qt toggle, 0-100 or all, arrow, satellites, badge, status, why.",
-	window = "/qt or /qtrxp opens this window.",
+	window = "/qt or /qtrxp opens this window.  /qt setup runs the first-time setup again.",
+	stats = "Counted for every character on this account while you play.",
 }
 
--- the first page of a group ("quests", "guide", "window"), or a page key
+-- the last page opened in each section (a section opens on it again)
+local lastInSection = {}
+-- a page key, a section key ("helpers"), or an older group key ("quests", "guide", "window", "minimap")
+local OLD_KEYS = { quests = "questlist", guide = "guidetracker", window = "text", minimap = "main" }
 local function resolvePage(key)
 	if pageByKey[key] then return key end
+	if sectionByKey[key] then
+		if lastInSection[key] and pageByKey[lastInSection[key]] then return lastInSection[key] end
+		for _, p in ipairs(pages) do if p.section == key then return p.key end end
+	end
+	if OLD_KEYS[key] and pageByKey[OLD_KEYS[key]] then return OLD_KEYS[key] end
 	for _, p in ipairs(pages) do if p.group == key then return p.key end end
 	return pages[1] and pages[1].key or "questlist"
 end
@@ -2965,7 +3312,9 @@ selectPage = function(key)
 		ns.db.configPage = key
 		ns.db.configTab = groupOf(key) -- "quests", "guide" or "window" (Shift-right-click on the tracker reads it)
 	end
-	for pageKey, b in pairs(nav) do b.setSelected(pageKey == key) end
+	local section = pageByKey[key] and pageByKey[key].section
+	if section then lastInSection[section] = key end
+	for sectionKey, b in pairs(nav) do b.setSelected(sectionKey == section) end
 	if footer then
 		local version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")
 		footer:SetText((version and ("Version " .. version .. "   ") or "") .. (HINTS[groupOf(key)] or ""))
@@ -2997,7 +3346,7 @@ function api.refreshConfig()
 end
 
 function api.toggleConfig()
-	if not frame then build(); selectPage(ns.db.configPage or ns.db.configTab or "questlist") end
+	if not frame then build(); selectPage(ns.db.configPage or ns.db.configTab or "main") end
 	if frame:IsShown() then
 		frame:Hide()
 	else
