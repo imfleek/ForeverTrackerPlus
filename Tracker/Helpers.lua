@@ -143,8 +143,37 @@ local function paintOldFrame(frame)
 		paint(button, bag, button:GetID())
 	end
 end
+-- Bag addons with their own windows built from the game's item slot template (ContainerFrameItemButtonTemplate): a
+-- slot's ID is its slot and its parent's ID its bag. EllesmereUI Bags: the frame EUI_Bags (EUI_MainBagFrame), redrawn
+-- by EUI_Bags:RefreshInventory (EllesmereUIBags/EUI_Bags_Refresh.lua, Grid.lua, List.lua).
+local OTHER_BAGS = { { frame = "EUI_Bags", method = "RefreshInventory" } }
+local function isItemButton(f)
+	return type(f) == "table" and (f.SetItemButtonTexture ~= nil or (f.GetObjectType and f:GetObjectType() == "ItemButton"))
+end
+local function paintTree(frame, depth)
+	if not (frame and frame.GetChildren) then return end
+	for _, child in ipairs({ frame:GetChildren() }) do
+		if isItemButton(child) then
+			if child:IsShown() then
+				local parent = child.GetParent and child:GetParent()
+				local bag = child.GetBagID and child:GetBagID() or (parent and parent.GetID and parent:GetID())
+				paint(child, bag, child.GetID and child:GetID())
+			end
+		elseif depth < 6 then
+			paintTree(child, depth + 1)
+		end
+	end
+end
+local function paintOtherBags()
+	for _, o in ipairs(OTHER_BAGS) do
+		local f = rawget(_G, o.frame)
+		if type(f) == "table" and f.IsShown and f:IsShown() then pcall(paintTree, f, 0) end
+	end
+end
+
 local function repaintBags()
 	neededCache = nil
+	paintOtherBags()
 	local box = rawget(_G, "ContainerFrameContainer")
 	for _, f in ipairs(box and box.ContainerFrames or {}) do if f:IsShown() then pcall(paintNewFrame, f) end end
 	local combined = rawget(_G, "ContainerFrameCombinedBags")
@@ -167,6 +196,14 @@ local function hookBags()
 		if not hookedFrames[f] and type(f.UpdateItems) == "function" then
 			hookedFrames[f] = true
 			hooksecurefunc(f, "UpdateItems", function(self) pcall(paintNewFrame, self) end)
+		end
+	end
+	for _, o in ipairs(OTHER_BAGS) do
+		local f = rawget(_G, o.frame)
+		if type(f) == "table" and not hookedFrames[o.frame] and type(f[o.method]) == "function" then
+			hookedFrames[o.frame] = true
+			hooksecurefunc(f, o.method, function() neededCache = nil; paintOtherBags() end)
+			if f.HookScript then f:HookScript("OnShow", function() hookBags(); repaintBags() end) end
 		end
 	end
 	if not hookedFrames.old and type(rawget(_G, "ContainerFrame_Update")) == "function" then
