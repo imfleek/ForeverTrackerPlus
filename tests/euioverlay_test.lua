@@ -25,6 +25,7 @@ function eui:RefreshInventory()
 	for i, b in ipairs(buttons) do for _, fn in pairs(painters) do fn(b, slots[i]) end end
 end
 local objective = "Linen Cloth: 3/10"
+local questsInLog = 1
 local ns = { api = {}, onLogin = {}, db = {} }
 local env = setmetatable({
 	CreateFrame = function() return setmetatable({}, { __index = function() return function() end end }) end,
@@ -32,7 +33,7 @@ local env = setmetatable({
 	hooksecurefunc = function() end,
 	C_Container = { GetContainerItemID = function(bag, slot) return items[bag] and items[bag][slot] end },
 	C_Item = { GetItemNameByID = function(id) return id == 2589 and "Linen Cloth" or "Rock" end },
-	C_QuestLog = { GetNumQuestLogEntries = function() return 1 end,
+	C_QuestLog = { GetNumQuestLogEntries = function() return questsInLog end,
 		GetInfo = function() return { title = "Cloth for the Tailor", isHeader = false } end },
 	GetNumQuestLeaderBoards = function() return 1 end,
 	GetQuestLogLeaderBoard = function() return objective, "item", objective:find("10/10", 1, true) ~= nil end,
@@ -51,12 +52,18 @@ check("other item: no mark", #buttons[2]._textOverlay.textures == 0)
 items[0][1], items[0][2] = 1234, 2589
 eui:RefreshInventory()
 check("after a re-sort the mark follows the item", not m1.shown and buttons[2]._textOverlay.textures[1].shown)
--- the quest is done: the next repaint asks EllesmereUI to redraw, and the mark goes
+-- the objective is finished (10/10): the items are still needed to turn the quest in, so the mark stays
 objective = "Linen Cloth: 10/10"
 local before = refreshes
 ns.api.repaintBagMarks()
+check("finished objective: nothing changed, no redraw", refreshes == before)
+eui:RefreshInventory(); before = refreshes
+check("finished objective: mark stays until the quest is turned in", buttons[2]._textOverlay.textures[1].shown)
+-- turned in: the quest leaves the log, the next repaint asks EllesmereUI to redraw, and the mark goes
+questsInLog = 0
+ns.api.repaintBagMarks()
 check("needed items changed: EllesmereUI redraws", refreshes == before + 1)
-check("finished objective: mark gone", not buttons[2]._textOverlay.textures[1].shown)
+check("quest turned in: mark gone", not buttons[2]._textOverlay.textures[1].shown)
 ns.api.repaintBagMarks()
 check("nothing changed: no extra redraw", refreshes == before + 1)
 local lines = {}

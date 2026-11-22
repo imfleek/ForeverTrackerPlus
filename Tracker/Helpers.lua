@@ -127,7 +127,8 @@ end
 -- Quest items in the bags
 ---------------------------------------------------------------------------------------------------------------------
 local neededCache
--- item name -> quest title, for every unfinished "item" objective in the log
+-- item name -> quest title, for every "item" objective in the log. A finished one (12/12) counts too: the items are
+-- still needed to turn the quest in (3.1.1, user screenshot: no mark on a 12/12 quest item).
 local function neededItems()
 	if neededCache then return neededCache end
 	local out = {}
@@ -145,7 +146,7 @@ local function neededItems()
 		if title and not isHeader and GetNumQuestLeaderBoards and GetQuestLogLeaderBoard then
 			for j = 1, GetNumQuestLeaderBoards(i) or 0 do
 				local text, kind, finished = GetQuestLogLeaderBoard(j, i)
-				if kind == "item" and not finished and type(text) == "string" and not isSecret(text) then
+				if kind == "item" and type(text) == "string" and not isSecret(text) then
 					local name = text:match("^(.-):%s*%d+%s*/%s*%d+") or text:match("^%d+%s*/%s*%d+%s+(.+)$")
 					if name and name ~= "" then out[name] = title end
 				end
@@ -322,7 +323,9 @@ local function refreshEuiIfNeeded()
 	if not euiRegistered then return end
 	local key = neededKey()
 	if key == lastNeeded then return end
+	local first = lastNeeded == nil -- (EllesmereUI drew with these when we registered)
 	lastNeeded = key
+	if first then return end
 	local eui = rawget(_G, "EUI_Bags")
 	if eui and eui.IsVisible and eui:IsVisible() and eui.RefreshInventory then pcall(eui.RefreshInventory, eui) end
 end
@@ -952,7 +955,7 @@ function api.declareHelperPages(k)
 	k.heading("Bags")
 	k.check("Mark quest items in your bags", function() return db.bagMarks ~= false end,
 		function(v) db.bagMarks = v and true or false; repaintBags() end)
-	k.help("a quest sign on items a quest still needs; a warning if you sell or delete one")
+	k.help("a quest sign on items a quest in your log needs, until you turn it in; a warning if you sell or delete one")
 	k.heading("Rewards")
 	k.check("Mark the best reward to sell", function() return db.rewardHint ~= false end,
 		function(v) db.rewardHint = v and true or false; if v then checkClashes("rewardHint") end end)
