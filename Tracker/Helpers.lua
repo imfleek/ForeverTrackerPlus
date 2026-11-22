@@ -237,18 +237,37 @@ end
 -- Bag addons with their own windows built from the game's item slot template (ContainerFrameItemButtonTemplate): a
 -- slot's ID is its slot and its parent's ID its bag. EllesmereUI Bags: the frame EUI_Bags (EUI_MainBagFrame), redrawn
 -- by EUI_Bags:RefreshInventory (EllesmereUIBags/EUI_Bags_Refresh.lua, Grid.lua, List.lua).
-local OTHER_BAGS = { { frame = "EUI_Bags", method = "RefreshInventory" } }
+local OTHER_BAGS = { { frame = "EUI_Bags", method = "RefreshInventory" }, { frame = "EUI_BagsReagent", method = "RefreshInventory" } }
+-- an item slot: a button with an ID, an icon or the game's item button methods, in a parent that has an ID (the bag)
+local BUTTON_TYPES = { ItemButton = true, Button = true, CheckButton = true }
 local function isItemButton(f)
-	return type(f) == "table" and (f.SetItemButtonTexture ~= nil or (f.GetObjectType and f:GetObjectType() == "ItemButton"))
+	if type(f) ~= "table" or type(f.GetID) ~= "function" then return false end
+	if f.SetItemButtonTexture ~= nil or f.GetBagID ~= nil then return true end
+	local ok, kind = pcall(function() return f:GetObjectType() end)
+	if not (ok and BUTTON_TYPES[kind]) then return false end
+	if kind == "ItemButton" then return true end
+	return (f.icon or f.Icon or f.IconBorder) ~= nil
 end
+local bagStats -- filled while /qt bags looks (nil otherwise)
+local hookedFrames = {}
 local function paintTree(frame, depth)
 	if not (frame and frame.GetChildren) then return end
 	for _, child in ipairs({ frame:GetChildren() }) do
 		if isItemButton(child) then
 			if child:IsShown() then
 				local parent = child.GetParent and child:GetParent()
-				local bag = child.GetBagID and child:GetBagID() or (parent and parent.GetID and parent:GetID())
-				paint(child, bag, child.GetID and child:GetID())
+				local okB, bagId = pcall(function() return child.GetBagID and child:GetBagID() end)
+				local bag = okB and bagId or (parent and parent.GetID and parent:GetID())
+				local slot = child:GetID()
+				paint(child, bag, slot)
+				if bagStats then
+					bagStats.buttons = bagStats.buttons + 1
+					if bag and slot and slotItemId(bag, slot) then bagStats.withItem = bagStats.withItem + 1 end
+					if child.rxpftQuestMark and child.rxpftQuestMark:IsShown() then bagStats.marked = bagStats.marked + 1 end
+					if #bagStats.sample < 3 and bag and slot and slotItemId(bag, slot) then
+						bagStats.sample[#bagStats.sample + 1] = ("bag %s slot %s: %s"):format(tostring(bag), tostring(slot), tostring(itemName(slotItemId(bag, slot))))
+					end
+				end
 			end
 		elseif depth < 6 then
 			paintTree(child, depth + 1)
@@ -276,7 +295,30 @@ local function repaintBags()
 end
 api.repaintBagMarks = repaintBags
 
-local hookedFrames = {}
+-- /qt bags: what the bag marks see (open your bags first)
+function api.bagReport(out)
+	neededCache = nil
+	local needed, n = neededItems(), 0
+	local names = {}
+	for name in pairs(needed) do n = n + 1; if #names < 6 then names[#names + 1] = name end end
+	out(("bag marks %s. Items your quests still need: %d%s"):format(opt("bagMarks") and "on" or "off", n,
+		n > 0 and (" (" .. table.concat(names, ", ") .. ")") or ""))
+	for _, o in ipairs(OTHER_BAGS) do
+		local f = rawget(_G, o.frame)
+		if type(f) == "table" then
+			bagStats = { buttons = 0, withItem = 0, marked = 0, sample = {} }
+			if f.IsShown and f:IsShown() then pcall(paintTree, f, 0) end
+			out(("%s: %s, hooked %s, slots found %d, with an item %d, marked %d"):format(o.frame,
+				f.IsShown and f:IsShown() and "open" or "closed", hookedFrames[o.frame] and "yes" or "no",
+				bagStats.buttons, bagStats.withItem, bagStats.marked))
+			for _, line in ipairs(bagStats.sample) do out("  " .. line) end
+			bagStats = nil
+		end
+	end
+	local box = rawget(_G, "ContainerFrameContainer")
+	out(("game bags: %s"):format(box and "new style" or (rawget(_G, "ContainerFrame1") and "old style" or "none")))
+end
+
 local function hookBags()
 	if not hooksecurefunc then return end
 	local box = rawget(_G, "ContainerFrameContainer")

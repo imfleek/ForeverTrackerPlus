@@ -2156,6 +2156,7 @@ local QT_HELP = {
 	{ "lock", "lock the tracker in place" },
 	{ "unlock", "unlock the tracker (drag it like a frame in Edit Mode)" },
 	{ "distance", "why a quest title shows or hides its distance arrow" },
+	{ "bags", "what the quest marks in your bags see (open your bags first)" },
 	{ "fontlog", "record the tracker's font changes for 10 s (open the map meanwhile), then show who made them" },
 	{ "reset", "scroll the tracker back to the top" },
 	{ "on", "turn the quest tracker on (then /reload)" },
@@ -2216,6 +2217,8 @@ SlashCmdList.ALLTRACKERRXP = function(msg)
 	elseif cmd == "unlock" then ns.api.setLocked(false); say("tracker unlocked: drag it like a frame in Edit Mode")
 	elseif cmd == "distance" then
 		if ns.api.distanceReport then ns.api.distanceReport(say) end
+	elseif cmd == "bags" then
+		if ns.api.bagReport then ns.api.bagReport(say) end
 	elseif cmd == "fontlog" then
 		if ns.api.fontLog then ns.api.fontLog(say) end
 	elseif cmd == "reset" then ns.api.scrollToTop()

@@ -5,7 +5,8 @@ All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 ## 3.1.1
 
 ### Added
-- **Quest items in your bags** are now also marked in **EllesmereUI Bags**.
+- **Quest items in your bags** are now also marked in **EllesmereUI Bags**, its reagent bag included.
+- **/qt bags**: shows what the bag marks see (the items your quests need, the bag slots found and how many are marked), for a bug report.
 - **Talking to NPCs** (Settings > Helpers > NPCs, and a new setup step): accept quests, turn in finished quests, and skip an NPC's chat when it has only one plain chat option. All off until you turn them on. A reward choice and a turn-in that costs money are left to you. Repeatable, daily and grey quests, and dungeons and raids, each have their own switch (off). Hold Shift while you talk to an NPC: nothing is automatic that time.
 
 ### Changed

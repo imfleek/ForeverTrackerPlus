@@ -20,6 +20,7 @@ local function frame(kind)
 		function t:SetSize() end
 		function t:SetPoint() end
 		function t:SetShown(v) self.shown = v and true or false end
+		function t:IsShown() return self.shown end
 		return t
 	end
 	return f
@@ -65,5 +66,17 @@ check("after a re-sort the mark follows the item", not b1.rxpftQuestMark.shown a
 ns.db.bagMarks = false
 eui:RefreshInventory()
 check("switch off: no marks", not b2.rxpftQuestMark.shown)
+
+-- a slot the game reports as a plain Button (an icon, no item button methods): still found
+ns.db.bagMarks = true
+local b3 = add(slotParent, frame("Button")); b3:SetID(3); b3.icon = {}
+items[0][3] = 2589
+eui:RefreshInventory()
+check("a plain Button slot with an icon: marked", b3.rxpftQuestMark ~= nil and b3.rxpftQuestMark.shown)
+local lines = {}
+ns.api.bagReport(function(t) lines[#lines + 1] = t end)
+local all = table.concat(lines, " | ")
+check("/qt bags: names the needed item", all:find("Linen Cloth", 1, true) ~= nil)
+check("/qt bags: counts EllesmereUI's slots and marks", all:find("EUI_Bags: open, hooked yes, slots found 3, with an item 3, marked 2", 1, true) ~= nil or print(all))
 
 print(pass and "ALL OK" or "SOME FAILED")
