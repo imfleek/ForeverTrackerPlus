@@ -54,7 +54,7 @@ See the [changelog](CHANGELOG.md) for everything.
 - 📣 Big progress messages, and optional party chat lines.
 - 🔎 A card when a quest you can take is close by (Questie). Breadcrumb quests you do not need are left out.
 - 🤝 **Talking to NPCs** (off until you turn it on): accept quests, turn in finished ones, skip a one-option chat. Hold Shift to pause it.
-- 🫧 Breath warning, and ✈️ flight times learned for every route.
+- 🫧 Breath warning, and ✈️ flight times for every route (an estimate until you fly it).
 
 ### Guides
 - 🏆 **Legacy Challenges**: every challenge, with what is still to do.

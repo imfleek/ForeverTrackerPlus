@@ -11,7 +11,8 @@ All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 ### Changed
 - **Big progress messages:** the game's small yellow quest progress line at the top of the screen is now hidden while they are on, so the progress shows once. Other yellow messages still show. Switch: Helpers > On screen > "Hide the game's small yellow progress text".
 - **Big progress messages** also show an objective that finishes without a number.
-- **No doubles with other addons:** the best-reward coin stays off while OneForAll's reward coin is on. The flight time bar and the flight map time stay off while EllesmereUI's Flight Timer shows them. Flights are still learned.
+- **Flight times for every route:** a route you have not flown yet shows an estimate ("about") on the flight map and on the flight bar. It comes from the route's stops on the flight map. Each flight you take makes the estimates better. A flown route shows its real time.
+- **Two addons, one feature:** if OneForAll's reward coin or EllesmereUI's Flight Timer is on too, a window asks which one to keep. "Use ours" turns off that addon's feature. "Keep theirs" turns off ours. EllesmereUI's flight map time has no switch, so our time on the flight map stays hidden while EllesmereUI Forever Essentials is loaded.
 
 ### Fixed
 - **Party switches:** "Say each quest step in party chat" (Helpers > On screen) and "Show party progress" (Quest lines) no longer change each other. They used one saved setting.

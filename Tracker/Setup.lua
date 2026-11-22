@@ -81,8 +81,8 @@ local function buildSteps()
 	out[#out + 1] = { title = "Helpers", text = "Small helpers while you quest.", rows = list(
 		row("Quest items in your bags", "a quest sign on items a quest needs, and a warning if you sell or delete one",
 			function() return d.bagMarks ~= false end, function(v) d.bagMarks = v; call(api.repaintBagMarks) end),
-		row("Best reward to sell", "a gold coin on the quest reward that sells for the most (off while OneForAll's coin is on)",
-			function() return d.rewardHint ~= false end, function(v) d.rewardHint = v end),
+		row("Best reward to sell", "a gold coin on the quest reward that sells for the most (asks if OneForAll's coin is on too)",
+			function() return d.rewardHint ~= false end, function(v) d.rewardHint = v; if v then call(api.checkAddonClashes, "rewardHint") end end),
 		row("Quest close by", "a card when a quest you can take is near (needs Questie)",
 			function() return d.nearbyCard ~= false end, function(v) d.nearbyCard = v end, questieLoaded() and true or false),
 		row("Leave out breadcrumb quests", "a quest that only sends you to a quest you already did or have",
@@ -117,8 +117,8 @@ local function buildSteps()
 	out[#out + 1] = { title = "World", text = "Helpers out in the world.", rows = list(
 		row("Breath warning", "red screen edges when breath or fatigue runs low",
 			function() return d.breathWarn ~= false end, function(v) d.breathWarn = v end),
-		row("Flight times", "learns each flight and shows the time left while flying (EllesmereUI's Flight Timer replaces it)",
-			function() return d.flightTimes ~= false end, function(v) d.flightTimes = v end),
+		row("Flight times", "a time for every route (an estimate until you fly it), and the time left while flying (asks if EllesmereUI's Flight Timer is on too)",
+			function() return d.flightTimes ~= false end, function(v) d.flightTimes = v; if v then call(api.checkAddonClashes, "flightTimes") end end),
 		row("Minimap button", "left-click opens the settings",
 			function() return not (d.minimap and d.minimap.hide) end, function(v) call(api.setMinimapShown, v) end)
 	) }

@@ -32,7 +32,7 @@ New in **3.1**: a quest item bar, big progress messages, a world marker over you
 - **Quest close by** (Questie): a card when a quest you can take is near. Breadcrumb quests you do not need are left out.
 - **Party chat** (off by default): say when a quest is done, or each step.
 - **Talking to NPCs** (off until you turn it on): accept quests, turn in finished ones, and skip a one-option chat. Hold Shift to pause it.
-- **Breath warning** and **flight times**.
+- **Breath warning** and **flight times** for every route (an estimate until you fly it).
 
 ## Guides
 

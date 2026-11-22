@@ -9,11 +9,11 @@
 --                   a flight, never a grey quest
 --   db.breathWarn   red pulsing screen edges when breath or fatigue has 10 seconds or less left
 --   db.flightTimes  learns how long each flight takes (account-wide, db.flightLog) and shows the time left while
---                   flying, and the time on the flight map's tooltip
--- 3.1.1: when another addon already shows the same thing, ours steps aside (no two coins, no two flight bars):
---   OneForAll's "questSellCoin" (on unless switched off) replaces our reward coin; EllesmereUI Forever Essentials'
---   Flight Timer (on unless switched off) replaces our flight bar, and its flight map time (always on) our tooltip
---   line. Flights are still learned.
+--                   flying, and the time on the flight map's tooltip; a route not flown yet gets an estimate from the
+--                   flight map ("about"), and every learned flight makes the estimates better (db.flightSpeed)
+-- 3.1.1: when another addon shows the same thing (OneForAll's reward coin, EllesmereUI Forever Essentials' Flight
+--   Timer), the player is asked which one to keep (CLASHES below). EllesmereUI's flight map time has no switch, so our
+--   tooltip line steps aside while that addon is loaded.
 -- CONSTRAINT: secure hooks only (hooksecurefunc runs after the game's function and cannot taint it); every event is
 -- registered in a pcall (an unknown event errors on Forever) and every global is checked before use.
 local ADDON, root = ...; local ns = root.tracker
@@ -30,25 +30,79 @@ local function loaded(name)
 	return type(f) == "function" and f(name) and true or false
 end
 local function tbl(t, k) return type(t) == "table" and type(t[k]) == "table" and t[k] or nil end
-local OTHERS = {
-	rewardHint = function()
-		if not loaded("OneForAll") then return end
-		local d = tbl(rawget(_G, "OneForAllDB"), "qol")
-		if not d or d.questSellCoin ~= false then return "OneForAll" end
-	end,
-	flightBar = function()
-		if not loaded("EllesmereUIForeverEssentials") then return end
-		local c = tbl(rawget(_G, "EllesmereUIDB"), "flightTimer")
-		if not c or c.enabled ~= false then return "EllesmereUI" end
-	end,
-	flightTip = function() if loaded("EllesmereUIForeverEssentials") then return "EllesmereUI" end end,
+-- Two addons showing the same thing: the player is asked once at login (and when our switch is turned on) whether to
+-- turn the other addon's feature off and use ours. "Use ours" writes the other addon's own saved switch (both read it
+-- live); "Keep theirs" turns our switch off. Nothing is asked again while one of the two is off.
+local CLASHES = {
+	{ key = "rewardHint", addon = "OneForAll",
+		text = "OneForAll also puts a gold coin on the best quest reward. You see two coins.\n\nTurn off OneForAll's coin and use ours?",
+		theirsOn = function()
+			local d = tbl(rawget(_G, "OneForAllDB"), "qol")
+			return not d or d.questSellCoin ~= false
+		end,
+		theirsOff = function()
+			local t = rawget(_G, "OneForAllDB")
+			if type(t) ~= "table" then return false end
+			t.qol = type(t.qol) == "table" and t.qol or {}
+			t.qol.questSellCoin = false
+			return true
+		end },
+	{ key = "flightTimes", addon = "EllesmereUIForeverEssentials",
+		text = "EllesmereUI's Flight Timer also shows a bar while you fly. You see two bars.\n\nTurn off EllesmereUI's Flight Timer and use ours?",
+		theirsOn = function()
+			local c = tbl(rawget(_G, "EllesmereUIDB"), "flightTimer")
+			return not c or c.enabled ~= false
+		end,
+		theirsOff = function()
+			local t = rawget(_G, "EllesmereUIDB")
+			if type(t) ~= "table" then return false end
+			t.flightTimer = type(t.flightTimer) == "table" and t.flightTimer or {}
+			t.flightTimer.enabled = false
+			return true
+		end },
 }
--- the other addon's name when it already shows this (what = "rewardHint", "flightBar" or "flightTip"), else nil
-local function otherAddon(what)
-	local ok, who = pcall(OTHERS[what])
-	return ok and who or nil
+local function clashOn(c)
+	if not (opt(c.key) and loaded(c.addon)) then return false end
+	local ok, on = pcall(c.theirsOn)
+	return ok and on and true or false
 end
-api.helperOtherAddon = otherAddon
+local clashQueue, asking = {}, false
+local function askNext()
+	asking = false
+	local c = table.remove(clashQueue, 1)
+	while c and not clashOn(c) do c = table.remove(clashQueue, 1) end
+	if not c or type(StaticPopup_Show) ~= "function" then return end
+	asking = true
+	StaticPopup_Show("RXPFT_ADDON_CLASH", c.text, nil, c)
+end
+StaticPopupDialogs["RXPFT_ADDON_CLASH"] = {
+	text = "|cff33ff99RXP ForeverTracker|r\n\n%s", button1 = "Use ours", button2 = "Keep theirs",
+	OnAccept = function(_, c)
+		local ok, done = pcall(c.theirsOff)
+		if ok and done then say("turned off the same feature in " .. c.addon .. ". Ours is on.") end
+		askNext()
+	end,
+	OnCancel = function(_, c, reason)
+		if reason == "clicked" and db then db[c.key] = false; say("kept " .. c.addon .. "'s version. Ours is off (/qt to turn it on again).") end
+		askNext()
+	end,
+	timeout = 0, whileDead = 1, hideOnEscape = false, preferredIndex = 3,
+}
+-- ask about every clash that shows now (key: only that one)
+local function checkClashes(key)
+	for _, c in ipairs(CLASHES) do
+		if (not key or c.key == key) and clashOn(c) then
+			local queued = false
+			for _, q in ipairs(clashQueue) do if q == c then queued = true end end
+			if not queued then clashQueue[#clashQueue + 1] = c end
+		end
+	end
+	if not asking then askNext() end
+end
+api.checkAddonClashes = checkClashes
+api.addonClashOn = function(key) for _, c in ipairs(CLASHES) do if c.key == key then return clashOn(c) end end return false end
+-- EllesmereUI's flight map time is always on (it has no switch), so our tooltip line steps aside while it is loaded
+local function eluiMapTime() return loaded("EllesmereUIForeverEssentials") end
 local QUEST_SIGN = "Interface\\GossipFrame\\AvailableQuestIcon"
 
 local function onEvents(list, handler)
@@ -311,7 +365,7 @@ local pendingReward
 local function markReward()
 	clearRewardMarks()
 	pendingReward = nil
-	if not opt("rewardHint") or otherAddon("rewardHint") then return end
+	if not opt("rewardHint") then return end
 	if type(GetNumQuestChoices) ~= "function" or type(GetQuestItemLink) ~= "function" then return end
 	local n = GetNumQuestChoices() or 0
 	if n < 2 then return end
@@ -530,6 +584,46 @@ local function known(from, to)
 	return type(e) == "table" and tonumber(e.t) or nil
 end
 api.flightTime = known
+-- A route not flown yet: its stops on the flight map (GetNumRoutes, TaxiGetNodeSlot, TaxiNodePosition) give its length
+-- in yards (C_Map.GetWorldPosFromMapPos on GetTaxiMapID's map); time = length / speed. The speed starts at
+-- DEFAULT_SPEED and every flight learned corrects it (db.flightSpeed, account-wide). A learned time always wins.
+local DEFAULT_SPEED = 28 -- yards per second along the straight lines between the stops
+local function slotPos(slot)
+	local ok, x, y = pcall(TaxiNodePosition, slot)
+	if not (ok and type(x) == "number" and type(y) == "number") or isSecret(x) or isSecret(y) then return nil end
+	local map = type(GetTaxiMapID) == "function" and GetTaxiMapID()
+	if not (map and C_Map and C_Map.GetWorldPosFromMapPos and CreateVector2D) then return nil end
+	local ok2, _, pos = pcall(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(x, y))
+	if not (ok2 and type(pos) == "table" and pos.GetXY) then return nil end
+	local wx, wy = pos:GetXY()
+	if type(wx) ~= "number" or type(wy) ~= "number" then return nil end
+	return wx, wy
+end
+local function routeYards(index)
+	if type(GetNumRoutes) ~= "function" or type(TaxiGetNodeSlot) ~= "function" or type(TaxiNodePosition) ~= "function" then return nil end
+	local ok, hops = pcall(GetNumRoutes, index)
+	if not ok or type(hops) ~= "number" or hops < 1 or hops > 30 then return nil end
+	local total = 0
+	for h = 1, hops do
+		local okA, a = pcall(TaxiGetNodeSlot, index, h, true)
+		local okB, b = pcall(TaxiGetNodeSlot, index, h, false)
+		if not (okA and okB and type(a) == "number" and type(b) == "number") then return nil end
+		local x1, y1 = slotPos(a)
+		local x2, y2 = slotPos(b)
+		if not (x1 and x2) then return nil end
+		total = total + math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+	end
+	return total > 0 and total or nil
+end
+local function flightSpeed()
+	local v = db and tonumber(db.flightSpeed)
+	return v and v > 5 and v < 100 and v or DEFAULT_SPEED
+end
+local function estimate(index)
+	local yards = routeYards(index)
+	return yards and yards / flightSpeed() or nil
+end
+api.flightEstimate = estimate
 local function buildFlightBar()
 	if flightBar then return flightBar end
 	local kit = api.themeKit
@@ -548,9 +642,10 @@ local function buildFlightBar()
 		self.wait = 0
 		if not flight or not flight.started then self:Hide() return end
 		local gone = GetTime() - flight.started
-		local total = known(flight.from, flight.to)
+		local learned = known(flight.from, flight.to)
+		local total = learned or flight.estimate
 		if total then
-			self.text:SetText(("Flight to %s: %s left"):format(flight.to, api.statsClock and api.statsClock(math.max(total - gone, 0)) or math.floor(total - gone)))
+			self.text:SetText((learned and "Flight to %s: %s left" or "Flight to %s: about %s left"):format(flight.to, api.statsClock and api.statsClock(math.max(total - gone, 0)) or math.floor(total - gone)))
 		else
 			self.text:SetText(("Flight to %s: learning this flight (%s)"):format(flight.to, api.statsClock and api.statsClock(gone) or math.floor(gone)))
 		end
@@ -562,7 +657,10 @@ end
 local function onTakeNode(index)
 	if not opt("flightTimes") then return end
 	local to, from = nodeName(index), currentNode()
-	if to and from then flight = { from = from, to = to, chosen = GetTime() } end
+	if to and from then
+		local yards = routeYards(index)
+		flight = { from = from, to = to, chosen = GetTime(), yards = yards, estimate = yards and yards / flightSpeed() or nil }
+	end
 end
 local function onFlightEvent(event)
 	if not flight then return end
@@ -570,7 +668,7 @@ local function onFlightEvent(event)
 		C_Timer.After(0.5, function()
 			if flight and not flight.started and UnitOnTaxi and UnitOnTaxi("player") and GetTime() - flight.chosen < 15 then
 				flight.started = GetTime()
-				if opt("flightTimes") and not otherAddon("flightBar") then buildFlightBar():Show() end
+				if opt("flightTimes") then buildFlightBar():Show() end
 			end
 		end)
 	elseif event == "PLAYER_CONTROL_GAINED" then
@@ -583,6 +681,13 @@ local function onFlightEvent(event)
 				local n = type(e) == "table" and tonumber(e.n) or 0
 				local t = type(e) == "table" and tonumber(e.t) or took
 				db.flightLog[key] = { t = (t * n + took) / (n + 1), n = math.min(n + 1, 5) }
+				if flight.yards then
+					local measured = flight.yards / took
+					if measured > 5 and measured < 100 then
+						local old = tonumber(db.flightSpeed)
+						db.flightSpeed = old and (old * 0.7 + measured * 0.3) or measured
+					end
+				end
 			end
 			flight = nil
 			if flightBar then flightBar:Hide() end
@@ -590,10 +695,12 @@ local function onFlightEvent(event)
 	end
 end
 local function onNodeEnter(button)
-	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) or otherAddon("flightTip") then return end
+	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) or eluiMapTime() then return end
 	local t = known(currentNode(), nodeName(button:GetID()))
+	local about = false
+	if not t then t, about = estimate(button:GetID()), true end
 	if t then
-		GameTooltip:AddLine(("Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t)), 0.6, 0.85, 1)
+		GameTooltip:AddLine((about and "Flight time: about %s" or "Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t)), 0.6, 0.85, 1)
 		GameTooltip:Show()
 	end
 end
@@ -603,6 +710,7 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
+	if C_Timer and C_Timer.After then C_Timer.After(8, function() checkClashes() end) end
 	hookBags()
 	onEvents({ "QUEST_LOG_UPDATE", "BAG_UPDATE_DELAYED", "MERCHANT_SHOW", "MERCHANT_CLOSED", "BAG_OPEN" }, function(event)
 		if event == "MERCHANT_SHOW" then
@@ -649,8 +757,8 @@ function api.declareHelperPages(k)
 	k.help("a quest sign on items a quest still needs; a warning if you sell or delete one")
 	k.heading("Rewards")
 	k.check("Mark the best reward to sell", function() return db.rewardHint ~= false end,
-		function(v) db.rewardHint = v and true or false end)
-	k.help("on a quest's reward choice, a gold coin on the reward that sells for the most. Stays off while OneForAll's coin is on")
+		function(v) db.rewardHint = v and true or false; if v then checkClashes("rewardHint") end end)
+	k.help("on a quest's reward choice, a gold coin on the reward that sells for the most. If OneForAll's coin is on too, you are asked which one to keep")
 	k.heading("Nearby quests")
 	k.check("Card for a quest close by", function() return db.nearbyCard ~= false end,
 		function(v) db.nearbyCard = v and true or false; if not v and card then card:Hide() end end,
@@ -669,8 +777,8 @@ function api.declareHelperPages(k)
 	k.help("red pulsing screen edges when breath or fatigue has 10 seconds or less left")
 	k.heading("Flights")
 	k.check("Flight times", function() return db.flightTimes ~= false end,
-		function(v) db.flightTimes = v and true or false; if not v and flightBar then flightBar:Hide() end end)
-	k.help("learns each flight's time; shows the time left while flying, and the time on the flight map. EllesmereUI's Flight Timer replaces the display while it is on")
+		function(v) db.flightTimes = v and true or false; if not v and flightBar then flightBar:Hide() end; if v then checkClashes("flightTimes") end end)
+	k.help("every route has a time from the start: an estimate from the flight map (\"about\") until you fly it, then the real time. Shows the time left while flying, and the time on the flight map. If EllesmereUI's Flight Timer is on too, you are asked which one to keep")
 	k.statusBox("Flights learned", function()
 		local n = 0
 		for _ in pairs(db and type(db.flightLog) == "table" and db.flightLog or {}) do n = n + 1 end
