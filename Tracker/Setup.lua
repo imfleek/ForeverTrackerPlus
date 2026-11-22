@@ -117,7 +117,7 @@ local function buildSteps()
 	out[#out + 1] = { title = "World", text = "Helpers out in the world.", rows = list(
 		row("Breath warning", "red screen edges when breath or fatigue runs low",
 			function() return d.breathWarn ~= false end, function(v) d.breathWarn = v end),
-		row("Flight times", "a time for every route (an estimate until you fly it), and the time left while flying (asks if EllesmereUI's Flight Timer is on too)",
+		row("Flight times", "a time for every route, from the game's flight path data, and the time left while flying (asks if EllesmereUI's Flight Timer is on too)",
 			function() return d.flightTimes ~= false end, function(v) d.flightTimes = v; if v then call(api.checkAddonClashes, "flightTimes") end end),
 		row("Minimap button", "left-click opens the settings",
 			function() return not (d.minimap and d.minimap.hide) end, function(v) call(api.setMinimapShown, v) end)

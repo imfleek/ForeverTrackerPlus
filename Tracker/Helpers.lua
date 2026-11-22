@@ -595,7 +595,39 @@ api.flightTime = known
 -- A route not flown yet: its stops on the flight map (GetNumRoutes, TaxiGetNodeSlot, TaxiNodePosition) give its length
 -- in yards (C_Map.GetWorldPosFromMapPos on GetTaxiMapID's map); time = length / speed. The speed starts at
 -- DEFAULT_SPEED and every flight learned corrects it (db.flightSpeed, account-wide). A learned time always wins.
+-- 3.1.1 (R311-8): with the game's own path data (Tracker/FlightData.lua: each path's flown length, curves included) a
+-- route's length is exact: its hops' node IDs (C_TaxiMap.GetAllTaxiNodes) pick the paths. Its own speed
+-- (db.flightPathSpeed) starts at PATH_SPEED and is corrected by every flight on such a route; the map estimate above is
+-- left for a route the data does not have (a path the game added after the data was made).
 local DEFAULT_SPEED = 28 -- yards per second along the straight lines between the stops
+local PATH_SPEED = 30.5 -- yards per second along the flown path
+local slotNodes, slotNodesAt = nil, -1
+local function nodeIdOf(slot)
+	if not (C_TaxiMap and C_TaxiMap.GetAllTaxiNodes and GetTaxiMapID) then return nil end
+	if not slotNodes or GetTime() - slotNodesAt > 2 then
+		slotNodes, slotNodesAt = {}, GetTime()
+		local ok, list = pcall(C_TaxiMap.GetAllTaxiNodes, GetTaxiMapID())
+		for _, n in ipairs(ok and type(list) == "table" and list or {}) do
+			if type(n) == "table" and n.slotIndex and n.nodeID then slotNodes[n.slotIndex] = n.nodeID end
+		end
+	end
+	return slotNodes[slot]
+end
+-- exact flown yards and waits of the route to slot `index`, from the path data; nil if a hop is missing
+local function pathYards(index, hops)
+	local yards, waits = rawget(ns, "flightPathYards"), rawget(ns, "flightPathWaits") or {}
+	if type(yards) ~= "table" then return nil end
+	local total, wait = 0, 0
+	for h = 1, hops do
+		local okA, a = pcall(TaxiGetNodeSlot, index, h, true)
+		local okB, b = pcall(TaxiGetNodeSlot, index, h, false)
+		local na, nb = okA and nodeIdOf(a), okB and nodeIdOf(b)
+		local len = na and nb and yards[na * 10000 + nb]
+		if not len then return nil end
+		total, wait = total + len, wait + (tonumber(waits[na * 10000 + nb]) or 0)
+	end
+	return total > 0 and total or nil, wait
+end
 local function slotPos(slot)
 	local ok, x, y = pcall(TaxiNodePosition, slot)
 	if not (ok and type(x) == "number" and type(y) == "number") or isSecret(x) or isSecret(y) then return nil end
@@ -611,6 +643,8 @@ local function routeYards(index)
 	if type(GetNumRoutes) ~= "function" or type(TaxiGetNodeSlot) ~= "function" or type(TaxiNodePosition) ~= "function" then return nil end
 	local ok, hops = pcall(GetNumRoutes, index)
 	if not ok or type(hops) ~= "number" or hops < 1 or hops > 30 then return nil end
+	local exact, wait = pathYards(index, hops)
+	if exact then return exact, true, wait end
 	local total = 0
 	for h = 1, hops do
 		local okA, a = pcall(TaxiGetNodeSlot, index, h, true)
@@ -621,15 +655,19 @@ local function routeYards(index)
 		if not (x1 and x2) then return nil end
 		total = total + math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
 	end
-	return total > 0 and total or nil
+	return total > 0 and total or nil, false, 0
 end
-local function flightSpeed()
-	local v = db and tonumber(db.flightSpeed)
-	return v and v > 5 and v < 100 and v or DEFAULT_SPEED
+local function speedKey(exact) return exact and "flightPathSpeed" or "flightSpeed" end
+local function flightSpeed(exact)
+	local v = db and tonumber(db[speedKey(exact)])
+	return v and v > 5 and v < 100 and v or (exact and PATH_SPEED or DEFAULT_SPEED)
 end
+-- seconds, and whether it is close (path data and a speed corrected by at least one flight) or "about"
 local function estimate(index)
-	local yards = routeYards(index)
-	return yards and yards / flightSpeed() or nil
+	local yards, exact, wait = routeYards(index)
+	if not yards then return nil end
+	local close = exact and db and tonumber(db.flightPathSpeed) ~= nil
+	return yards / flightSpeed(exact) + (wait or 0), close
 end
 api.flightEstimate = estimate
 local function buildFlightBar()
@@ -653,7 +691,7 @@ local function buildFlightBar()
 		local learned = known(flight.from, flight.to)
 		local total = learned or flight.estimate
 		if total then
-			self.text:SetText((learned and "Flight to %s: %s left" or "Flight to %s: about %s left"):format(flight.to, api.statsClock and api.statsClock(math.max(total - gone, 0)) or math.floor(total - gone)))
+			self.text:SetText(((learned or flight.close) and "Flight to %s: %s left" or "Flight to %s: about %s left"):format(flight.to, api.statsClock and api.statsClock(math.max(total - gone, 0)) or math.floor(total - gone)))
 		else
 			self.text:SetText(("Flight to %s: learning this flight (%s)"):format(flight.to, api.statsClock and api.statsClock(gone) or math.floor(gone)))
 		end
@@ -666,8 +704,10 @@ local function onTakeNode(index)
 	if not opt("flightTimes") then return end
 	local to, from = nodeName(index), currentNode()
 	if to and from then
-		local yards = routeYards(index)
-		flight = { from = from, to = to, chosen = GetTime(), yards = yards, estimate = yards and yards / flightSpeed() or nil }
+		local yards, exact, wait = routeYards(index)
+		flight = { from = from, to = to, chosen = GetTime(), yards = yards, exact = exact, wait = wait or 0,
+			close = exact and tonumber(db.flightPathSpeed) ~= nil,
+			estimate = yards and (yards / flightSpeed(exact) + (wait or 0)) or nil }
 	end
 end
 local function onFlightEvent(event)
@@ -689,11 +729,12 @@ local function onFlightEvent(event)
 				local n = type(e) == "table" and tonumber(e.n) or 0
 				local t = type(e) == "table" and tonumber(e.t) or took
 				db.flightLog[key] = { t = (t * n + took) / (n + 1), n = math.min(n + 1, 5) }
-				if flight.yards then
-					local measured = flight.yards / took
+				if flight.yards and took - flight.wait > 5 then
+					local measured = flight.yards / (took - flight.wait)
 					if measured > 5 and measured < 100 then
-						local old = tonumber(db.flightSpeed)
-						db.flightSpeed = old and (old * 0.7 + measured * 0.3) or measured
+						local k = speedKey(flight.exact)
+						local old = tonumber(db[k])
+						db[k] = old and (old * 0.7 + measured * 0.3) or measured
 					end
 				end
 			end
@@ -705,7 +746,11 @@ end
 local function ourFlightText(button)
 	local t = known(currentNode(), nodeName(button:GetID()))
 	local about = false
-	if not t then t, about = estimate(button:GetID()), true end
+	if not t then
+		local close
+		t, close = estimate(button:GetID())
+		about = not close
+	end
 	if not t then return nil end
 	return (about and "Flight time: about %s" or "Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t))
 end
@@ -836,7 +881,7 @@ function api.declareHelperPages(k)
 	k.heading("Flights")
 	k.check("Flight times", function() return db.flightTimes ~= false end,
 		function(v) db.flightTimes = v and true or false; if not v and flightBar then flightBar:Hide() end; if v then checkClashes("flightTimes") end end)
-	k.help("every route has a time from the start: an estimate from the flight map (\"about\") until you fly it, then the real time. Shows the time left while flying, and the time on the flight map. If EllesmereUI's Flight Timer is on too, you are asked which one to keep")
+	k.help("every route has a time from the start, from the game's own flight path data; \"about\" until your first flight sets the speed. A route you flew shows its measured time. Shows the time left while flying, and the time on the flight map. If EllesmereUI's Flight Timer is on too, you are asked which one to keep")
 	k.statusBox("Flights learned", function()
 		local n = 0
 		for _ in pairs(db and type(db.flightLog) == "table" and db.flightLog or {}) do n = n + 1 end

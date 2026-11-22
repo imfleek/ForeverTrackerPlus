@@ -59,6 +59,7 @@ Tracker/InstanceCap.lua
 Tracker/Rares.lua
 Tracker/MoreQuests.lua
 Tracker/Stats.lua
+Tracker/FlightData.lua
 Tracker/Helpers.lua
 Tracker/Questing.lua
 Tracker/AutoQuest.lua

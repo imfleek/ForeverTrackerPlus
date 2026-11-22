@@ -61,4 +61,26 @@ check("flight learned: real time kept", api.flightTime("Here", "Middle") and mat
 check("speed corrected by the flight", math.abs((ns.db.flightSpeed or 0) - 20) < 0.01)
 check("route not flown now uses the new speed", math.abs(api.flightEstimate(3) - 1000 / 20) < 0.01)
 check("tooltip of a learned route: no 'about'", enter(2):find("about") == nil and enter(2):find("Flight time") ~= nil)
+
+-- R311-8: the game's path data: exact lengths by node ID (slot 1 = node 10, 2 = node 20, 3 = node 30)
+ns.flightPathYards = { [100020] = 600, [200030] = 900 }
+ns.flightPathWaits = { [200030] = 5 }
+env.C_TaxiMap = { GetAllTaxiNodes = function() return { { slotIndex = 1, nodeID = 10 }, { slotIndex = 2, nodeID = 20 }, { slotIndex = 3, nodeID = 30 } } end }
+now = 100
+local t2, close2 = api.flightEstimate(2)
+check("path data: exact length at the start path speed, marked about", math.abs(t2 - 600 / 30.5) < 0.01 and not close2)
+local t3 = api.flightEstimate(3)
+check("path data: both paths and the wait counted", math.abs(t3 - (1500 / 30.5 + 5)) < 0.01)
+ns.flightPathYards[200030] = nil
+check("a path missing from the data: the map estimate is used", math.abs(api.flightEstimate(3) - 1000 / 20) < 0.01)
+ns.flightPathYards[200030] = 900
+-- fly to Far (1500 yd, 5 s wait) in 55 s: path speed 30 yd/s
+now = 200; hooks.TakeTaxiNode(3)
+taxi = true; fire("PLAYER_CONTROL_LOST")
+now = 255; taxi = false; fire("PLAYER_CONTROL_GAINED")
+check("a flight on path data corrects the path speed (wait left out)", math.abs((ns.db.flightPathSpeed or 0) - 30) < 0.01)
+check("the map speed is not changed by it", math.abs(ns.db.flightSpeed - 20) < 0.01)
+local _, closeNow = api.flightEstimate(2)
+check("after that flight, path data times are no longer 'about'", closeNow == true)
+
 print(pass and "ALL OK" or "SOME FAILED")
