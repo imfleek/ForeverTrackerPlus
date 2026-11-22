@@ -5,6 +5,7 @@
 -- Both are written without Blizzard's Forever tracker source: if a field or reward function does not exist in the
 -- client, that part silently does nothing (see /qt debug).
 local ADDON, root = ...; local ns = root.tracker
+local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local db
@@ -2093,7 +2094,7 @@ function schedule()
 	timer = true
 	C_Timer.After(0.1, function()
 		timer = nil
-		xpcall(function() if apply() then cappedRelayout() end end, geterrorhandler())
+		xpcall(function() if timed("tracker extras", apply) then timed("tracker extras: layout", cappedRelayout) end end, geterrorhandler())
 	end)
 end
 

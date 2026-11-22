@@ -2,6 +2,11 @@
 
 All notable changes to ForeverTrackerPlus (called RXP ForeverTracker before 3.1.1). Newest first. Settings window: `/qt`.
 
+## 3.1.2
+
+### Added
+- **/qt lag**: finds what makes a short freeze when you accept a quest. Type it, then accept a quest. 4 seconds later it shows the longest frame, the time of each addon (with the game's script profiler on: `/console scriptProfile 1`, then /reload) and the time of our own main parts.
+
 ## 3.1.1
 
 ### Changed name

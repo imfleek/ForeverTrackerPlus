@@ -17,6 +17,7 @@
 -- CONSTRAINT: secure hooks only (hooksecurefunc runs after the game's function and cannot taint it); every event is
 -- registered in a pcall (an unknown event errors on Forever) and every global is checked before use.
 local ADDON, root = ...; local ns = root.tracker
+local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local db
@@ -923,7 +924,7 @@ ns.onLogin[#ns.onLogin + 1] = function()
 			-- 3.1.1 speed: a burst of quest log and bag changes repaints the bags once, 0.2 s later
 			if not repaintQueued then
 				repaintQueued = true
-				C_Timer.After(0.2, function() repaintQueued = false; hookBags(); repaintBags() end)
+				C_Timer.After(0.2, function() repaintQueued = false; timed("bag marks", function() hookBags(); repaintBags() end) end)
 			end
 		end
 	end)

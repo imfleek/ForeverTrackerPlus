@@ -11,6 +11,7 @@
 -- the bottom of the block above (SetHeight post-hook, the technique AllObjectives RXP uses) and the header text is a
 -- child of that block, so it scrolls and clips with the list. Nothing of Blizzard's is replaced.
 local ADDON, root = ...; local ns = root.tracker
+local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local db
@@ -691,8 +692,8 @@ local function schedule(delay, doSort)
 	C_Timer.After(delay or 0.3, function()
 		timer = nil
 		xpcall(function()
-			if sortRequested then sortRequested = false; sortWatches(true) end
-			if decorate() then relayout() end
+			if sortRequested then sortRequested = false; timed("zone sort", sortWatches, true) end
+			if timed("zone headers", decorate) then timed("zone headers: layout", relayout) end
 		end, geterrorhandler())
 	end)
 end
@@ -774,7 +775,7 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	if C_QuestLog.SortQuestWatches then
 		hooksecurefunc(C_QuestLog, "SortQuestWatches", function()
 			if busy then return end
-			local ok, err = pcall(sortWatches, true, true)
+			local ok, err = pcall(timed, "zone sort: after the game sorts", sortWatches, true, true)
 			if not ok then geterrorhandler()(err) end
 			schedule(0.1, false)
 		end)

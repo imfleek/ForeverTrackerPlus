@@ -3,7 +3,7 @@
 import subprocess, re, glob, sys
 root = sys.argv[1]
 known = set("""ipairs pairs type tostring tonumber math string table select pcall xpcall error assert unpack next rawget rawset
-setmetatable getmetatable print _G hooksecurefunc tinsert tremove wipe geterrorhandler securecallfunction issecretvalue
+setmetatable getmetatable print _G hooksecurefunc tinsert tremove wipe geterrorhandler securecallfunction issecretvalue debugprofilestop
 strsplit strtrim format date time floor max min abs debugstack issecurevariable strlower strupper tContains coroutine""".split())
 saved = {"ForeverTrackerPlusDB", "ForeverTrackerPlusGuideDB", "SLASH_ALLOBJECTIVESRXP1"}
 problems = 0

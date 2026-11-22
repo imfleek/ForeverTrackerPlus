@@ -6,6 +6,7 @@
 -- level, in difficulty colour) and objectives. It is anchored below the lowest Blizzard section, so it scrolls with
 -- the list, and Core's scroll range includes it (api.moreQuestsBottom). Plain frames only: nothing protected.
 local ADDON, root = ...; local ns = root.tracker
+local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local tracker = ObjectiveTrackerFrame
@@ -597,7 +598,7 @@ function schedule()
 	C_Timer.After(0.2, function()
 		pending = nil
 		xpcall(api.updateQuestCount, geterrorhandler())
-		xpcall(build, geterrorhandler())
+		xpcall(timed, geterrorhandler(), "other quests list", build)
 	end)
 end
 -- settings and other modules: always redraw (colours, fonts, zone header looks are not in the signature)

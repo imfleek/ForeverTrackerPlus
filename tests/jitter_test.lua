@@ -51,7 +51,7 @@ if capBody then
 	now = 2.5
 	check("after 2 s: re-layouts again", capped() == true and relayouts == 4)
 end
-check("the 0.1 s pass uses the limit", src:find("if apply() then cappedRelayout() end", 1, true) ~= nil)
+check("the 0.1 s pass uses the limit", src:find('if timed("tracker extras", apply) then timed("tracker extras: layout", cappedRelayout) end', 1, true) ~= nil)
 check("/qt debug shows the re-layouts", src:find("re-layouts from decorating", 1, true) ~= nil)
 
 check("the title: width, word wrap and line limit set again by Blizzard are ours again at once",

@@ -1,4 +1,5 @@
 local _, root = ...; local ns = root.objectives
+local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if not ns.rxp then return end
 
 local SCALE, DIM_ALPHA, TOLERANCE, MAX_BLOCKS = 0.85, 0.8, 0.01, 200
@@ -185,7 +186,7 @@ local function sink(module)
 end
 
 hooksecurefunc(QuestObjectiveTracker, "UpdateSingle", function(module, quest)
-	xpcall(mark, geterrorhandler(), module, quest)
+	xpcall(timed, geterrorhandler(), "ready quests: mark", mark, module, quest)
 end)
 
 hooksecurefunc(QuestObjectiveTracker, "BeginLayout", function()
@@ -193,7 +194,7 @@ hooksecurefunc(QuestObjectiveTracker, "BeginLayout", function()
 end)
 
 hooksecurefunc(QuestObjectiveTracker, "LayoutContents", function(module)
-	xpcall(sink, geterrorhandler(), module)
+	xpcall(timed, geterrorhandler(), "ready quests: move down", sink, module)
 	wipe(readyBlocks)
 end)
 

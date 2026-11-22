@@ -1,4 +1,5 @@
 local _, root = ...; local ns = root.objectives
+local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if not ns.rxp then return end
 
 -- CONSTRAINT: the module is in no list of Blizzard's; place() slots it after Scenario (uiOrder 1) on each update.
@@ -273,7 +274,7 @@ end
 
 -- CONSTRAINT: secure post-hook, so no taint reaches Blizzard's Update. Silent while ShouldShowHeader is false
 -- (ObjectiveTrackerFrameMixin:Update returns before this call).
-hooksecurefunc(ObjectiveTrackerContainerMixin, "Update", function(tracker, dirtyUpdate)
+local function onTrackerUpdate(tracker, dirtyUpdate)
 	if tracker ~= ObjectiveTrackerFrame then return end
 	local hidden = not tracker:IsShown()
 	if hidden ~= paused then
@@ -288,7 +289,8 @@ hooksecurefunc(ObjectiveTrackerContainerMixin, "Update", function(tracker, dirty
 	else
 		ns.guard(place)
 	end
-end)
+end
+hooksecurefunc(ObjectiveTrackerContainerMixin, "Update", function(...) timed("guide rows", onTrackerUpdate, ...) end)
 
 -- /qt Tracker settings: Own window on or off (out of combat: the module may hold secure step buttons)
 function ns.setDetached(on)

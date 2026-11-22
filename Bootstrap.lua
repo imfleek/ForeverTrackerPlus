@@ -7,6 +7,22 @@ local ADDON, root = ...
 root.objectives, root.tracker = {}, {}
 root.BRAND = "ForeverTrackerPlus"
 
+-- /qt lag (Tracker/Lag.lua): our main jobs run through root.timed. It only measures while /qt lag watches the
+-- seconds after a quest is accepted; else it just calls the job.
+root.lag = { on = false, jobs = {} }
+local function finish(name, start, ...)
+	local ms = debugprofilestop() - start
+	local job = root.lag.jobs[name]
+	if not job then job = { n = 0, total = 0, max = 0 }; root.lag.jobs[name] = job end
+	job.n, job.total = job.n + 1, job.total + ms
+	if ms > job.max then job.max = ms end
+	return ...
+end
+function root.timed(name, fn, ...)
+	if not root.lag.on or not debugprofilestop then return fn(...) end
+	return finish(name, debugprofilestop(), fn(...))
+end
+
 local function say(text)
 	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99" .. root.BRAND .. "|r " .. text)
 end
