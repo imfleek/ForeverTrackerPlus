@@ -9,8 +9,8 @@
 --     trainer, flight, bank, mail, trade or auction window open), afk, swim (3.1.2), jump (3.1.2: in the air),
 --     mount (moving mounted), walk (moving on foot), idle (standing). That second is added to the current level (a
 --     tick is at most 5 s, so a loading screen or a stall is not counted as standing still).
---     3.1.2 Run analysis shows every state but standing (the jump tracker took its place: the time in the air and the
---     jumps, counted by a hook on JumpOrAscendStart); standing stays in Time per level.
+--     3.1.2 Run analysis adds a jump tracker (the time in the air, and the jumps counted by a hook on
+--     JumpOrAscendStart); standing stays, in the bars and in Time per level.
 --   gold = { quests, loot } (3.1.2) copper: QUEST_TURNED_IN's money, and money that came in while a loot window of a
 --     creature was open (or just closed)
 --   reached[level] = /played seconds when that level began: TIME_PLAYED_MSG gives the total and the time on this
@@ -32,8 +32,8 @@ local db, run, runKey
 
 local KIND_NAMES = { combat = "Combat", walk = "Running", mount = "Mounted", flight = "Flight", npc = "NPCs", dead = "Dead",
 	afk = "AFK", idle = "Standing", swim = "Swimming", jump = "Jumping", craft = "Crafting/gathering" }
--- Run analysis (bars and the Discord text): every state but standing
-local BAR_KINDS = { "combat", "walk", "mount", "swim", "jump", "craft", "flight", "npc", "dead", "afk" }
+-- Run analysis (bars and the Discord text): every state
+local BAR_KINDS = { "combat", "walk", "mount", "swim", "jump", "craft", "flight", "npc", "dead", "afk", "idle" }
 local MAX_TICK = 5
 local MAX_QUEST_TIME = 6 * 3600
 local session = { start = nil, quests = 0, xp = 0, jumps = 0, goldQuests = 0, goldLoot = 0 }
@@ -1001,7 +1001,7 @@ function api.declareStatsPages(k)
 	k.pageByKey.statsrun.cardTitle = "What the run's time was spent on"
 	k.custom("Recorded completed quests xp from quests deaths jumps", tiles(runTiles, 5), true)
 	k.heading("Where the time went")
-	k.custom("Combat running mounted swimming jumping crafting gathering flight npcs dead afk", bars(timeBars, #BAR_KINDS), true)
+	k.custom("Combat running mounted swimming jumping crafting gathering flight npcs dead afk standing", bars(timeBars, #BAR_KINDS), true)
 	k.heading("Worth a look")
 	k.custom("Worth a look idle away", lines(worthALook, "Nothing stands out yet.", 6), true)
 	k.heading("Time per level")

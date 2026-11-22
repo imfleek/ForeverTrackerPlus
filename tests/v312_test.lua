@@ -285,14 +285,14 @@ local bars = sapi.statsTimeBars()
 local bl = {}
 for i, x in ipairs(bars) do bl[i] = x[1] end
 bl = table.concat(bl, ",")
-check("run analysis: no Standing bar, Jumping / Swimming / Crafting in", not bl:find("Standing", 1, true)
+check("run analysis: Standing kept, Jumping / Swimming / Crafting in", bl:find("Standing", 1, true)
 	and bl:find("Jumping", 1, true) and bl:find("Swimming", 1, true) and bl:find("Crafting/gathering", 1, true) and true or false)
 local run = sapi.statsRunTiles()
 check("run analysis: a Jumps tile", run[#run][3] == "Jumps" and run[#run][2] == "3")
 local lines = sapi.statsLevelLines()
 check("time per level keeps standing", lines[1] and lines[1][3]:find("Standing", 1, true) ~= nil)
-check("discord text: jumps and no standing line", sapi.statsDiscordText():find("3 jumps", 1, true) ~= nil
-	and not sapi.statsDiscordText():match("\nStanding "))
+check("discord text: jumps and the standing line", sapi.statsDiscordText():find("3 jumps", 1, true) ~= nil
+	and sapi.statsDiscordText():match("\nStanding ") ~= nil)
 
 ---------------------------------------------------------------------------------------------------------------------
 -- Forever Style only
