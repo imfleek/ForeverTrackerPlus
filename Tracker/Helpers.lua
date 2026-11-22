@@ -10,6 +10,10 @@
 --   db.breathWarn   red pulsing screen edges when breath or fatigue has 10 seconds or less left
 --   db.flightTimes  learns how long each flight takes (account-wide, db.flightLog) and shows the time left while
 --                   flying, and the time on the flight map's tooltip
+-- 3.1.1: when another addon already shows the same thing, ours steps aside (no two coins, no two flight bars):
+--   OneForAll's "questSellCoin" (on unless switched off) replaces our reward coin; EllesmereUI Forever Essentials'
+--   Flight Timer (on unless switched off) replaces our flight bar, and its flight map time (always on) our tooltip
+--   line. Flights are still learned.
 -- CONSTRAINT: secure hooks only (hooksecurefunc runs after the game's function and cannot taint it); every event is
 -- registered in a pcall (an unknown event errors on Forever) and every global is checked before use.
 local ADDON, root = ...; local ns = root.tracker
@@ -20,6 +24,31 @@ local db
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
 local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r " .. text) end
 local function opt(key) return db and db[key] ~= false end
+
+local function loaded(name)
+	local f = C_AddOns and C_AddOns.IsAddOnLoaded or rawget(_G, "IsAddOnLoaded")
+	return type(f) == "function" and f(name) and true or false
+end
+local function tbl(t, k) return type(t) == "table" and type(t[k]) == "table" and t[k] or nil end
+local OTHERS = {
+	rewardHint = function()
+		if not loaded("OneForAll") then return end
+		local d = tbl(rawget(_G, "OneForAllDB"), "qol")
+		if not d or d.questSellCoin ~= false then return "OneForAll" end
+	end,
+	flightBar = function()
+		if not loaded("EllesmereUIForeverEssentials") then return end
+		local c = tbl(rawget(_G, "EllesmereUIDB"), "flightTimer")
+		if not c or c.enabled ~= false then return "EllesmereUI" end
+	end,
+	flightTip = function() if loaded("EllesmereUIForeverEssentials") then return "EllesmereUI" end end,
+}
+-- the other addon's name when it already shows this (what = "rewardHint", "flightBar" or "flightTip"), else nil
+local function otherAddon(what)
+	local ok, who = pcall(OTHERS[what])
+	return ok and who or nil
+end
+api.helperOtherAddon = otherAddon
 local QUEST_SIGN = "Interface\\GossipFrame\\AvailableQuestIcon"
 
 local function onEvents(list, handler)
@@ -282,7 +311,7 @@ local pendingReward
 local function markReward()
 	clearRewardMarks()
 	pendingReward = nil
-	if not opt("rewardHint") then return end
+	if not opt("rewardHint") or otherAddon("rewardHint") then return end
 	if type(GetNumQuestChoices) ~= "function" or type(GetQuestItemLink) ~= "function" then return end
 	local n = GetNumQuestChoices() or 0
 	if n < 2 then return end
@@ -541,7 +570,7 @@ local function onFlightEvent(event)
 		C_Timer.After(0.5, function()
 			if flight and not flight.started and UnitOnTaxi and UnitOnTaxi("player") and GetTime() - flight.chosen < 15 then
 				flight.started = GetTime()
-				if opt("flightTimes") then buildFlightBar():Show() end
+				if opt("flightTimes") and not otherAddon("flightBar") then buildFlightBar():Show() end
 			end
 		end)
 	elseif event == "PLAYER_CONTROL_GAINED" then
@@ -561,7 +590,7 @@ local function onFlightEvent(event)
 	end
 end
 local function onNodeEnter(button)
-	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) then return end
+	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) or otherAddon("flightTip") then return end
 	local t = known(currentNode(), nodeName(button:GetID()))
 	if t then
 		GameTooltip:AddLine(("Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t)), 0.6, 0.85, 1)
@@ -621,7 +650,7 @@ function api.declareHelperPages(k)
 	k.heading("Rewards")
 	k.check("Mark the best reward to sell", function() return db.rewardHint ~= false end,
 		function(v) db.rewardHint = v and true or false end)
-	k.help("on a quest's reward choice, a gold coin on the reward that sells for the most")
+	k.help("on a quest's reward choice, a gold coin on the reward that sells for the most. Stays off while OneForAll's coin is on")
 	k.heading("Nearby quests")
 	k.check("Card for a quest close by", function() return db.nearbyCard ~= false end,
 		function(v) db.nearbyCard = v and true or false; if not v and card then card:Hide() end end,
@@ -641,7 +670,7 @@ function api.declareHelperPages(k)
 	k.heading("Flights")
 	k.check("Flight times", function() return db.flightTimes ~= false end,
 		function(v) db.flightTimes = v and true or false; if not v and flightBar then flightBar:Hide() end end)
-	k.help("learns each flight's time; shows the time left while flying, and the time on the flight map")
+	k.help("learns each flight's time; shows the time left while flying, and the time on the flight map. EllesmereUI's Flight Timer replaces the display while it is on")
 	k.statusBox("Flights learned", function()
 		local n = 0
 		for _ in pairs(db and type(db.flightLog) == "table" and db.flightLog or {}) do n = n + 1 end
