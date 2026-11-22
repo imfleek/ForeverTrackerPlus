@@ -12,8 +12,8 @@
 --                   flying, and the time on the flight map's tooltip; a route not flown yet gets an estimate from the
 --                   flight map ("about"), and every learned flight makes the estimates better (db.flightSpeed)
 -- 3.1.1: when another addon shows the same thing (OneForAll's reward coin, EllesmereUI Forever Essentials' Flight
---   Timer), the player is asked which one to keep (CLASHES below). EllesmereUI's flight map time has no switch, so our
---   tooltip line steps aside while that addon is loaded.
+--   Timer), the player is asked which one to keep (CLASHES below). EllesmereUI's flight map time has no switch, so its
+--   tooltip line is rewritten with our time while that addon is loaded.
 -- CONSTRAINT: secure hooks only (hooksecurefunc runs after the game's function and cannot taint it); every event is
 -- registered in a pcall (an unknown event errors on Forever) and every global is checked before use.
 local ADDON, root = ...; local ns = root.tracker
@@ -101,8 +101,16 @@ local function checkClashes(key)
 end
 api.checkAddonClashes = checkClashes
 api.addonClashOn = function(key) for _, c in ipairs(CLASHES) do if c.key == key then return clashOn(c) end end return false end
--- EllesmereUI's flight map time is always on (it has no switch), so our tooltip line steps aside while it is loaded
+-- EllesmereUI's flight map time is always on (it has no switch): while that addon is loaded its tooltip line is
+-- rewritten with our time (one line, ours), see onNodeEnter
 local function eluiMapTime() return loaded("EllesmereUIForeverEssentials") end
+-- the start of EllesmereUI's line ("Flight time: " in the player's language)
+local function eluiPrefix()
+	local eui = rawget(_G, "EllesmereUI")
+	local ok, t = pcall(function() return eui.Lf("Flight time: %s") end)
+	local prefix = ok and type(t) == "string" and t:match("^(.-)%%s")
+	return prefix and prefix ~= "" and prefix or "Flight time: "
+end
 local QUEST_SIGN = "Interface\\GossipFrame\\AvailableQuestIcon"
 
 local function onEvents(list, handler)
@@ -694,16 +702,62 @@ local function onFlightEvent(event)
 		end
 	end
 end
-local function onNodeEnter(button)
-	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) or eluiMapTime() then return end
+local function ourFlightText(button)
 	local t = known(currentNode(), nodeName(button:GetID()))
 	local about = false
 	if not t then t, about = estimate(button:GetID()), true end
-	if t then
-		GameTooltip:AddLine((about and "Flight time: about %s" or "Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t)), 0.6, 0.85, 1)
-		GameTooltip:Show()
-	end
+	if not t then return nil end
+	return (about and "Flight time: about %s" or "Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t))
 end
+-- EllesmereUI's line in the shown tooltip: rewritten with ours. true when it was there.
+local tipButton, tipText
+local function rewriteElui()
+	if not (tipButton and tipText and GameTooltip:IsShown()) then return false end
+	if GameTooltip.GetOwner and GameTooltip:GetOwner() ~= tipButton then tipButton = nil return false end
+	local prefix = eluiPrefix()
+	local name = GameTooltip.GetName and GameTooltip:GetName() or "GameTooltip"
+	for i = 1, (GameTooltip.NumLines and GameTooltip:NumLines() or 0) do
+		local fs = rawget(_G, name .. "TextLeft" .. i)
+		local text = fs and fs.GetText and fs:GetText()
+		if type(text) == "string" and not isSecret(text) and text:sub(1, #prefix) == prefix then
+			if text ~= tipText then
+				fs:SetText(tipText)
+				fs:SetTextColor(0.6, 0.85, 1)
+				GameTooltip:Show()
+			end
+			return true
+		end
+	end
+	return false
+end
+local tipHooked = false
+local function onNodeEnter(button)
+	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) then return end
+	local text = ourFlightText(button)
+	if not text then return end
+	if not eluiMapTime() then
+		GameTooltip:AddLine(text, 0.6, 0.85, 1)
+		GameTooltip:Show()
+		return
+	end
+	-- EllesmereUI adds its line in its own hook of the same function, before or after this one: rewrite it now if it is
+	-- there, else when its GameTooltip:Show() comes; a route it has no line for gets ours a frame later
+	tipButton, tipText = button, text
+	if not tipHooked and hooksecurefunc then
+		tipHooked = true
+		hooksecurefunc(GameTooltip, "Show", function() if tipButton then pcall(rewriteElui) end end)
+	end
+	if rewriteElui() then return end
+	C_Timer.After(0, function()
+		if tipButton ~= button or not GameTooltip:IsShown() then return end
+		if not rewriteElui() then
+			tipButton = nil
+			GameTooltip:AddLine(text, 0.6, 0.85, 1)
+			GameTooltip:Show()
+		end
+	end)
+end
+api.flightTipEnter = onNodeEnter -- (tests)
 
 ---------------------------------------------------------------------------------------------------------------------
 -- Start
