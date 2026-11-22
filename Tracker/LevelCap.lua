@@ -28,7 +28,7 @@ local function ask()
 	if not db or not rxpLoaded() or answered(db) then return end
 	if InCombatLockdown() then pending = true return end
 	pending = false
-	StaticPopupDialogs.RXPFOREVERTRACKER_LEVEL_CAP = {
+	StaticPopupDialogs.FOREVERTRACKERPLUS_LEVEL_CAP = {
 		text = root.BRAND .. ": you reached level " .. LEVEL_CAP .. ".\n\nWould you like to disable the RestedXP Guides "
 			.. "addon (RXPGuides) entirely now? The quest tracker keeps working; the RXP Tracker has no guide to show "
 			.. "without it. You can turn it on again in the AddOns list. The UI reloads.",
@@ -50,7 +50,7 @@ local function ask()
 		hideOnEscape = true,
 		preferredIndex = 3,
 	}
-	StaticPopup_Show("RXPFOREVERTRACKER_LEVEL_CAP")
+	StaticPopup_Show("FOREVERTRACKERPLUS_LEVEL_CAP")
 end
 ns.api = ns.api or {}
 ns.api.askLevelCap = ask

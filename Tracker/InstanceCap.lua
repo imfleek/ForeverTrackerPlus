@@ -175,7 +175,7 @@ function api.instanceCapTooltip(tip)
 			tip:AddDoubleLine(r.name or "?", ago, 1, 1, 1, 0.7, 0.7, 0.7)
 		end
 	end
-	tip:AddLine("Counted by " .. (source == ADDON and "RXP Forever Tracker" or source) .. ".", 0.6, 0.6, 0.6)
+	tip:AddLine("Counted by " .. (source == ADDON and "ForeverTrackerPlus" or source) .. ".", 0.6, 0.6, 0.6)
 end
 
 ns.onLogin[#ns.onLogin + 1] = function()

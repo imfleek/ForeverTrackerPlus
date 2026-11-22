@@ -47,7 +47,7 @@ local qenv = setmetatable({
 }, { __index = _G })
 qenv._G = qenv
 local qns = { api = {}, onLogin = {}, db = {} }
-assert(loadfile(dir .. "/Tracker/Questie.lua", "t", qenv))("RXPForeverTracker", { tracker = qns })
+assert(loadfile(dir .. "/Tracker/Questie.lua", "t", qenv))("ForeverTrackerPlus", { tracker = qns })
 local me = { continent = 0, x = 500, y = 500 }
 local found
 for _ = 1, 3 do found = qns.api.questieAvailableNear(me, 70, {}) or found end
@@ -70,7 +70,7 @@ local menv = setmetatable({
 }, { __index = _G })
 menv._G = menv
 local mns = { api = {}, onLogin = {}, db = {} }
-assert(loadfile(dir .. "/Tracker/WorldMarker.lua", "t", menv))("RXPForeverTracker", { tracker = mns })
+assert(loadfile(dir .. "/Tracker/WorldMarker.lua", "t", menv))("ForeverTrackerPlus", { tracker = mns })
 for _, fn in ipairs(mns.onLogin) do fn() end
 check("marker: no navigation frame, the clock is stopped", not mns.api.worldMarkerRunning())
 nav = fakeFrame(); mns.api.refreshWorldMarker()

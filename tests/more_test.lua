@@ -26,7 +26,7 @@ end
 _G.CreateFrame = function() return setmetatable({}, F) end
 _G.geterrorhandler = function() return function(e) print("ERROR", e) end end
 _G.UIParent = setmetatable({}, F)
-_G.RXPForeverTrackerViewport = setmetatable({}, F)
+_G.ForeverTrackerPlusViewport = setmetatable({}, F)
 local questModule = setmetatable({ GetContentsHeight = function() return 900 end }, F)
 _G.QuestObjectiveTracker = questModule
 _G.ObjectiveTrackerFrame = setmetatable({ modules = { questModule }, IsCollapsed = function() return false end }, F)
@@ -55,10 +55,10 @@ api.rewardSuffix = function(id) return "  |cffb087ff390xp|r" end
 api.lastTrackedZone = "Badlands"
 api.zoneHeaderHeight = function() return 14 end
 local ns = { api = api, onLogin = {}, db = { enabled = true, trackMode = "all", zoneSort = true, moreQuests = true, questScale = 1 } }
-assert(loadfile(dir .. "/Tracker/MoreQuests.lua"))("RXPForeverTracker", { tracker = ns, BRAND = "RXP ForeverTracker" })
+assert(loadfile(dir .. "/Tracker/MoreQuests.lua"))("ForeverTrackerPlus", { tracker = ns, BRAND = "ForeverTrackerPlus" })
 ns.onLogin[1]()
 for _, f in ipairs(timers) do f() end
-local frame = _G.RXPForeverTrackerMoreQuests
+local frame = _G.ForeverTrackerPlusMoreQuests
 -- read back the lines from the created FontStrings through the module's upvalues
 local rows
 for i = 1, 40 do local name, v = debug.getupvalue(api.layoutMoreQuests, i); if not name then break end end

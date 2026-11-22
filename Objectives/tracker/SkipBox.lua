@@ -718,7 +718,7 @@ end
 -- this addon's code made the call (its folder in the call stack): one of the tracker's buttons you clicked
 local function byUs()
 	local stack = type(debugstack) == "function" and debugstack(3, 14, 0) or ""
-	return stack:find("RXPForeverTracker", 1, true) ~= nil
+	return stack:find("ForeverTrackerPlus", 1, true) ~= nil
 end
 
 -- RestedXP's objective kinds in words

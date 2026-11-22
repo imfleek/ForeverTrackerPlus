@@ -52,7 +52,7 @@ local env = setmetatable({
 }, { __index = _G })
 env._G = env
 local chunk = assert(loadfile(dir .. "/Tracker/Reputation.lua", "t", env))
-chunk("RXPForeverTracker", { tracker = ns })
+chunk("ForeverTrackerPlus", { tracker = ns })
 ns.onLogin[1]()
 
 local w = api.watchedReputation()
@@ -62,7 +62,7 @@ local ghost = frame("ghost")
 ghost.shown = true
 local room = api.layoutTrackedReputation(ghost, 40, 0.8)
 check("the row takes room in the fixed strip (" .. tostring(room) .. ")", type(room) == "number" and room > 20)
-local row = env.RXPForeverTrackerReputation or nil
+local row = env.ForeverTrackerPlusReputation or nil
 check("the bar drawn with the points in this standing", drawn and drawn[1] == 1500 and drawn[2] == 6000)
 check("the game's reputation bar see-through and deaf to the mouse", repBar.alpha == 0 and repBar.mouse == false)
 check("its container too (the reputation bar is the only bar in it)", mainContainer.alpha == 0)
@@ -87,7 +87,7 @@ check("Core: the row joins the fixed strip before the Quests header",
 check("on by default", core:find("repTrack = true", 1, true) ~= nil)
 check("the scrolling sections move down by its room (R106-77: the top quest was cut off)",
 	core:find("pinned = pinned + room; drop = drop + room", 1, true) ~= nil)
-local toc = io.open(dir .. "/RXPForeverTracker.toc"):read("a")
+local toc = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", toc:find("Tracker/Reputation.lua", 1, true) ~= nil)
 local cfg = io.open(dir .. "/Tracker/Config.lua"):read("a")
 check("its option", cfg:find('"Tracked reputation at the top"', 1, true) ~= nil)

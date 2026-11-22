@@ -129,7 +129,7 @@ end
 
 local function buildTag()
 	if tag then return tag end
-	tag = CreateFrame("Button", "RXPForeverTrackerRareTag", UIParent)
+	tag = CreateFrame("Button", "ForeverTrackerPlusRareTag", UIParent)
 	tag:SetSize(10, 14)
 	tag.text = tag:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	tag.text:SetPoint("RIGHT")

@@ -103,7 +103,7 @@ local function placeWindow()
 end
 
 local function buildWindow()
-	window = CreateFrame("Frame", "RXPForeverTrackerGuideWindow", UIParent)
+	window = CreateFrame("Frame", "ForeverTrackerPlusGuideWindow", UIParent)
 	window:SetSize(1, 1)
 	window:SetMovable(true)
 	window:SetClampedToScreen(true)

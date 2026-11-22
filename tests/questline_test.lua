@@ -85,7 +85,7 @@ local env = setmetatable({
 env._G = env
 local root = { tracker = ns }
 for _, f in ipairs({ "Questing", "WorldMarker", "Guides" }) do
-	assert(loadfile(dir .. "/Tracker/" .. f .. ".lua", "t", env))("RXPForeverTracker", root)
+	assert(loadfile(dir .. "/Tracker/" .. f .. ".lua", "t", env))("ForeverTrackerPlus", root)
 end
 local api = ns.api
 for _, fn in ipairs(ns.onLogin) do fn() end
@@ -184,7 +184,7 @@ local qenv = setmetatable({
 }, { __index = _G })
 qenv._G = qenv
 local qns = { api = {}, onLogin = {}, db = {} }
-local okQ, errQ = pcall(function() assert(loadfile(dir .. "/Tracker/Questie.lua", "t", qenv))("RXPForeverTracker", { tracker = qns }) end)
+local okQ, errQ = pcall(function() assert(loadfile(dir .. "/Tracker/Questie.lua", "t", qenv))("ForeverTrackerPlus", { tracker = qns }) end)
 check("Questie.lua loads", okQ or print(errQ))
 if okQ then
 	check("breadcrumb: its quest done -> hidden", qns.api.questieBreadcrumbDone(500) == true)

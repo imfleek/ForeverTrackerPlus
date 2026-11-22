@@ -142,8 +142,8 @@ end
 
 local function getMenuFrame()
 	if not menuFrame then
-		local ok, frame = pcall(CreateFrame, "Frame", "RXPForeverTrackerGuideMenu", UIParent, "UIDropDownMenuTemplate")
-		menuFrame = ok and frame or CreateFrame("Frame", "RXPForeverTrackerGuideMenu", UIParent)
+		local ok, frame = pcall(CreateFrame, "Frame", "ForeverTrackerPlusGuideMenu", UIParent, "UIDropDownMenuTemplate")
+		menuFrame = ok and frame or CreateFrame("Frame", "ForeverTrackerPlusGuideMenu", UIParent)
 		menuFrame:Hide()
 		hookSubmenus()
 	end

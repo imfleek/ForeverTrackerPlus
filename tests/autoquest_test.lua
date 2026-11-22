@@ -33,7 +33,7 @@ local env = setmetatable({
 	SelectAvailableQuest = log("greet:SelectAvailableQuest"),
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/AutoQuest.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/AutoQuest.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 local api = ns.api
 for _, fn in ipairs(ns.onLogin) do fn() end
 local H = api.autoQuestHandlers

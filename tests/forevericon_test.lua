@@ -9,7 +9,7 @@ local body = src:match("(local FOREVER_MIN_QUEST_ID = .-\napi%.foreverIcon = for
 check("Forever icon code found in Extras.lua", body ~= nil)
 local db = { condense = true }
 local api = {}
-local env = setmetatable({ db = db, api = api, ADDON = "RXPForeverTracker" }, { __index = _G })
+local env = setmetatable({ db = db, api = api, ADDON = "ForeverTrackerPlus" }, { __index = _G })
 load(body, "extras", "t", env)()
 
 check("a new Forever quest (Downstream, 91733)", api.isForeverQuest(91733) == true)
@@ -18,8 +18,8 @@ check("a quest Forever only changed keeps its old ID: no icon (The Sleeper Has A
 	api.isForeverQuest(5321) == false)
 check("not a number: no icon", api.isForeverQuest(nil) == false and api.isForeverQuest("91733") == false)
 local icon = api.foreverIcon(91733)
-check("the Forever \"W\" emblem (the user's picture)", icon and icon.file == "Interface\\AddOns\\RXPForeverTracker\\Textures\\ForeverW")
-check("our infinity sign when it cannot be loaded", icon and icon.fallback == "Interface\\AddOns\\RXPForeverTracker\\Textures\\Infinity")
+check("the Forever \"W\" emblem (the user's picture)", icon and icon.file == "Interface\\AddOns\\ForeverTrackerPlus\\Textures\\ForeverW")
+check("our infinity sign when it cannot be loaded", icon and icon.fallback == "Interface\\AddOns\\ForeverTrackerPlus\\Textures\\Infinity")
 -- applyIcon: SetTexture answers false for a file the client cannot load -> the fallback
 local applyBody = src:match("(local function applyIcon%(tex, desc%).-\nend\n)")
 check("applyIcon found", applyBody ~= nil)

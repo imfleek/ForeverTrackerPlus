@@ -120,7 +120,7 @@ end
 local function build()
 	local k = kit()
 	local C = k.C
-	local f = k.create("Frame", "RXPForeverTrackerWhyFrame", UIParent)
+	local f = k.create("Frame", "ForeverTrackerPlusWhyFrame", UIParent)
 	frame = f
 	lines, used = {}, 0
 	f:SetSize(WIDTH, HEIGHT)
@@ -132,7 +132,7 @@ local function build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
-	if UISpecialFrames then tinsert(UISpecialFrames, "RXPForeverTrackerWhyFrame") end
+	if UISpecialFrames then tinsert(UISpecialFrames, "ForeverTrackerPlusWhyFrame") end
 
 	k.solid(f, "BACKGROUND", C.window, 0.98, -7):SetAllPoints()
 	k.border(f, C.edge, 2, "BORDER")

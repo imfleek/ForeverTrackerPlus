@@ -68,7 +68,7 @@ local COPY_LINK = {
 	hideOnEscape = 1,
 	preferredIndex = 3,
 }
-if StaticPopupDialogs then StaticPopupDialogs.RXPFOREVERTRACKER_COPY_LINK = COPY_LINK end
+if StaticPopupDialogs then StaticPopupDialogs.FOREVERTRACKERPLUS_COPY_LINK = COPY_LINK end
 local function urlOf(line)
 	local element = line.rxpElement
 	local url = type(element) == "table" and element.url
@@ -149,7 +149,7 @@ end
 
 local function copyLink(url)
 	if not StaticPopup_Show then return end
-	local dialog = StaticPopup_Show("RXPFOREVERTRACKER_COPY_LINK", nil, nil, url)
+	local dialog = StaticPopup_Show("FOREVERTRACKERPLUS_COPY_LINK", nil, nil, url)
 	-- older StaticPopup code passes data to OnShow only through the dialog's data field
 	if dialog then
 		dialog.data = url
@@ -168,7 +168,7 @@ local function copyLinkClick(line, button)
 	if name then startGuide(group, name) return end
 	if isMissingPrereqs(line) then
 		local trackerApi = root.tracker and root.tracker.api
-		local journal = _G.RXPForeverTrackerPrereqs
+		local journal = _G.ForeverTrackerPlusPrereqs
 		if trackerApi and trackerApi.togglePrereqs and not (journal and journal:IsShown()) then trackerApi.togglePrereqs() end
 	end
 end
@@ -1299,7 +1299,7 @@ local function upcomingReady()
 	if not ok then
 		upcomingFailed = true
 		upcoming = nil
-		geterrorhandler()("RXP ForeverTracker: Upcoming Steps header could not be built, using the divider line: "
+		geterrorhandler()("ForeverTrackerPlus: Upcoming Steps header could not be built, using the divider line: "
 			.. tostring(err))
 	end
 	return ok

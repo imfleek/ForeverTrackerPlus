@@ -1,11 +1,11 @@
--- RXP ForeverTracker: RestedXP guide steps in the objective tracker (the AllObjectives RXP half, Objectives/) and a
+-- ForeverTrackerPlus: RestedXP guide steps in the objective tracker (the AllObjectives RXP half, Objectives/) and a
 -- scrollable tracker with zone sorting, rewards and tooltips (the tracker half, Tracker/), in one addon.
 -- Each half keeps its own private namespace so their fields (both use ns.db, ns.say, ...) never collide:
 --   root.objectives  every file under Objectives/
 --   root.tracker     every file under Tracker/
 local ADDON, root = ...
 root.objectives, root.tracker = {}, {}
-root.BRAND = "RXP ForeverTracker"
+root.BRAND = "ForeverTrackerPlus"
 
 local function say(text)
 	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99" .. root.BRAND .. "|r " .. text)
@@ -34,10 +34,20 @@ local loaded = C_AddOns.IsAddOnLoaded
 local oldTracker = loaded("AllTrackerRXP")       -- the previous name of this addon (1.x or 2.0.0)
 local oldGuide = loaded("AllObjectivesRXP")      -- the separate AllObjectives RXP addon
 
-if oldTracker then adopt("RXPForeverTrackerDB", "AllTrackerRXPDB") end
-if oldTracker or oldGuide then adopt("RXPForeverTrackerGuideDB", "AllTrackerRXPObjectivesDB", "AllObjectivesRXPDB") end
+local oldName = loaded("RXPForeverTracker")     -- the previous name of this addon (2.x to 3.1.1)
 
-if oldTracker then
+adopt("ForeverTrackerPlusDB", "RXPForeverTrackerDB", "AllTrackerRXPDB")
+adopt("ForeverTrackerPlusGuideDB", "RXPForeverTrackerGuideDB", "AllTrackerRXPObjectivesDB", "AllObjectivesRXPDB")
+
+if oldName then
+	-- The old copy under its old name runs this session too: stand down, and turn it off for the next /reload.
+	root.disabledAll = true
+	pcall(C_AddOns.DisableAddOn, "RXPForeverTracker")
+	C_Timer.After(2, function()
+		say("RXP ForeverTracker is now " .. root.BRAND .. ". Your settings have been copied. The old addon is turned "
+			.. "off: type /reload, then you can delete the RXPForeverTracker folder.")
+	end)
+elseif oldTracker then
 	-- Both would take over the same tracker: stand down for this session and let the old copy run.
 	root.disabledAll = true
 	C_Timer.After(2, function()

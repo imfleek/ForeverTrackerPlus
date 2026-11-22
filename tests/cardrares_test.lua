@@ -53,7 +53,7 @@ local FDJ = {
 }
 local target = region("click")
 target.portrait = t.portraits[1]
-local env = setmetatable({ fdj = function() return FDJ end, FDJ_WIDTH = 236, ADDON = "RXPForeverTracker",
+local env = setmetatable({ fdj = function() return FDJ end, FDJ_WIDTH = 236, ADDON = "ForeverTrackerPlus",
 	InCombatLockdown = function() return false end,
 	CreateFrame = function(_, _, parent) local f = region("frame"); f.parent = parent; return f end, ForeverDungeonJournalBossTarget1 = target }, { __index = _G })
 env._G = env

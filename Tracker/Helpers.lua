@@ -22,7 +22,7 @@ local api = ns.api
 local db
 
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
-local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r " .. text) end
+local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r " .. text) end
 local function opt(key) return db and db[key] ~= false end
 
 local function loaded(name)
@@ -76,7 +76,7 @@ local function askNext()
 	StaticPopup_Show("RXPFT_ADDON_CLASH", c.text, nil, c)
 end
 StaticPopupDialogs["RXPFT_ADDON_CLASH"] = {
-	text = "|cff33ff99RXP ForeverTracker|r\n\n%s", button1 = "Use ours", button2 = "Keep theirs",
+	text = "|cff33ff99ForeverTrackerPlus|r\n\n%s", button1 = "Use ours", button2 = "Keep theirs",
 	OnAccept = function(_, c)
 		local ok, done = pcall(c.theirsOff)
 		if ok and done then say("turned off the same feature in " .. c.addon .. ". Ours is on.") end
@@ -300,7 +300,7 @@ local function registerEui()
 	if euiRegistered then return true end
 	local eui = rawget(_G, "EUI_Bags")
 	if type(eui) ~= "table" or type(eui.RegisterItemOverlayIcon) ~= "function" then return false end
-	euiRegistered = pcall(eui.RegisterItemOverlayIcon, "RXPForeverTracker", function(btn, data) pcall(paintEuiSlot, btn, data) end)
+	euiRegistered = pcall(eui.RegisterItemOverlayIcon, "ForeverTrackerPlus", function(btn, data) pcall(paintEuiSlot, btn, data) end)
 	if euiRegistered and eui.IsVisible and eui:IsVisible() and eui.RefreshInventory then pcall(eui.RefreshInventory, eui) end
 	return euiRegistered
 end
@@ -522,7 +522,7 @@ local function buildCard()
 	local kit = api.themeKit
 	if card or not kit then return card end
 	local C = kit.C
-	card = CreateFrame("Button", "RXPForeverTrackerNearbyQuest", UIParent)
+	card = CreateFrame("Button", "ForeverTrackerPlusNearbyQuest", UIParent)
 	card:SetSize(300, 50)
 	card:SetPoint("TOP", UIParent, "TOP", 0, -110)
 	card:SetFrameStrata("MEDIUM")

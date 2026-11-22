@@ -394,7 +394,7 @@ function ns.updateHeaders(snapshot)
 end
 
 local function showIndicatorTooltip(owner)
-	showTooltip(owner, INDICATOR_TEXT, "RXP ForeverTracker")
+	showTooltip(owner, INDICATOR_TEXT, "ForeverTrackerPlus")
 end
 
 local function clickIndicator(_, mouseButton)

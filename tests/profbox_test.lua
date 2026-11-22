@@ -71,7 +71,7 @@ check("no place yet: measured again on the next frame", retried == 1)
 m.top = realTop
 env.layoutProfessions()
 local box = m.parent
-check("the section moved into its own box", box and box.name == "RXPForeverTrackerProfessions")
+check("the section moved into its own box", box and box.name == "ForeverTrackerPlusProfessions")
 check("the box sits left of the quest list, level with the Quests header (R106-64)", box.points[1][1] == "TOPRIGHT"
 	and box.points[1][2] == viewport and box.points[1][3] == "TOPLEFT" and box.points[1][4] == -6 and box.points[1][5] == 0)
 check("as wide as the quest list", box.width == 260)

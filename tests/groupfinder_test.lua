@@ -96,12 +96,12 @@ local env = setmetatable({
 }, { __index = _G })
 env._G = env
 _G_env = env
-assert(loadfile(dir .. "/Tracker/GroupFinder.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/GroupFinder.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 local api = ns.api
 ns.onLogin[1]()
 local events = frames[#frames]
 -- R106-104: the click opens the prompt; its buttons post
-local function prompt() return env.RXPForeverTrackerGroupPrompt end
+local function prompt() return env.ForeverTrackerPlusGroupPrompt end
 local function choose(id, how)
 	api.findGroupForQuest(id)
 	local f = prompt()
@@ -111,7 +111,7 @@ end
 api.findGroupForQuest(214)
 check("the click: the prompt, nothing posted yet", prompt() and prompt().shown and #sent == 0 and created == nil
 	and prompt().buttons.chat and prompt().buttons.lfg and prompt().buttons.both)
-check("Escape closes it", env.UISpecialFrames[1] == "RXPForeverTrackerGroupPrompt")
+check("Escape closes it", env.UISpecialFrames[1] == "ForeverTrackerPlusGroupPrompt")
 prompt().buttons.both.scripts.OnClick(prompt().buttons.both)
 check("a button closes the prompt", not prompt().shown)
 check("General: \"LFM [quest] - whisper 'inv' to join.\" on its channel number",
@@ -210,7 +210,7 @@ check("switched off: nothing", #sent == n)
 
 local extras = io.open(dir .. "/Tracker/Extras.lua"):read("a")
 check("Extras: Ctrl+left-click calls it", extras:find('button == "LeftButton" and api.findGroupForQuest', 1, true) ~= nil)
-check("in the toc", io.open(dir .. "/RXPForeverTracker.toc"):read("a"):find("Tracker/GroupFinder.lua", 1, true) ~= nil)
+check("in the toc", io.open(dir .. "/ForeverTrackerPlus.toc"):read("a"):find("Tracker/GroupFinder.lua", 1, true) ~= nil)
 check("its option", io.open(dir .. "/Tracker/Config.lua"):read("a"):find('"Ctrl+click a quest: find a group"', 1, true) ~= nil)
 check("on by default", io.open(dir .. "/Tracker/Core.lua"):read("a"):find("questGroupFinder = true", 1, true) ~= nil)
 

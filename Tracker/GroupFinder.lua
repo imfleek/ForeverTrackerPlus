@@ -18,7 +18,7 @@ if ns.disabled then return end
 local api = ns.api
 local db
 
-local PREFIX = "|cff33ccffRXP Forever Tracker:|r "
+local PREFIX = "|cff33ccffForeverTrackerPlus:|r "
 local INVITE_WINDOW = 15 * 60 -- seconds the "inv" whispers are answered
 local MAX_PARTY = 5
 
@@ -285,7 +285,7 @@ end
 local prompt
 local function buildPrompt()
 	if prompt then return prompt end
-	local f = CreateFrame("Frame", "RXPForeverTrackerGroupPrompt", UIParent, "BackdropTemplate")
+	local f = CreateFrame("Frame", "ForeverTrackerPlusGroupPrompt", UIParent, "BackdropTemplate")
 	f:SetSize(300, 96)
 	f:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
 	f:SetFrameStrata("DIALOG")
@@ -316,7 +316,7 @@ local function buildPrompt()
 		end)
 		f.buttons[b[1]] = btn
 	end
-	if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "RXPForeverTrackerGroupPrompt") end
+	if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "ForeverTrackerPlusGroupPrompt") end
 	f:Hide()
 	prompt = f
 	return f

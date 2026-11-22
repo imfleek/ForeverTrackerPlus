@@ -1,8 +1,8 @@
 -- Another quest tracker addon: 8 seconds after entering the world, ask which one to disable.
 --
--- RXP ForeverTracker only works with Blizzard's default quest tracker (it makes that tracker scroll and shows the
+-- ForeverTrackerPlus only works with Blizzard's default quest tracker (it makes that tracker scroll and shows the
 -- RestedXP guide in it); an addon that replaces or hides it leaves nothing for this one to attach to, and both
--- together hide or overlap each other. Choices: disable RXP ForeverTracker, disable the other addon (for Questie: turn
+-- together hide or overlap each other. Choices: disable ForeverTrackerPlus, disable the other addon (for Questie: turn
 -- off only its tracker) (both reload the UI), or keep both (not asked again for that addon). Escape and the close button do nothing.
 local ADDON, root = ...; local ns = root.tracker
 
@@ -63,7 +63,7 @@ local function ask()
 	local otherTitle = titleOf(other)
 	local questie = other == "Questie"
 	local restyler = RESTYLERS[other]
-	StaticPopupDialogs.RXPFOREVERTRACKER_OTHER_TRACKER = {
+	StaticPopupDialogs.FOREVERTRACKERPLUS_OTHER_TRACKER = {
 		text = restyler and (root.BRAND .. " found %s.\n\nIt restyles the same quest tracker text as " .. root.BRAND
 			.. " (font, size, outline) on every quest update; with both on, the text flickers between two looks, "
 			.. "most of all while the world map is open.\n\nDisable one of them? Only %s is disabled, the rest of "
@@ -92,7 +92,7 @@ local function ask()
 		noCancelOnEscape = true,
 		preferredIndex = 3,
 	}
-	StaticPopup_Show("RXPFOREVERTRACKER_OTHER_TRACKER", otherTitle, otherTitle)
+	StaticPopup_Show("FOREVERTRACKERPLUS_OTHER_TRACKER", otherTitle, otherTitle)
 end
 
 -- Runs even when the tracker half is off (no default tracker to attach to is exactly this case).
@@ -104,8 +104,8 @@ events:SetScript("OnEvent", function(self, _, isLogin, isReload)
 	C_Timer.After(DELAY, function()
 		if root.disabledAll then return end -- the old AllTracker RXP is running: Bootstrap.lua already said so
 		if not ns.db then
-			_G.RXPForeverTrackerDB = type(_G.RXPForeverTrackerDB) == "table" and _G.RXPForeverTrackerDB or {}
-			ns.db = _G.RXPForeverTrackerDB
+			_G.ForeverTrackerPlusDB = type(_G.ForeverTrackerPlusDB) == "table" and _G.ForeverTrackerPlusDB or {}
+			ns.db = _G.ForeverTrackerPlusDB
 		end
 		ask()
 	end)

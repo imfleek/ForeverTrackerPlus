@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🧭 RXP ForeverTracker
+# 🧭 ForeverTrackerPlus
 
 **A scrollable, smarter quest tracker for WoW Forever, with your RestedXP guide built right in.**
 
-[![Latest release](https://img.shields.io/github/v/release/imfleek/RXPForeverTracker?label=release&color=c9a24a)](https://github.com/imfleek/RXPForeverTracker/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/imfleek/ForeverTrackerPlus?label=release&color=c9a24a)](https://github.com/imfleek/ForeverTrackerPlus/releases/latest)
 ![WoW Forever](https://img.shields.io/badge/WoW_Forever-16001-8b1a10)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4c7a3d)](LICENSE)
 
@@ -14,8 +14,8 @@
 
 ## 📦 How to Install
 
-1. Download **`RXPForeverTracker.zip`** from the [latest release](https://github.com/imfleek/RXPForeverTracker/releases/latest) or from CurseForge.
-2. Extract the `RXPForeverTracker` folder into:
+1. Download **`ForeverTrackerPlus.zip`** from the [latest release](https://github.com/imfleek/ForeverTrackerPlus/releases/latest) or from CurseForge.
+2. Extract the `ForeverTrackerPlus` folder into:
 
    ```
    BattleNet/World of Warcraft/_forever_/Interface/AddOns/
@@ -92,7 +92,7 @@ See the [changelog](CHANGELOG.md) for everything.
 > - The search box finds any setting.
 > - Each section has tabs at the top; cards fold open and closed.
 > - **Shift+right-click** the guide in the tracker to open this window; **right-click** opens the guide menu.
-> - Set the quest item key in **Key Bindings > AddOns > RXP ForeverTracker**.
+> - Set the quest item key in **Key Bindings > AddOns > ForeverTrackerPlus**.
 
 ## Commands
 

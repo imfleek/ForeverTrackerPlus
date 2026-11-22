@@ -11,7 +11,7 @@ function ns.accent(text)
 	return ACCENT_COLOR .. text .. "|r"
 end
 
-ns.brand = ns.accent("RXP ForeverTracker") .. " " .. MUTED_COLOR .. "v" .. VERSION .. "|r"
+ns.brand = ns.accent("ForeverTrackerPlus") .. " " .. MUTED_COLOR .. "v" .. VERSION .. "|r"
 ns.MAX_FOLLOWING = 100 -- steps ahead; the tracker shows upcomingShown of them at a time and scrolls the rest
 ns.ALL_STEPS = ns.MAX_FOLLOWING + 1 -- the slider position after 100: every step (ahead / at once)
 ns.FALLBACK_ICON = 134400
@@ -45,8 +45,8 @@ local DEFAULTS = {
 	targetPing = true,
 }
 
-local db = type(_G.RXPForeverTrackerGuideDB) == "table" and _G.RXPForeverTrackerGuideDB or {}
-_G.RXPForeverTrackerGuideDB = db
+local db = type(_G.ForeverTrackerPlusGuideDB) == "table" and _G.ForeverTrackerPlusGuideDB or {}
+_G.ForeverTrackerPlusGuideDB = db
 for key, value in pairs(DEFAULTS) do
 	if db[key] == nil then db[key] = value end
 end

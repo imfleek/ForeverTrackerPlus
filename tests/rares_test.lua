@@ -62,7 +62,7 @@ local env = setmetatable({
 		AddDoubleLine = function(_, a, b) tips[#tips + 1] = a .. "|" .. b end }, { __index = function() return function() end end }),
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/Rares.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Rares.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 local api = ns.api
 ns.onLogin[1]()
 local function fire(e, a) handlers(nil, e, a) end
@@ -70,11 +70,11 @@ local function fire(e, a) handlers(nil, e, a) end
 check("on by default", api.rareAlertOn() == true)
 units.target = { class = "elite", guid = "Creature-0-1-0-5-100-1", name = "Not Rare" }
 fire("PLAYER_TARGET_CHANGED")
-check("a plain elite: no tag", named.RXPForeverTrackerRareTag == nil or not named.RXPForeverTrackerRareTag.shown)
+check("a plain elite: no tag", named.ForeverTrackerPlusRareTag == nil or not named.ForeverTrackerPlusRareTag.shown)
 vignettes.v1 = { atlasName = "VignetteKill", objectGUID = "Creature-0-1-0-5-61-1", name = "Thuros Lightfingers",
 	pos = { x = 0.3, y = 0.4 } }
 fire("VIGNETTES_UPDATED")
-local tag = named.RXPForeverTrackerRareTag
+local tag = named.ForeverTrackerPlusRareTag
 check("a kill vignette: the tag shows", tag and tag.shown)
 check("on the zone header's block", tag and tag.parent == headerParent)
 check("its name and yards", tag and tag.text.text:find("Thuros Lightfingers", 1, true) and tag.text.text:find("500 yd", 1, true))
@@ -102,6 +102,6 @@ api.setRareAlert(false)
 check("option off", api.rareAlertOn() == false and #api.raresSpotted() == 0)
 local src = io.open(dir .. "/Tracker/Rares.lua"):read("a")
 check("never the combat log event (forbidden for addons on Forever)", not src:find('"COMBAT_LOG_EVENT_UNFILTERED"', 1, true))
-local toc = io.open(dir .. "/RXPForeverTracker.toc"):read("a")
+local toc = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", toc:find("Tracker/Rares.lua", 1, true) ~= nil)
 print(pass and "PASSED" or "FAILED")

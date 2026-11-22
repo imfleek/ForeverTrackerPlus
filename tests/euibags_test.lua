@@ -54,7 +54,7 @@ local env = setmetatable({
 	UIParent = frame(), StaticPopupDialogs = {},
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 for _, fn in ipairs(ns.onLogin) do fn() end
 
 eui:RefreshInventory()

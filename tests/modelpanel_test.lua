@@ -53,7 +53,7 @@ env._G = env
 local ns = { api = {}, onLogin = {}, db = { npcTypes = { [3205] = "Humanoid" } } }
 local root = { tracker = ns, objectives = { npcIdFor = function(name) return name == "Zalazane" and 3205 or nil end,
 	rxp = { guideTextColors = { RXP_ENEMY_ = "FFFF5722" } } } }
-assert(loadfile(dir .. "/Tracker/NpcPanel.lua", "t", env))("RXPForeverTracker", root)
+assert(loadfile(dir .. "/Tracker/NpcPanel.lua", "t", env))("ForeverTrackerPlus", root)
 local api = ns.api
 api.questieNpc = function(id)
 	return id == 3205 and { name = "Zalazane", minLevel = 10, maxLevel = 10, rank = 1 } or nil
@@ -63,7 +63,7 @@ ns.onLogin[1]()
 local line = frame("Frame")
 line.top = 600
 api.showNpcPanel("Zalazane", { kind = "enemy", owner = line })
-local panel = env.RXPForeverTrackerNpcPanel or created[2]
+local panel = env.ForeverTrackerPlusNpcPanel or created[2]
 local model
 for _, f in ipairs(created) do if f.kind == "PlayerModel" then model = f end end
 for _, f in ipairs(created) do if f.scripts.OnUpdate and f.kind == "Frame" and f.w == 210 then panel = f end end

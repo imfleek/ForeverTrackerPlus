@@ -26,7 +26,7 @@ local env = setmetatable({
 	GetSavedInstanceInfo = function(i) local s = saved[i] return s[1], 1, s[2], 1, true, false, false, false, 5, "Normal", s[3], s[4] end,
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/InstanceCap.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/InstanceCap.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 local api = ns.api
 ns.onLogin[1]()
 local function fire(e, a) handlers(nil, e, a) end
@@ -70,6 +70,6 @@ leave(); enter("Scarlet Monastery", 44)
 check("runs older than a day pruned", #ns.db.instanceRuns <= 2)
 ns.db.instanceCap = false
 check("option off", api.instanceCapOn() == false)
-local src2 = io.open(dir .. "/RXPForeverTracker.toc"):read("a")
+local src2 = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", src2:find("Tracker/InstanceCap.lua", 1, true) ~= nil)
 print(pass and "PASSED" or "FAILED")

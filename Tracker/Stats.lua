@@ -1,7 +1,7 @@
 -- 3.0 Statistics (Settings > Statistics: Overview, Run analysis, Level splits). The ideas come from QuestMaster's
 -- statistics overview, Run Report and Level Splits; the code is our own.
 --
--- What is recorded, per character, account-wide in RXPForeverTrackerDB.statsRuns["Name-Realm"] (so any character can
+-- What is recorded, per character, account-wide in ForeverTrackerPlusDB.statsRuns["Name-Realm"] (so any character can
 -- be compared with any other; never part of a profile, Profiles.lua EXCLUDE_TRACKER):
 --   levels[level] = { t = { [state] = seconds }, quests, questXP, xp, deaths }
 --     once a second the character is in one of eight states, the first that fits: dead, flight, combat, npc (a quest,
@@ -34,7 +34,7 @@ local session = { start = nil, quests = 0, xp = 0 }
 
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
 local function on() return db and db.statsOn ~= false end
-local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r " .. text) end
+local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r " .. text) end
 
 ---------------------------------------------------------------------------------------------------------------------
 -- Formatting
@@ -386,7 +386,7 @@ function api.statsDiscordText()
 	local t, total, sums = api.statsTotals(r)
 	local _, class = UnitClass("player")
 	local lines = {}
-	lines[#lines + 1] = ("**%s** - level %d %s - RXP ForeverTracker run analysis"):format(UnitName("player") or "?",
+	lines[#lines + 1] = ("**%s** - level %d %s - ForeverTrackerPlus run analysis"):format(UnitName("player") or "?",
 		UnitLevel("player") or 0, tostring(class or ""):lower():gsub("^%l", string.upper))
 	lines[#lines + 1] = ("Recorded %s | %d quests | %d%% XP from quests | %d deaths"):format(clock(total), sums.quests,
 		sums.xp > 0 and math.floor(sums.questXP / sums.xp * 100 + 0.5) or 0, sums.deaths)

@@ -1,4 +1,4 @@
-# RXP ForeverTracker
+# ForeverTrackerPlus
 
 **A scrollable, smarter quest tracker for WoW Forever, with your RestedXP guide built right in.**
 
@@ -24,7 +24,7 @@ New in **3.1**: a quest item bar, big progress messages, a world marker over you
 
 ## Helpers
 
-- **Quest item bar** with a key binding (Key Bindings > AddOns > RXP ForeverTracker).
+- **Quest item bar** with a key binding (Key Bindings > AddOns > ForeverTrackerPlus).
 - **Big progress messages**: "Wolves slain: 3/8" in large letters, and "Ready to turn in".
 - **World marker**: your tracked quest's name, next step, distance and a light beam over its spot. Can track the nearest quest by itself.
 - **Quest items marked in your bags**, with a warning if you sell or delete one.
@@ -68,4 +68,4 @@ New in **3.1**: a quest item bar, big progress messages, a world marker over you
 
 ## Feedback
 
-Bugs and ideas: [GitHub issues](https://github.com/imfleek/RXPForeverTracker/issues).
+Bugs and ideas: [GitHub issues](https://github.com/imfleek/ForeverTrackerPlus/issues).

@@ -27,7 +27,7 @@ env = setmetatable({
 }, { __index = _G })
 env._G = env
 local ns = { api = {}, onLogin = {}, db = { flightLog = { ["Here > There"] = { t = 95, n = 1 } } } }
-assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 for _, fn in ipairs(ns.onLogin) do pcall(fn) end
 local button = { GetID = function() return 2 end }
 local function eluiAdds() tip:AddLine("Flight time: 1:40"); tip:Show() end

@@ -62,7 +62,7 @@ local env = setmetatable({
 env._G = env
 local ns = { api = {}, onLogin = {}, db = {}, objectModels = { [3240] = 200000 } }
 local root = { tracker = ns, objectives = {} }
-assert(loadfile(dir .. "/Tracker/NpcPanel.lua", "t", env))("RXPForeverTracker", root)
+assert(loadfile(dir .. "/Tracker/NpcPanel.lua", "t", env))("ForeverTrackerPlus", root)
 local api = ns.api
 ns.onLogin[1]()
 
@@ -171,7 +171,7 @@ local npcModel
 for _, f in ipairs(created) do if f.kind == "PlayerModel" then npcModel = f end end
 local card = frame("Frame")
 card.left, card.top = 1500, 800
-env.RXPForeverTrackerDungeonCard = card
+env.ForeverTrackerPlusDungeonCard = card
 local portrait = frame("Frame")
 portrait.top, portrait.left = 700, 1600
 portrait.boss = { name = "Rhahk'Zor", npcID = 644 }

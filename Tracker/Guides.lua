@@ -35,12 +35,12 @@ local function questInLog(id)
 end
 local function waypoint(map, x, y, label)
 	if not (map and x and y and C_Map.CanSetUserWaypointOnMap and C_Map.CanSetUserWaypointOnMap(map) and UiMapPoint) then
-		DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r no map spot for " .. (label or "this"))
+		DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r no map spot for " .. (label or "this"))
 		return
 	end
 	C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(map, x, y))
 	if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then C_SuperTrack.SetSuperTrackedUserWaypoint(true) end
-	DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99RXP ForeverTracker|r waypoint: %s (%.1f, %.1f)"):format(label or "", x * 100, y * 100))
+	DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99ForeverTrackerPlus|r waypoint: %s (%.1f, %.1f)"):format(label or "", x * 100, y * 100))
 end
 
 ---------------------------------------------------------------------------------------------------------------------

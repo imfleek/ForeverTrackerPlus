@@ -11,7 +11,7 @@ local cases = {
 	{ "|cffffffff[45] Stoley's Debt" .. xp .. "|r" .. xp, "wrapped in a colour" },
 	{ "[45] Stoley's Debt 390xp 390xp 390xp", "colour codes removed" },
 	{ "[45] Stoley's Debt" .. xp .. gold .. xp .. gold, "xp + gold repeated" },
-	{ "[45] Stoley's Debt  |cffb087ff390|r|TInterface\\AddOns\\RXPForeverTracker\\Textures\\XPOrb:0:0:1:0|t|r  |cffffd7001|r|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:0:0|t", "orb + coins" },
+	{ "[45] Stoley's Debt  |cffb087ff390|r|TInterface\\AddOns\\ForeverTrackerPlus\\Textures\\XPOrb:0:0:1:0|t|r  |cffffd7001|r|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:0:0|t", "orb + coins" },
 	{ "        [60] Ragefire Chasm  |cffffd7002g|r", "marker indent + gold" },
 	{ "[30] The 100 Rats", "title with a number" },
 }

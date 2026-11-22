@@ -1,4 +1,4 @@
--- Load RXPForeverTracker's TOC in order with a permissive stub API, then build the settings window on both tabs.
+-- Load ForeverTrackerPlus's TOC in order with a permissive stub API, then build the settings window on both tabs.
 local dir, mode = arg[1], "plain" -- mode: "plain", "oldguide", "oldtracker"
 local mt = {}
 local function any() return setmetatable({}, mt) end
@@ -48,16 +48,16 @@ _G.ObjectiveTrackerFrame = setmetatable({ modules = {} }, frameMT)
 local nilNames = { LibStub = true, issecretvalue = true, ScrollBar = true }
 setmetatable(_G, { __index = function(_, k) if nilNames[k] or k:match("DB$") or k == "Auctionator" then return nil end return any() end })
 local root = {}
-for line in io.lines(dir .. "/RXPForeverTracker.toc") do
+for line in io.lines(dir .. "/ForeverTrackerPlus.toc") do
 	line = line:gsub("\r", "")
 	if line:match("%.lua$") then
-		local ok, err = pcall(assert(loadfile(dir .. "/" .. line)), "RXPForeverTracker", root)
+		local ok, err = pcall(assert(loadfile(dir .. "/" .. line)), "ForeverTrackerPlus", root)
 		if not ok then print("LOAD ERROR", line, err) os.exit(1) end
 	end
 end
 for _, f in ipairs(timers) do f() end
 print("mode", mode, "disabledAll", tostring(root.disabledAll), "standalone", tostring(root.standaloneObjectives))
-print("migrated tracker", rawget(_G, "RXPForeverTrackerDB") and rawget(_G, "RXPForeverTrackerDB").scale, "guide", rawget(_G, "RXPForeverTrackerGuideDB") and rawget(_G, "RXPForeverTrackerGuideDB").followingSteps)
+print("migrated tracker", rawget(_G, "ForeverTrackerPlusDB") and rawget(_G, "ForeverTrackerPlusDB").scale, "guide", rawget(_G, "ForeverTrackerPlusGuideDB") and rawget(_G, "ForeverTrackerPlusGuideDB").followingSteps)
 for _, m in ipairs(chat) do print("CHAT", m) end
 
 local t = root.tracker
@@ -95,7 +95,7 @@ for _, item in ipairs(declared or {}) do if item.kind == "choice" and item.fontP
 local pass = true
 local function check(l, c) print((c and "ok   " or "FAIL ") .. l); pass = pass and c end
 check("font dropdown found", fontItem ~= nil)
-local win = up(t.api.toggleConfig, "frame") or rawget(_G, "RXPForeverTrackerConfig")
+local win = up(t.api.toggleConfig, "frame") or rawget(_G, "ForeverTrackerPlusConfig")
 check("window opens at the saved opacity (60 %)", win and win._alpha == 0.6)
 local box = up(fontItem.place, "box")
 pcall(fontItem.place, 0, 0, 600)

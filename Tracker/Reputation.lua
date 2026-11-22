@@ -131,7 +131,7 @@ end
 -- the row -----------------------------------------------------------------------------------------------------------
 local row, bar, nameText, standingText
 local function createRow()
-	row = CreateFrame("Frame", "RXPForeverTrackerReputation", UIParent)
+	row = CreateFrame("Frame", "ForeverTrackerPlusReputation", UIParent)
 	row:EnableMouse(true)
 	row:SetScript("OnMouseUp", function()
 		if InCombatLockdown() then return end

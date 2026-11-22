@@ -426,7 +426,7 @@ end
 -- Waypoints (a click on a step with a place)
 ---------------------------------------------------------------------------------------------------------------------
 local function say(text)
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r " .. text)
+	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r " .. text)
 end
 
 local function mapName(map)
@@ -896,7 +896,7 @@ end
 local function build()
 	local k = kit()
 	local C = k.C
-	local f = k.create("Frame", "RXPForeverTrackerPrereqs", UIParent)
+	local f = k.create("Frame", "ForeverTrackerPlusPrereqs", UIParent)
 	frame = f
 	f:SetSize(WIDTH, HEIGHT)
 	f:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
@@ -910,7 +910,7 @@ local function build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
-	tinsert(UISpecialFrames, "RXPForeverTrackerPrereqs")
+	tinsert(UISpecialFrames, "ForeverTrackerPlusPrereqs")
 
 	local body = k.solid(f, "BACKGROUND", C.window, 0.98, -7)
 	body:SetAllPoints()
@@ -1249,9 +1249,9 @@ local function build()
 	listLabel:SetTextColor(1, 0.82, 0)
 	staticTexts[#staticTexts + 1] = { listLabel, "GameFontNormal" }
 	local listNative
-	listScroll, listNative = k.create("ScrollFrame", "RXPForeverTrackerPrereqsList", listPanel, "UIPanelScrollFrameTemplate")
+	listScroll, listNative = k.create("ScrollFrame", "ForeverTrackerPlusPrereqsList", listPanel, "UIPanelScrollFrameTemplate")
 	if listNative then
-		listBar = listScroll.ScrollBar or _G.RXPForeverTrackerPrereqsListScrollBar
+		listBar = listScroll.ScrollBar or _G.ForeverTrackerPlusPrereqsListScrollBar
 		listScroll.scrollBarHideable = true
 		if listBar then root.scrollSkin.native(listBar) end
 	end
@@ -1274,9 +1274,9 @@ local function build()
 	k.border(panel, C.panelEdge)
 
 	local native
-	scroll, native = k.create("ScrollFrame", "RXPForeverTrackerPrereqsScroll", panel, "UIPanelScrollFrameTemplate")
+	scroll, native = k.create("ScrollFrame", "ForeverTrackerPlusPrereqsScroll", panel, "UIPanelScrollFrameTemplate")
 	if native then
-		scrollbar = scroll.ScrollBar or _G.RXPForeverTrackerPrereqsScrollScrollBar
+		scrollbar = scroll.ScrollBar or _G.ForeverTrackerPlusPrereqsScrollScrollBar
 		scroll.scrollBarHideable = true -- the template hides its bar itself when the range is zero
 		if scrollbar and scrollbar.HookScript then
 			scrollbar:HookScript("OnShow", function(self)

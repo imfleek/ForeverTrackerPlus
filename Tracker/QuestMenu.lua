@@ -49,7 +49,7 @@ end
 -- the copy box ------------------------------------------------------------------------------------------------------
 local box
 local function createBox()
-	box = CreateFrame("Frame", "RXPForeverTrackerCopyURL", UIParent, "BackdropTemplate")
+	box = CreateFrame("Frame", "ForeverTrackerPlusCopyURL", UIParent, "BackdropTemplate")
 	box:SetSize(360, 92)
 	box:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
 	box:SetFrameStrata("DIALOG")
@@ -97,7 +97,7 @@ local function createBox()
 	box.edit = edit
 	box:SetScript("OnHide", function() edit:ClearFocus() end)
 	-- Escape closes it with the game's other windows
-	if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "RXPForeverTrackerCopyURL") end
+	if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "ForeverTrackerPlusCopyURL") end
 	box:Hide()
 end
 

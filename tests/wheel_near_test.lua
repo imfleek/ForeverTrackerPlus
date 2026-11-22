@@ -12,7 +12,7 @@ local guideF = rect(0, 500, 200, 100)               -- y 500..600 (pinned on top
 local quests = rect(0, 200, 200, 280)               -- y 200..480
 local view = rect(0, 100, 200, 400)                 -- y 100..500
 local more = rect(0, 0, 200, 50, false)
-_G.RXPForeverTrackerMoreQuests = more
+_G.ForeverTrackerPlusMoreQuests = more
 local nearer = assert(loadstring(chunk))(guideF, true, view, { modules = { quests } }, function() return true end,
 	function() return false end, function() return cursor[1], cursor[2] end)
 local pass = true

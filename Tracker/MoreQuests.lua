@@ -151,7 +151,7 @@ end
 -- Position, scale and width, every tracker layout pass (Core.lua refresh).
 function api.layoutMoreQuests()
 	if not frame or used == 0 or not wanted() then hide() return end
-	local viewport = _G.RXPForeverTrackerViewport
+	local viewport = _G.ForeverTrackerPlusViewport
 	-- the whole tracker collapsed, or the "Quests" section folded with its collapse button: these quests go too
 	local questModule = _G.QuestObjectiveTracker
 	local questsFolded = questModule and questModule.IsCollapsed and questModule:IsCollapsed()
@@ -341,7 +341,7 @@ end
 local function build()
 	if not db then return end
 	if not frame then
-		frame = CreateFrame("Frame", "RXPForeverTrackerMoreQuests", UIParent)
+		frame = CreateFrame("Frame", "ForeverTrackerPlusMoreQuests", UIParent)
 		if api.applyMoreQuestsAlpha then api.applyMoreQuestsAlpha() end
 		frame:SetSize(200, 10)
 		frame:Hide()

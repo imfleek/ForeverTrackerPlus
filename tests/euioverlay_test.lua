@@ -41,10 +41,10 @@ local env = setmetatable({
 	UIParent = {}, StaticPopupDialogs = {},
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 for _, fn in ipairs(ns.onLogin) do pcall(fn) end
 
-check("registered with EllesmereUI's overlay hook", painters.RXPForeverTracker ~= nil)
+check("registered with EllesmereUI's overlay hook", painters.ForeverTrackerPlus ~= nil)
 check("open bags redrawn once at registration", refreshes >= 1)
 local m1 = buttons[1]._textOverlay.textures[1]
 check("quest item: mark on the slot's text layer, shown", m1 and m1.shown)

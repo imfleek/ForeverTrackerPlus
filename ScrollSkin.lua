@@ -1,4 +1,4 @@
--- Every scrollbar in RXP ForeverTracker drawn like the game's own: the art (track, thumb, arrows) is copied from the
+-- Every scrollbar in ForeverTrackerPlus drawn like the game's own: the art (track, thumb, arrows) is copied from the
 -- character pane's scrollbar (the bar of CharacterStatsPaneScrollBox, /fstack; user's choice), read live from the
 -- client, so it is exactly the game's look in every client and version. Until that bar can be read (or when a piece is
 -- missing) the game's minimal-scrollbar atlases are used, else the same look in plain colours. Each owner keeps its own

@@ -2,7 +2,7 @@
 -- progress toasts and party announcements); the code is our own. Each part has its own switch:
 --   db.itemBar        (on)  a bar with one button per usable quest item in the log (the item the game gives a quest,
 --                           GetQuestLogSpecialItemInfo). The focused quest's item comes first. Shift+drag moves the
---                           bar (db.itemBarPos). Key Bindings > AddOns > RXP ForeverTracker: "Use the first quest item"
+--                           bar (db.itemBarPos). Key Bindings > AddOns > ForeverTrackerPlus: "Use the first quest item"
 --   db.toasts         (on)  quest progress in large letters in the upper middle of the screen ("Wolves slain: 3/8"),
 --                           and "Ready to turn in" when a quest is done
 --   db.toastsHideGame (on)  while the big messages are on: the game's small yellow quest progress line at the top
@@ -383,7 +383,7 @@ ns.onLogin[#ns.onLogin + 1] = function()
 end
 
 -- the key binding's names (Bindings.xml)
-_G.BINDING_HEADER_RXPFTRACKER = "RXP ForeverTracker"
+_G.BINDING_HEADER_RXPFTRACKER = "ForeverTrackerPlus"
 _G["BINDING_NAME_CLICK RXPFTQuestItemKey:LeftButton"] = "Use the first quest item"
 
 ---------------------------------------------------------------------------------------------------------------------

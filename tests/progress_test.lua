@@ -11,7 +11,7 @@ check("progress code found in Extras.lua", body ~= nil)
 
 local db = { progressBars = true }
 local api = {}
-local env = setmetatable({ db = db, api = api, applying = false, ADDON = "RXPForeverTracker", isSecret = function() return false end,
+local env = setmetatable({ db = db, api = api, applying = false, ADDON = "ForeverTrackerPlus", isSecret = function() return false end,
 	hooksecurefunc = function(t, k, fn) local o = t[k]; t[k] = function(...) local r = o(...); fn(...); return r end end,
 	CreateFrame = function() return { RegisterEvent = function() end, SetScript = function() end } end },
 	{ __index = _G })

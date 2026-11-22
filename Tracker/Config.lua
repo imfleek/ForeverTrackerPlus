@@ -2314,8 +2314,8 @@ local function declareItems(db)
 				{ "Arrow", s.arrow },
 			}
 		end)
-		if StaticPopupDialogs and not StaticPopupDialogs.RXPFOREVERTRACKER_RESET_PROGRESS then
-			StaticPopupDialogs.RXPFOREVERTRACKER_RESET_PROGRESS = {
+		if StaticPopupDialogs and not StaticPopupDialogs.FOREVERTRACKERPLUS_RESET_PROGRESS then
+			StaticPopupDialogs.FOREVERTRACKERPLUS_RESET_PROGRESS = {
 				text = "Clear your place in every RestedXP guide for this character? Each guide will start from its first step.",
 				button1 = YES, button2 = NO, timeout = 0, whileDead = true, hideOnEscape = true,
 				OnAccept = function() g.resetAllProgress() end,
@@ -2327,7 +2327,7 @@ local function declareItems(db)
 		}
 		if g.restartGuide then
 			row[#row + 1] = { "Restart this guide", function() g.restartGuide() end, 150 }
-			row[#row + 1] = { "Reset all guides", function() if StaticPopup_Show then StaticPopup_Show("RXPFOREVERTRACKER_RESET_PROGRESS") end end, 140 }
+			row[#row + 1] = { "Reset all guides", function() if StaticPopup_Show then StaticPopup_Show("FOREVERTRACKERPLUS_RESET_PROGRESS") end end, 140 }
 		end
 		buttons("Choose a guide Print status to chat Restart this guide Reset all guides", row)
 		if g.restartGuide then
@@ -2423,7 +2423,7 @@ local function declareItems(db)
 		end
 		local function tell(ok, message)
 			lastMessage = message and { message, ok and { 0.6, 0.9, 0.6 } or { 1, 0.45, 0.35 } } or nil
-			if message then print("|cff33ff99RXP ForeverTracker|r " .. message) end
+			if message then print("|cff33ff99ForeverTrackerPlus|r " .. message) end
 		end
 		-- loading or deleting asks first: loading reloads the interface to apply every setting
 		StaticPopupDialogs["RXPFT_LOAD_PROFILE"] = {
@@ -2754,7 +2754,7 @@ end
 
 local function build()
 	local db = ns.db
-	local f = create("Frame", "RXPForeverTrackerConfig", UIParent)
+	local f = create("Frame", "ForeverTrackerPlusConfig", UIParent)
 	frame = f
 	local size = db.configSize
 	-- sizes saved by the older, narrower window are too small for the category list: start at the new size then
@@ -2791,7 +2791,7 @@ local function build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
-	tinsert(UISpecialFrames, "RXPForeverTrackerConfig") -- Esc closes it
+	tinsert(UISpecialFrames, "ForeverTrackerPlusConfig") -- Esc closes it
 
 	-- window: dark body, bronze edge with a black inner line (no shadow outside the edge)
 	local body = solid(f, "BACKGROUND", C.window, 0.98, -7)
@@ -2904,7 +2904,7 @@ local function build()
 
 	-- search box (Forever's SearchBoxTemplate) above the page, right-aligned
 	local nativeSearch
-	searchBox, nativeSearch = create("EditBox", "RXPForeverTrackerConfigSearch", f, "SearchBoxTemplate")
+	searchBox, nativeSearch = create("EditBox", "ForeverTrackerPlusConfigSearch", f, "SearchBoxTemplate")
 	searchBox:SetSize(320, 24)
 	searchBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -(32 + 12))
 	searchBox:SetAutoFocus(false)
@@ -3105,7 +3105,7 @@ local function build()
 			local guide = root.objectives and root.objectives.settings
 			if next(guideKeys) and guide and guide.reset then guide.reset(guideKeys) end
 			if next(questKeys) then api.resetDefaults(questKeys, '"' .. tostring(p.title or activePage) .. '"')
-			elseif next(guideKeys) then DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r \"" .. tostring(p.title or activePage) .. "\" settings reset to defaults") end
+			elseif next(guideKeys) then DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r \"" .. tostring(p.title or activePage) .. "\" settings reset to defaults") end
 		end
 		api.refreshConfig()
 		scheduleLayout()
@@ -3127,14 +3127,14 @@ local function build()
 
 	-- scroll area: Forever's UIPanelScrollFrameTemplate (its scroll bar sits just right of the frame)
 	local nativeScroll
-	scroll, nativeScroll = create("ScrollFrame", "RXPForeverTrackerConfigScroll", panel, "UIPanelScrollFrameTemplate")
+	scroll, nativeScroll = create("ScrollFrame", "ForeverTrackerPlusConfigScroll", panel, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -60)
 	scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 10)
 	content = CreateFrame("Frame", nil, scroll)
 	content:SetSize(10, 10)
 	scroll:SetScrollChild(content)
 	if nativeScroll then
-		scrollbar = scroll.ScrollBar or _G.RXPForeverTrackerConfigScrollScrollBar
+		scrollbar = scroll.ScrollBar or _G.ForeverTrackerPlusConfigScrollScrollBar
 		scroll.scrollBarHideable = true -- the template then hides its bar itself when the range is zero
 		-- and whenever the template shows it again, the bar goes if there is still nothing to scroll
 		if scrollbar and scrollbar.HookScript then

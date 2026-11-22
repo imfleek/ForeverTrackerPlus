@@ -280,7 +280,7 @@ local function createHeader(parent)
 end
 
 local function createCard()
-	card = CreateFrame("Frame", "RXPForeverTrackerDungeonCard", UIParent)
+	card = CreateFrame("Frame", "ForeverTrackerPlusDungeonCard", UIParent)
 	header = createHeader(card)
 	header:SetHeight(26)
 	body = CreateFrame("Frame", nil, card)

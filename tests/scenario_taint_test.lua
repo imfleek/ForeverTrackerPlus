@@ -1,6 +1,6 @@
 -- Quest Tracker scale must never write fields on the scenario module (or any module outside SCALED_MODULES): its
 -- layout reads them, runs tainted, and then fails on secret auras in dungeons (Blizzard_MawBuffs ShouldShowMawBuffs ->
--- GetAuraDataByIndex "Auras cannot be accessed when secret while tainted by 'RXPForeverTracker'").
+-- GetAuraDataByIndex "Auras cannot be accessed when secret while tainted by 'ForeverTrackerPlus'").
 local src = io.open(arg[1] .. "/Tracker/Core.lua"):read("a")
 local widths = src:match("(local WIDTH_FIELDS = .-\nlocal function applyModuleWidths%(%).-\n\treturn changed\nend\n)")
 local scales = src:match("(local function applyModuleScales%(%).-\n\treturn changed\nend\n)")

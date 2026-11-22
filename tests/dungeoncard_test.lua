@@ -69,13 +69,13 @@ local env = setmetatable({
 }, { __index = _G })
 env._G = env
 local chunk = assert(loadfile(dir .. "/Tracker/Dungeon.lua", "t", env))
-chunk("RXPForeverTracker", { tracker = ns })
+chunk("ForeverTrackerPlus", { tracker = ns })
 local api = ns.api
 ns.onLogin[1]()
 
 local ghost = frame("ghost")
 local room = api.layoutDungeonCard(ghost, 0, 1)
-local card = env.RXPForeverTrackerDungeonCard
+local card = env.ForeverTrackerPlusDungeonCard
 check("inside a dungeon: the card takes room at the top (" .. tostring(room) .. ")", type(room) == "number" and room > 40)
 -- find the card's texts: the header says "Dungeon", the title the instance, the banner the group's size
 local function texts(f, out)
@@ -231,6 +231,6 @@ check("Core: the card above a pinned guide, the guide moved down by its room",
 check("the guide's own offset taken off its shift", core:find("own = math.max(top - toScreen(guide, gTop) - guideShift, 0)", 1, true)
 	~= nil and core:find("shift = math.max(cardRoom - own, 0)", 1, true) ~= nil)
 check("on by default", core:find("dungeonCard = true", 1, true) ~= nil)
-check("in the toc", io.open(dir .. "/RXPForeverTracker.toc"):read("a"):find("Tracker/Dungeon.lua", 1, true) ~= nil)
+check("in the toc", io.open(dir .. "/ForeverTrackerPlus.toc"):read("a"):find("Tracker/Dungeon.lua", 1, true) ~= nil)
 check("its option", io.open(dir .. "/Tracker/Config.lua"):read("a"):find('"Dungeon card at the top"', 1, true) ~= nil)
 print(pass and "PASS" or "FAILED")

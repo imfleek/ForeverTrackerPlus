@@ -15,7 +15,7 @@ local env = setmetatable({
 	DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) said[#said + 1] = m end },
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 for _, fn in ipairs(ns.onLogin) do pcall(fn) end
 local api, popup = ns.api, env.StaticPopupDialogs.RXPFT_ADDON_CLASH
 local function click(button) local s = table.remove(shown, 1); if button == 1 then popup.OnAccept(nil, s.data) else popup.OnCancel(nil, s.data, "clicked") end end

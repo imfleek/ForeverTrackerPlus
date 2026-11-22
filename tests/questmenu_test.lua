@@ -31,7 +31,7 @@ local env = setmetatable({
 	issecretvalue = function() return false end, ChatFontNormal = {},
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/QuestMenu.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/QuestMenu.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 local api = ns.api
 ns.onLogin[1]()
 check("the link is WoW Forever's Wowhead page", api.wowheadQuestURL(5212) == "https://www.wowhead.com/forever/quest=5212")
@@ -45,12 +45,12 @@ menuHandler(nil, rootDescription)
 check("the menu line: \"Wowhead URL\" in green", button and button.text == "|cff1eff00Wowhead URL|r")
 button.fn()
 local box = nil
-for _, f in ipairs(all) do if f.name == "RXPForeverTrackerCopyURL" then box = f end end
+for _, f in ipairs(all) do if f.name == "ForeverTrackerPlusCopyURL" then box = f end end
 local edit
 for _, f in ipairs(all) do if rawget(f, "scripts") and f.scripts.OnKeyDown then edit = f end end
 check("the box shows the link, selected and ready to copy", box and box.shown and edit and edit.text
 	== "https://www.wowhead.com/forever/quest=5212" and edit.highlighted and edit.focused)
-check("Escape closes it with the game's windows", env.UISpecialFrames[1] == "RXPForeverTrackerCopyURL")
+check("Escape closes it with the game's windows", env.UISpecialFrames[1] == "ForeverTrackerPlusCopyURL")
 edit.scripts.OnTextChanged(edit, true)
 edit.text = "typed"
 edit.scripts.OnTextChanged(edit, true)
@@ -65,7 +65,7 @@ check("no quest known: no line", button == nil)
 
 local ex = io.open(dir .. "/Tracker/Extras.lua"):read("a")
 check("the quest pressed is recorded on mouse down", ex:find("api.lastQuestPressed = { id = questIDOf(block), at = GetTime(),", 1, true) ~= nil)
-local toc = io.open(dir .. "/RXPForeverTracker.toc"):read("a")
+local toc = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", toc:find("Tracker/QuestMenu.lua", 1, true) ~= nil)
 
 -- R106-86: Expand current zone only

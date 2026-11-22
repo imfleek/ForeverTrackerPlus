@@ -1,5 +1,5 @@
 -- Profiles (/qt > Settings Window > Profiles): named copies of every setting of the quest tracker
--- (RXPForeverTrackerDB) and the RXP Tracker (RXPForeverTrackerGuideDB). The settings in use always belong to the active
+-- (ForeverTrackerPlusDB) and the RXP Tracker (ForeverTrackerPlusGuideDB). The settings in use always belong to the active
 -- profile (saved into it on logout and before another profile loads); "Default" is made from them on first use.
 -- Loading a profile writes its values into the settings and reloads the interface, which applies each of them.
 -- Export: "RXPFT1:" + base64 of a small text serialisation (no Lua code is ever run on an imported string).
@@ -21,7 +21,7 @@ local EXCLUDE_GUIDE = { onboarded = true, questFocus = true, questFocusSaved = t
 local function trackerDB() return ns.db end
 local function guideDB()
 	local guide = root.objectives
-	return (guide and guide.db) or (type(_G.RXPForeverTrackerGuideDB) == "table" and _G.RXPForeverTrackerGuideDB) or nil
+	return (guide and guide.db) or (type(_G.ForeverTrackerPlusGuideDB) == "table" and _G.ForeverTrackerPlusGuideDB) or nil
 end
 
 local function copy(value, depth)
@@ -286,7 +286,7 @@ end
 -- returns ok, message, the profile's own name (from the string)
 function api.importProfile(text, name)
 	text = type(text) == "string" and text:gsub("^%s+", ""):gsub("%s+$", "") or ""
-	if text:sub(1, #PREFIX) ~= PREFIX then return false, "That is not an RXP ForeverTracker profile string." end
+	if text:sub(1, #PREFIX) ~= PREFIX then return false, "That is not an ForeverTrackerPlus profile string." end
 	local raw = decode64(text:sub(#PREFIX + 1))
 	local data = raw and deserialise(raw)
 	if type(data) ~= "table" or type(data.tracker) ~= "table" then

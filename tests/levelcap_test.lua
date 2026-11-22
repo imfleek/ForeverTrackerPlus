@@ -17,21 +17,21 @@ local evt
 _G.CreateFrame = function() local f = { RegisterEvent = function() end }
 	f.SetScript = function(_, _, fn) evt = fn end; return f end
 local db = {}
-local root = { BRAND = "RXP ForeverTracker", tracker = { db = db, api = {} } }
-assert(loadfile(dir .. "/Tracker/LevelCap.lua"))("RXPForeverTracker", root)
+local root = { BRAND = "ForeverTrackerPlus", tracker = { db = db, api = {} } }
+assert(loadfile(dir .. "/Tracker/LevelCap.lua"))("ForeverTrackerPlus", root)
 local function runTimers() local t = timers; timers = {}; for _, f in ipairs(t) do f() end end
 
 evt(nil, "PLAYER_ENTERING_WORLD", true, false); runTimers()
 check("level 59 at login: not asked", shown == nil)
 evt(nil, "PLAYER_LEVEL_UP", 60); runTimers()
-check("reaching 60: asked", shown == "RXPFOREVERTRACKER_LEVEL_CAP")
-local d = StaticPopupDialogs.RXPFOREVERTRACKER_LEVEL_CAP
+check("reaching 60: asked", shown == "FOREVERTRACKERPLUS_LEVEL_CAP")
+local d = StaticPopupDialogs.FOREVERTRACKERPLUS_LEVEL_CAP
 check("buttons: Disable RXPGuides / Not now / Don't ask again", d.button1 == "Disable RXPGuides" and d.button2 == "Not now"
 	and d.button3 == "Don't ask again")
 -- "Not now": asked again on the next login (level 60 already)
 shown = nil; level = 60
 evt(nil, "PLAYER_ENTERING_WORLD", false, true); runTimers()
-check("Not now: asked again on the next login at 60", shown == "RXPFOREVERTRACKER_LEVEL_CAP")
+check("Not now: asked again on the next login at 60", shown == "FOREVERTRACKERPLUS_LEVEL_CAP")
 -- a zone change is not a login
 shown = nil
 evt(nil, "PLAYER_ENTERING_WORLD", false, false); runTimers()
@@ -42,9 +42,9 @@ evt(nil, "PLAYER_LEVEL_UP", 60); runTimers()
 check("in combat: not shown yet", shown == nil)
 combat = false
 evt(nil, "PLAYER_REGEN_ENABLED")
-check("combat over: asked", shown == "RXPFOREVERTRACKER_LEVEL_CAP")
+check("combat over: asked", shown == "FOREVERTRACKERPLUS_LEVEL_CAP")
 -- Disable: only RXPGuides, then reload, and not asked again for this character
-StaticPopupDialogs.RXPFOREVERTRACKER_LEVEL_CAP.OnAccept()
+StaticPopupDialogs.FOREVERTRACKERPLUS_LEVEL_CAP.OnAccept()
 check("Disable RXPGuides: only it, then the UI reloads", disabled[1] == "RXPGuides" and #disabled == 1 and reloaded)
 shown = nil
 evt(nil, "PLAYER_ENTERING_WORLD", true, false); runTimers()
@@ -52,8 +52,8 @@ check("answered: not asked again for this character", shown == nil)
 -- Don't ask again (another character)
 _G.UnitName = function() return "Alt" end
 evt(nil, "PLAYER_ENTERING_WORLD", true, false); runTimers()
-check("another character at 60: asked for it too", shown == "RXPFOREVERTRACKER_LEVEL_CAP")
-StaticPopupDialogs.RXPFOREVERTRACKER_LEVEL_CAP.OnAlt()
+check("another character at 60: asked for it too", shown == "FOREVERTRACKERPLUS_LEVEL_CAP")
+StaticPopupDialogs.FOREVERTRACKERPLUS_LEVEL_CAP.OnAlt()
 shown = nil
 evt(nil, "PLAYER_ENTERING_WORLD", true, false); runTimers()
 check("Don't ask again: not asked again", shown == nil)
@@ -62,6 +62,6 @@ _G.UnitName = function() return "Third" end
 loaded.RXPGuides = nil
 evt(nil, "PLAYER_ENTERING_WORLD", true, false); runTimers()
 check("RXPGuides not loaded: not asked", shown == nil)
-local toc = io.open(dir .. "/RXPForeverTracker.toc"):read("a")
+local toc = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", toc:find("Tracker/LevelCap.lua", 1, true) ~= nil)
 print(pass and "PASS" or "FAILED")

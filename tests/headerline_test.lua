@@ -71,12 +71,12 @@ local env = setmetatable({
 	wipe = function(t) for k in pairs(t) do t[k] = nil end return t end,
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/Dungeon.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Dungeon.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 ns.onLogin[1]()
 local anchor = frame("ghost")
 api = ns.api
 api.layoutDungeonCard(anchor, 0, 1)
-local card = env.RXPForeverTrackerDungeonCard
+local card = env.ForeverTrackerPlusDungeonCard
 -- the card's header: the first frame made in the card with art copied (find the textures by their atlas)
 local copiedLine, copiedBg, shine
 local function scan(f, seen)

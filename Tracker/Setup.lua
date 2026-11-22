@@ -31,7 +31,7 @@ local function buildSteps()
 	local d = db()
 	local g = guide()
 	local out = {}
-	out[#out + 1] = { title = "Welcome to RXP ForeverTracker 3.1", text =
+	out[#out + 1] = { title = "Welcome to ForeverTrackerPlus 3.1", text =
 		"This short setup shows every feature and lets you turn each one on or off. It takes about a minute.\n\n" ..
 		"Every choice applies at once. You can change all of it later: type |cffffd100/qt|r or click the minimap button.\n\n" ..
 		"Press |cffffd100Next|r to start, or |cffffd100Skip setup|r to keep everything as it is." }
@@ -157,7 +157,7 @@ local function build()
 	local kit = api.themeKit
 	if not kit then return nil end
 	local C = kit.C
-	local f = CreateFrame("Frame", "RXPForeverTrackerSetup", UIParent)
+	local f = CreateFrame("Frame", "ForeverTrackerPlusSetup", UIParent)
 	frame = f
 	f:SetSize(560, 470)
 	f:SetPoint("CENTER", 0, 40)
@@ -168,7 +168,7 @@ local function build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
-	tinsert(UISpecialFrames, "RXPForeverTrackerSetup")
+	tinsert(UISpecialFrames, "ForeverTrackerPlusSetup")
 	kit.solid(f, "BACKGROUND", C.window, 0.98):SetAllPoints()
 	kit.border(f, C.edge, 2, "BORDER")
 	-- title bar
@@ -295,7 +295,7 @@ function api.showSetup(force)
 	if not d then return end
 	if not force and (tonumber(d.setupDone) or 0) >= SETUP_VERSION then return end
 	if InCombatLockdown and InCombatLockdown() then
-		if force then DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r the setup opens after combat.") end
+		if force then DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r the setup opens after combat.") end
 		local wait = CreateFrame("Frame")
 		wait:RegisterEvent("PLAYER_REGEN_ENABLED")
 		wait:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); api.showSetup(force) end)

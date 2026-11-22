@@ -95,7 +95,7 @@ local db = { questDistance = true }
 local where = {}
 local env = setmetatable({ db = db, api = { playerWorldPos = function() return { continent = 1, x = 0, y = 0 } end,
 	questDirection = function(id) local w = where[id]; if w then return w[1], w[2] end end },
-	ADDON = "RXPForeverTracker", isSecret = function() return false end,
+	ADDON = "ForeverTrackerPlus", isSecret = function() return false end,
 	UIParent = { CreateFontString = function() return region() end }, GetPlayerFacing = function() return facing end },
 	{ __index = _G })
 local relayouts = 0

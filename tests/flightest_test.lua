@@ -37,7 +37,7 @@ local env = setmetatable({
 		return 1, { GetXY = function() return v.x * 1000, v.y * 1000 end } end },
 }, { __index = _G })
 env._G = env
-assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("RXPForeverTracker", { tracker = ns })
+assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 for _, fn in ipairs(ns.onLogin) do pcall(fn) end
 local api = ns.api
 

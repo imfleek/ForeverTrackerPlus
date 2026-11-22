@@ -6,7 +6,7 @@ local goldFn = src:match("(local function gold%(copper, coins, spaced, px%).-\ne
 local orb = src:match("(local XP_ORB = [^\n]+)")
 local fmt = src:match("(function api%.formatRewardTotals%(xp, money, spacedCoins%).-\nend)")
 local db = {}
-local env = setmetatable({ db = db, api = {}, ADDON = "RXPForeverTracker" }, { __index = _G })
+local env = setmetatable({ db = db, api = {}, ADDON = "ForeverTrackerPlus" }, { __index = _G })
 local api = load(coinBlock .. "\n" .. goldFn .. "\n" .. orb .. "\n" .. fmt .. "\nreturn api", "x", "t", env)()
 local pass = true
 local function check(l, c) print((c and "ok   " or "FAIL ") .. l); pass = pass and c end

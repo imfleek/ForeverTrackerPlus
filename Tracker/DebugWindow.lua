@@ -34,7 +34,7 @@ end
 local function build()
 	local k = api.themeKit
 	local C = k.C
-	local f = k.create("Frame", "RXPForeverTrackerDebugFrame", UIParent)
+	local f = k.create("Frame", "ForeverTrackerPlusDebugFrame", UIParent)
 	frame = f
 	f:SetSize(WIDTH, HEIGHT)
 	f:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
@@ -46,7 +46,7 @@ local function build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
-	if UISpecialFrames then tinsert(UISpecialFrames, "RXPForeverTrackerDebugFrame") end
+	if UISpecialFrames then tinsert(UISpecialFrames, "ForeverTrackerPlusDebugFrame") end
 
 	k.solid(f, "BACKGROUND", C.window, 0.98, -7):SetAllPoints()
 	k.border(f, C.edge, 2, "BORDER")
@@ -108,7 +108,7 @@ local function build()
 		if waitingForCopy and key == "C" and IsControlKeyDown and IsControlKeyDown() then
 			C_Timer.After(0, function()
 				f:Hide()
-				DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r debug details copied.")
+				DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r debug details copied.")
 			end)
 		end
 	end)
@@ -129,7 +129,7 @@ end
 
 function api.showDebugWindow(lines)
 	if not api.themeKit then
-		for _, text in ipairs(lines) do DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r " .. text) end
+		for _, text in ipairs(lines) do DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r " .. text) end
 		return
 	end
 	if not frame then build() end

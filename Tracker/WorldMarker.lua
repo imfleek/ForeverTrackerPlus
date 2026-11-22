@@ -160,7 +160,7 @@ end
 api.markerAutoPick = autoPick -- (tests)
 function api.toggleMarkerAuto()
 	db.markerAuto = not optOn("markerAuto")
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r the marker picks the nearest quest: "
+	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r the marker picks the nearest quest: "
 		.. (db.markerAuto and "on" or "off"))
 	if db.markerAuto then lastAuto = nil; autoPick() end
 end

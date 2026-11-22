@@ -284,7 +284,7 @@ local function click(l, b) linkClickFn(l, "rxpft:line", "", b) end
 click(line, "RightButton")
 check("a right-click does not open the copy box (it goes on to the step)", shownPopup == nil)
 click(line, "LeftButton")
-check("a left-click opens the copy box with the link", shownPopup and shownPopup.which == "RXPFOREVERTRACKER_COPY_LINK"
+check("a left-click opens the copy box with the link", shownPopup and shownPopup.which == "FOREVERTRACKERPLUS_COPY_LINK"
 	and shownPopup.data == "https://example.com/guide")
 local tip = {}
 _G.GameTooltip = setmetatable({ IsShown = function() return false end, GetOwner = function() return nil end,

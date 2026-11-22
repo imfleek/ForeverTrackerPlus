@@ -12,9 +12,9 @@ _G.C_Timer = { After = function(d, f) timers[#timers + 1] = { d, f } end }
 local evt
 _G.CreateFrame = function() local f = { RegisterEvent = function() end, UnregisterEvent = function() end }
 	f.SetScript = function(_, _, fn) evt = fn end; return f end
-_G.RXPForeverTrackerDB = { enabled = true }
-local root = { BRAND = "RXP ForeverTracker", tracker = { db = _G.RXPForeverTrackerDB, api = {} } }
-assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("RXPForeverTracker", root)
+_G.ForeverTrackerPlusDB = { enabled = true }
+local root = { BRAND = "ForeverTrackerPlus", tracker = { db = _G.ForeverTrackerPlusDB, api = {} } }
+assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("ForeverTrackerPlus", root)
 evt({ UnregisterEvent = function() end }, "PLAYER_ENTERING_WORLD", true, false)
 print("timer delay:", timers[1] and timers[1][1])
 timers[1][2]()
@@ -23,9 +23,9 @@ local d = StaticPopupDialogs[shown.which]
 print("prompt about:", shown.a, "| buttons:", d.button1, "/", d.button2, "/", d.button3)
 d.OnCancel(nil, nil, "override"); print("closed another way -> disabled:", #disabled)
 d.OnCancel(nil, nil, "clicked"); print("Disable other -> disabled:", disabled[1], "reload:", reloaded)
-d.OnAlt(); print("Keep both -> remembered:", tostring(RXPForeverTrackerDB.conflictKept["!KalielsTracker"]))
+d.OnAlt(); print("Keep both -> remembered:", tostring(ForeverTrackerPlusDB.conflictKept["!KalielsTracker"]))
 shown = nil; timers = {}
-assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("RXPForeverTracker", root)
+assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("ForeverTrackerPlus", root)
 evt({ UnregisterEvent = function() end }, "PLAYER_ENTERING_WORLD", false, true); timers[1][2]()
 print("after Keep both, next reload prompts:", shown ~= nil)
 
@@ -34,9 +34,9 @@ do
 	local function check(l, c) print((c and "ok   " or "FAIL ") .. l) end
 	loaded = { EllesmereUIQuestTracker = true }
 	disabled, reloaded, shown, timers = {}, false, nil, {}
-	_G.RXPForeverTrackerDB = { enabled = true }
-	root.tracker.db = _G.RXPForeverTrackerDB
-	assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("RXPForeverTracker", root)
+	_G.ForeverTrackerPlusDB = { enabled = true }
+	root.tracker.db = _G.ForeverTrackerPlusDB
+	assert(loadfile(dir .. "/Tracker/Conflicts.lua"))("ForeverTrackerPlus", root)
 	evt({ UnregisterEvent = function() end }, "PLAYER_ENTERING_WORLD", true, false)
 	timers[1][2]()
 	local d = shown and StaticPopupDialogs[shown.which]

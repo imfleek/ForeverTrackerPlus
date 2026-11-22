@@ -1,4 +1,4 @@
--- RXP ForeverTracker (tracker half): mouse-wheel scrolling (with a scrollbar) for Blizzard's default objective tracker.
+-- ForeverTrackerPlus (tracker half): mouse-wheel scrolling (with a scrollbar) for Blizzard's default objective tracker.
 --
 -- Blizzard modules are only post-hooked and moved with SetPoint, nothing of Blizzard's is replaced or written to.
 --
@@ -21,7 +21,7 @@ if not tracker or root.disabledAll then ns.disabled = true return end
 -- versions and keeps the plain ones as <name>Base. Calling the Edit Mode versions from here ran Edit Mode's own
 -- bookkeeping (anchor-changed flags) as addon code, so it was tainted, and Edit Mode's next layout pass ran tainted:
 -- InvokeOnAnyEditModeSystemAnchorChanged -> GetAuraDataByIndex "Auras cannot be accessed when secret while tainted by
--- 'RXPForeverTracker'". The tracker is moved, scaled and parented here only through the plain methods (Base where
+-- 'ForeverTrackerPlus'". The tracker is moved, scaled and parented here only through the plain methods (Base where
 -- Edit Mode has them); Edit Mode is not told, and the hooks below still see each call.
 local function plain(method)
 	local f = tracker[method .. "Base"]
@@ -111,7 +111,7 @@ local needsLayout = false         -- a layout change arrived during combat or fr
 local warned = false
 local dragging
 
-local function say(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RXP ForeverTracker|r " .. msg) end
+local function say(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r " .. msg) end
 ns.say = say
 
 local function guarded(fn)
@@ -287,7 +287,7 @@ local WIDTH_FIELDS = { "lineWidth", "blockWidth" }
 -- CONSTRAINT: Quest Tracker scale (scale and width fields) applies to these quest-list modules only. A field written
 -- here is one Blizzard's layout reads, so that module's layout runs tainted; a module that reads secret data there then
 -- fails: the scenario module in dungeons (Blizzard_MawBuffs ShouldShowMawBuffs -> GetAuraDataByIndex: "Auras cannot be
--- accessed when secret while tainted by 'RXPForeverTracker'"). Every other module (scenario, widgets, bonus objectives,
+-- accessed when secret while tainted by 'ForeverTrackerPlus'"). Every other module (scenario, widgets, bonus objectives,
 -- world quests, other addons') stays at scale 1 with Blizzard's own fields, untouched.
 local SCALED_MODULES = { "QuestObjectiveTracker", "CampaignQuestObjectiveTracker", "AchievementObjectiveTracker",
 	"AdventureObjectiveTracker", "ProfessionsRecipeTracker", "MonthlyActivitiesObjectiveTracker" }
@@ -354,7 +354,7 @@ local function onGuideMouseUp(frame, button)
 		return
 	end
 	if IsShiftKeyDown() and ns.api.openConfigTab then
-		local window = _G.RXPForeverTrackerConfig
+		local window = _G.ForeverTrackerPlusConfig
 		if window and window:IsShown() and db.configTab == "quests" and ns.api.toggleConfig then
 			ns.api.toggleConfig()
 		else
@@ -1019,7 +1019,7 @@ local function updateBackground()
 		return
 	end
 	if not background then
-		background = withAlpha(CreateFrame("Frame", "RXPForeverTrackerBackground", UIParent))
+		background = withAlpha(CreateFrame("Frame", "ForeverTrackerPlusBackground", UIParent))
 		background.tex = background:CreateTexture(nil, "BACKGROUND")
 		background.tex:SetAllPoints()
 		background:EnableMouse(false)
@@ -1161,7 +1161,7 @@ local function nearerGuide()
 	for _, module in ipairs(tracker.modules or {}) do
 		if not isForeign(module) and moduleVisible(module) then consider(module) end
 	end
-	consider(_G.RXPForeverTrackerMoreQuests)
+	consider(_G.ForeverTrackerPlusMoreQuests)
 	if not nearestQuest then return false end
 	return distanceTo(guideRect, x, y) < nearestQuest
 end
@@ -1608,7 +1608,7 @@ local function setProfOffset(value)
 end
 
 local function createProfBox()
-	profBox = withAlpha(CreateFrame("Frame", "RXPForeverTrackerProfessions", UIParent))
+	profBox = withAlpha(CreateFrame("Frame", "ForeverTrackerPlusProfessions", UIParent))
 	profBox:SetClipsChildren(true)
 	profBox:EnableMouseWheel(true) -- once, out of combat (protected)
 	profBox:SetScript("OnMouseWheel", function(_, delta)
@@ -1890,11 +1890,11 @@ end
 
 ---------------------------------------------------------------------------------------------------------------------
 local function enable()
-	ghost = CreateFrame("Frame", "RXPForeverTrackerAnchor", UIParent)
+	ghost = CreateFrame("Frame", "ForeverTrackerPlusAnchor", UIParent)
 	ghost:SetMovable(true)
 	ghost:SetClampedToScreen(false) -- the tracker may be dragged partly off screen
 
-	viewport = withAlpha(CreateFrame("Frame", "RXPForeverTrackerViewport", UIParent))
+	viewport = withAlpha(CreateFrame("Frame", "ForeverTrackerPlusViewport", UIParent))
 	viewport:SetClipsChildren(true)
 	viewport:SetFrameStrata(tracker:GetFrameStrata())
 	viewport:SetFrameLevel(tracker:GetFrameLevel())
@@ -2168,7 +2168,7 @@ local QT_HELP = {
 }
 local function printHelp()
 	local chat = DEFAULT_CHAT_FRAME
-	chat:AddMessage("|cff33ff99RXP ForeverTracker|r quest tracker:")
+	chat:AddMessage("|cff33ff99ForeverTrackerPlus|r quest tracker:")
 	for _, entry in ipairs(QT_HELP) do
 		chat:AddMessage("|cff33ff99/qt" .. (entry[1] ~= "" and " " .. entry[1] or "") .. "|r  " .. entry[2])
 	end
@@ -2251,8 +2251,8 @@ frame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
 frame:RegisterEvent("UI_SCALE_CHANGED")
 frame:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_LOGIN" then
-		RXPForeverTrackerDB = RXPForeverTrackerDB or {}
-		db = RXPForeverTrackerDB
+		ForeverTrackerPlusDB = ForeverTrackerPlusDB or {}
+		db = ForeverTrackerPlusDB
 		local fresh = next(db) == nil
 		for key, value in pairs(DEFAULTS) do
 			-- an unset tracking mode is a real choice ("Blizzard's normal tracking") for existing settings

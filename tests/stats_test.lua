@@ -50,8 +50,8 @@ local env = setmetatable({
 end })
 env._G = env
 local root = { tracker = ns }
-assert(loadfile(dir .. "/Tracker/Stats.lua", "t", env))("RXPForeverTracker", root)
-assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("RXPForeverTracker", root)
+assert(loadfile(dir .. "/Tracker/Stats.lua", "t", env))("ForeverTrackerPlus", root)
+assert(loadfile(dir .. "/Tracker/Helpers.lua", "t", env))("ForeverTrackerPlus", root)
 local api = ns.api
 for _, fn in ipairs(ns.onLogin) do fn() end
 local function fire(e, ...) for _, h in ipairs(handlers) do h(nil, e, ...) end end

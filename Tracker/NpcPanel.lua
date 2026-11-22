@@ -327,7 +327,7 @@ local retryTicker
 
 local function build()
 	if panel then return panel end
-	panel = CreateFrame("Frame", "RXPForeverTrackerNpcPanel", UIParent, "BackdropTemplate")
+	panel = CreateFrame("Frame", "ForeverTrackerPlusNpcPanel", UIParent, "BackdropTemplate")
 	panel:SetFrameStrata("TOOLTIP")
 	panel:SetClampedToScreen(true)
 	panel:SetWidth(WIDTH)
@@ -923,7 +923,7 @@ local function bossOf(owner)
 	end
 	return type(boss) == "table" and type(boss.name) == "string" and boss or nil
 end
-local function cardOf() return _G.RXPForeverTrackerDungeonCard end
+local function cardOf() return _G.ForeverTrackerPlusDungeonCard end
 function api.npcPanelBossClick(owner, button)
 	if button ~= "LeftButton" then return end
 	local boss = bossOf(owner)
