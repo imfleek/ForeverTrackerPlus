@@ -47,10 +47,22 @@ local function sorted(map, value)
 	return list
 end
 
+-- The key lines (longest frame, each addon) come last, at the bottom of the chat, and the whole report also opens in
+-- the copy window (/qt debug's): the chat cut the first lines off (user sent only the job lines).
 local function report(say)
 	root.lag.on = false
 	clock:Hide()
-	say(("lag: longest frame after accepting the quest: %d ms (a smooth frame is under 20 ms)"):format(longest * 1000))
+	local lines = {}
+	local function add(text) lines[#lines + 1] = "lag: " .. text end
+	local jobs = sorted(root.lag.jobs, function(v) return v.total end)
+	local sum = 0
+	for _, j in ipairs(jobs) do sum = sum + j[2] end
+	if #jobs == 0 then add("our timed jobs: none ran") end
+	for i = 1, math.min(8, #jobs) do
+		local j = root.lag.jobs[jobs[i][1]]
+		add(("our job \"%s\": %.1f ms (%d runs, longest %.1f ms)"):format(jobs[i][1], j.total, j.n, j.max))
+	end
+	if #jobs > 0 then add(("our timed jobs together: %.1f ms in %d s"):format(sum, WINDOW)) end
 	if profilerOn() then
 		local after, delta = addonTimes(), {}
 		for name, ms in pairs(after) do
@@ -58,18 +70,15 @@ local function report(say)
 			if d >= 1 then delta[name] = d end
 		end
 		local top = sorted(delta, function(v) return v end)
-		if #top == 0 then say("lag: no addon used 1 ms or more") end
-		for i = 1, math.min(6, #top) do say(("lag: addon %s: %d ms"):format(top[i][1], top[i][2])) end
+		if #top == 0 then add("no addon used 1 ms or more") end
+		for i = math.min(6, #top), 1, -1 do add(("ADDON %s: %d ms"):format(top[i][1], top[i][2])) end
 	else
-		say("lag: for the time of each addon, type /console scriptProfile 1 and /reload, then /qt lag again. "
-			.. "Afterwards turn it off: /console scriptProfile 0 and /reload.")
+		add("the game's time meter is OFF, so no addon times. Type /console scriptProfile 1 and /reload, "
+			.. "then /qt lag again. Afterwards: /console scriptProfile 0 and /reload.")
 	end
-	local jobs = sorted(root.lag.jobs, function(v) return v.total end)
-	if #jobs == 0 then say("lag: our jobs: none ran") end
-	for i = 1, math.min(8, #jobs) do
-		local j = root.lag.jobs[jobs[i][1]]
-		say(("lag: our job \"%s\": %.1f ms (%d runs, longest %.1f ms)"):format(jobs[i][1], j.total, j.n, j.max))
-	end
+	add(("LONGEST FRAME after accepting the quest: %d ms (a smooth frame is under 20 ms)"):format(longest * 1000))
+	for _, text in ipairs(lines) do say(text) end
+	if api.showDebugWindow and api.themeKit then pcall(api.showDebugWindow, lines) end
 	wipe(root.lag.jobs)
 	rounds = rounds + 1
 	if rounds >= ROUNDS then watching = false; say("lag: done. Type /qt lag to watch again.")
