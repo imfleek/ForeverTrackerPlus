@@ -274,15 +274,62 @@ local function paintTree(frame, depth)
 		end
 	end
 end
+-- EllesmereUI Bags' own way for other addons (EUI_Bags.RegisterItemOverlayIcon, the way Peddler draws its coin): it
+-- calls our painter for every slot it draws, with the slot's bag and slot. The mark goes on the slot's text layer
+-- (btn._textOverlay), above EllesmereUI's slot art; a mark on the button itself is drawn under that art.
+local euiMarks = setmetatable({}, { __mode = "k" })
+local euiRegistered = false
+local function paintEuiSlot(btn, data)
+	if type(btn) ~= "table" then return end
+	local bag, slot = type(data) == "table" and tonumber(data.bag), type(data) == "table" and tonumber(data.slot)
+	local quest = opt("bagMarks") and bag and slot and bag >= 0 and slot > 0 and slotQuest(bag, slot)
+	local mark = euiMarks[btn]
+	if quest and not mark then
+		local host = btn._textOverlay or btn
+		if not host.CreateTexture then return end
+		mark = host:CreateTexture(nil, "OVERLAY", nil, 7)
+		mark:SetTexture(QUEST_SIGN)
+		mark:SetSize(15, 15)
+		mark:SetPoint("TOPLEFT", host, "TOPLEFT", -1, 1)
+		euiMarks[btn] = mark
+	end
+	if mark then mark:SetShown(quest and true or false) end
+end
+local function registerEui()
+	if euiRegistered then return true end
+	local eui = rawget(_G, "EUI_Bags")
+	if type(eui) ~= "table" or type(eui.RegisterItemOverlayIcon) ~= "function" then return false end
+	euiRegistered = pcall(eui.RegisterItemOverlayIcon, "RXPForeverTracker", function(btn, data) pcall(paintEuiSlot, btn, data) end)
+	if euiRegistered and eui.IsVisible and eui:IsVisible() and eui.RefreshInventory then pcall(eui.RefreshInventory, eui) end
+	return euiRegistered
+end
+local function usesEuiOverlay(name) return euiRegistered and (name == "EUI_Bags" or name == "EUI_BagsReagent") end
 local function paintOtherBags()
 	for _, o in ipairs(OTHER_BAGS) do
 		local f = rawget(_G, o.frame)
-		if type(f) == "table" and f.IsShown and f:IsShown() then pcall(paintTree, f, 0) end
+		if not usesEuiOverlay(o.frame) and type(f) == "table" and f.IsShown and f:IsShown() then pcall(paintTree, f, 0) end
 	end
+end
+-- the quests' needed items changed: EllesmereUI redraws its slots (it calls our painter); nothing while they are the same
+local lastNeeded
+local function neededKey()
+	local names = {}
+	for name, quest in pairs(neededItems()) do names[#names + 1] = name .. "=" .. quest end
+	table.sort(names)
+	return table.concat(names, ";")
+end
+local function refreshEuiIfNeeded()
+	if not euiRegistered then return end
+	local key = neededKey()
+	if key == lastNeeded then return end
+	lastNeeded = key
+	local eui = rawget(_G, "EUI_Bags")
+	if eui and eui.IsVisible and eui:IsVisible() and eui.RefreshInventory then pcall(eui.RefreshInventory, eui) end
 end
 
 local function repaintBags()
 	neededCache = nil
+	refreshEuiIfNeeded()
 	paintOtherBags()
 	local box = rawget(_G, "ContainerFrameContainer")
 	for _, f in ipairs(box and box.ContainerFrames or {}) do if f:IsShown() then pcall(paintNewFrame, f) end end
@@ -303,9 +350,14 @@ function api.bagReport(out)
 	for name in pairs(needed) do n = n + 1; if #names < 6 then names[#names + 1] = name end end
 	out(("bag marks %s. Items your quests still need: %d%s"):format(opt("bagMarks") and "on" or "off", n,
 		n > 0 and (" (" .. table.concat(names, ", ") .. ")") or ""))
+	if euiRegistered then
+		local shown, total = 0, 0
+		for _, m in pairs(euiMarks) do total = total + 1; if m:IsShown() then shown = shown + 1 end end
+		out(("EllesmereUI Bags: drawn through its overlay hook, marks shown %d (of %d made)"):format(shown, total))
+	end
 	for _, o in ipairs(OTHER_BAGS) do
 		local f = rawget(_G, o.frame)
-		if type(f) == "table" then
+		if type(f) == "table" and not usesEuiOverlay(o.frame) then
 			bagStats = { buttons = 0, withItem = 0, marked = 0, sample = {} }
 			if f.IsShown and f:IsShown() then pcall(paintTree, f, 0) end
 			out(("%s: %s, hooked %s, slots found %d, with an item %d, marked %d"):format(o.frame,
@@ -331,9 +383,10 @@ local function hookBags()
 			hooksecurefunc(f, "UpdateItems", function(self) pcall(paintNewFrame, self) end)
 		end
 	end
+	registerEui()
 	for _, o in ipairs(OTHER_BAGS) do
 		local f = rawget(_G, o.frame)
-		if type(f) == "table" and not hookedFrames[o.frame] and type(f[o.method]) == "function" then
+		if not usesEuiOverlay(o.frame) and type(f) == "table" and not hookedFrames[o.frame] and type(f[o.method]) == "function" then
 			hookedFrames[o.frame] = true
 			hooksecurefunc(f, o.method, function() neededCache = nil; paintOtherBags() end)
 			if f.HookScript then f:HookScript("OnShow", function() hookBags(); repaintBags() end) end
