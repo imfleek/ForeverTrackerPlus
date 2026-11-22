@@ -8,16 +8,34 @@ All notable changes to ForeverTrackerPlus (called RXP ForeverTracker before 3.1.
 - **Legacy Challenges: "Only challenges this character can do"** (Settings > Guides > Legacy Challenges, off by default). It hides challenges for another race, class or faction, and challenges that need a profession you have not learned. The box under it, **"Include professions you have not learned"**, keeps the profession ones. Every challenge and category now has a tooltip: what it is, how many steps are done, what is still to do, and why you cannot do it.
 - **Library books: a "?"** for a book whose status is unknown: Questie says its quest is not in the game, or Questie does not know where the book is. The tooltip says why. Every book has a tooltip: where it lies, or that it is in your bags or turned in, and who takes it.
 - **Library books: "Show collected books"** switch (on). Turn it off to see only the books you still need.
+- **Esc > Options > AddOns > ForeverTrackerPlus.** A page with the logo, the version, how to open the settings (/qt) and an "Open Options" button.
+- **Guides > Secrets** (new page). WoW Forever's hidden toys, quests and mysteries: Alcaz Operative Insignia, Night Watchman's Torch, Chicken Egg (Alliance), Traveler's Symbols, Scarlet Banner, Dawn Waker and the Manual Scavenger Hunt. Dawn Waker and the Scavenger Hunt are not solved yet: they show the steps found so far. Ideas from the SecretChecklist addon:
+  - Steps tick themselves when you have the item or the quest is done. A done step also ticks the steps before it.
+  - Click a step for a waypoint. A step with several places (such as the Night Watch guard) goes to the next place on each click. TomTom's arrow gets it too, if you use TomTom.
+  - A counter at the top: how many secrets you found, with the Cozy Sleeping Bag and Greater Friend of the Library.
+  - A chat line and a sound when you find a secret.
+  - "Show found secrets" switch (on).
 - **Gold tracker** (Statistics > Overview > Gold): gold from quests, gold off mobs, gold this session and in total.
 - **Run analysis: jump tracker.** Time in the air and a count of your jumps. Standing still stays too.
 - **Run analysis: swimming** and **crafting/gathering** (a profession window open, or crafting, mining, herb picking, skinning, fishing or disenchanting).
+- **Run analysis: more of "Where the time went".** New bars: eating/drinking, looting, casting (out of combat, such as your hearthstone), falling (now apart from jumping), map/quest log (open while you stand still) and loading screens.
+- **Run analysis: NPCs by window.** Click the NPCs bar to open a list: vendors, trainers, flight masters, bank, mailbox, auction house, trading and quest givers. It is closed by default.
+- **Run analysis: "In dungeons" tile.** The time you spent in dungeons and raids.
+- **Run analysis: "Gold acquired" tile**, after "XP from quests": gold from quests and off mobs in the whole run.
+- **Level splits has a new look.** Tiles at the top: time played, average level, fastest and slowest level, and how far ahead or behind the compared run you are. Each level has a bar (the longest level fills it). Green is faster and red is slower than the compared run, which shows as a thin grey bar.
 
 ### Changed
+- **New logo:** a red map pin. It shows on the minimap button and next to the addon in the AddOns list.
+- **Settings window (/qt):** the title is now "ForeverTrackerPlus", with the new logo. The version number and the window's opacity slider are at the top left. The search box is at the top right, next to the X. The grey hint line and the Close button at the bottom are gone, so the lists reach further down.
+- **RESTEDXP sections:** "Orphaned quests" is a section of its own, with the book icon. "Tracker" has RestedXP's logo, and "Arrow" has RestedXP's arrow.
+- **Legacy Challenges fold.** Click a category to open or close it. They start open, and the window remembers which ones you closed. "Open all" and "Close all" buttons do every category at once.
+- **Legacy Challenges:** the PvP category is now "PVP Ranking". Each rank shows its PvP title for your faction (such as Knight or Stone Guard). An open challenge shows its own icon, not the "!".
+- **Level splits:** no note above the bars.
 - **Cozy Sleeping Bag:** a finished chain now shows a green check and "You have completed this questchain.", and nothing else. This works with or without Questie. The chain is also found by its quest IDs when Questie's name search finds nothing.
 - **Level progress at the level cap:** no bar to the next level. It shows "maximum level" with a full bar.
 - **"Experience from quests"** has an experience icon, not a coin.
 - **Overview at the level cap:** "Experience from quests" and "Session experience" are hidden.
-- **The RXP Tracker has one look: Forever Style.** RXP Style and the Theme setting are gone. If you used RXP Style, you now get Forever Style. The settings page "Themes and guide" is now "Guide".
+- **The RXP Tracker has one look: Forever Style.** RXP Style and the Theme setting are gone. If you used RXP Style, you now get Forever Style. The settings page "Themes and guide" is now "Tracker" (under RESTEDXP).
 
 ### Removed
 - **"Fastest quest"** tile in Statistics > Overview.

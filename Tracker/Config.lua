@@ -6,14 +6,15 @@
 --   Quest Tracker / RXP Tracker / Settings window, gold page names, the open page highlighted); a search box above
 --   a dark page panel with the page title, a red "Defaults" button, and label-left / control-right rows: on/off
 --   switches, < value > pickers that also open a list, sliders with a diamond thumb and step arrows, colour swatches
---   with a custom-colour button; a bottom bar with the version and a red "Close" button.
+--   with a custom-colour button. 3.1.2: the version, the window's opacity and the search box sit in the title bar;
+--   no bottom bar.
 -- Artwork is drawn with plain textures (colours from the mock-up); buttons, the close button, the search box and the
 -- scroll frame are Forever's native templates, each with a plain fallback if a template is missing.
 local ADDON, root = ...; local ns = root.tracker
 if ns.disabled then return end
 local api = ns.api
 
-local frame, panel, scroll, content, scrollbar, searchBox, pageTitle, defaultsButton, footer
+local frame, panel, scroll, content, scrollbar, searchBox, pageTitle, defaultsButton
 local items = {}
 local loading = false
 local activePage = "questlist"
@@ -273,6 +274,7 @@ api.themeKit.circle = circle
 api.themeKit.paint = paint
 api.themeKit.hGradient = hGradient
 api.themeKit.controlBg = controlBg
+api.themeKit.arrow = arrowTexture
 api.applyConfigFonts = function()
 	if not frame then return end
 	applyFonts()
@@ -300,9 +302,15 @@ local SECTIONS = {
 	{ key = "questlines", group = "quests", title = "Quest lines", sub = "Distance, rewards, icons", icon = "Interface\\Icons\\INV_Scroll_03" },
 	{ key = "tracking", group = "quests", title = "Tracking", sub = "What shows, and in which order", icon = "Interface\\Icons\\INV_Misc_Map_01" },
 	{ key = "helpers", group = "quests", title = "Helpers", sub = "Bags, items, NPCs, flights", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
-	{ key = "guides", group = "quests", title = "Guides", sub = "Legacy, books, sleeping bag", icon = "Interface\\Icons\\INV_Misc_Book_07" },
-	{ key = "guidesteps", group = "guide", title = "Guide", sub = "RestedXP steps", icon = "Interface\\Icons\\INV_Misc_Book_09" },
-	{ key = "arrow", group = "guide", title = "Arrow", sub = "Waypoint arrow", icon = "Interface\\Icons\\Ability_Hunter_Pathfinding" },
+	{ key = "guides", group = "quests", title = "Guides", sub = "Legacy, books, secrets", icon = "Interface\\Icons\\INV_Misc_Book_07" },
+	-- 3.1.2: Tracker has RestedXP's logo (the book while RestedXP is not loaded), Orphaned quests is a section of its
+	-- own with the book, and the arrow is drawn as RestedXP's arrow (our slate body and gold edge, Objectives/arrow)
+	{ key = "guidesteps", group = "guide", title = "Tracker", sub = "RestedXP steps", icon = "Interface\\Icons\\INV_Misc_Book_09",
+		rxpIcon = "Interface\\AddOns\\RXPGuides\\Textures\\rxp_logo-64" },
+	{ key = "orphans", group = "guide", title = "Orphaned quests", sub = "Quests the guide left behind", icon = "Interface\\Icons\\INV_Misc_Book_09" },
+	{ key = "arrow", group = "guide", title = "Arrow", sub = "Waypoint arrow", icon = "Interface\\Icons\\Ability_Hunter_Pathfinding",
+		layers = { { "Interface\\AddOns\\" .. ADDON .. "\\Textures\\arrow_body", { 0.18, 0.21, 0.38 } },
+			{ "Interface\\AddOns\\" .. ADDON .. "\\Textures\\arrow_gold" } } },
 	{ key = "overview", group = "stats", title = "Overview", sub = "Your quests in numbers", icon = "Interface\\Icons\\INV_Misc_Coin_02" },
 	{ key = "run", group = "stats", title = "Run analysis", sub = "Where the time went", icon = "Interface\\Icons\\INV_Misc_PocketWatch_01" },
 	{ key = "splits", group = "stats", title = "Level splits", sub = "Time per level", icon = "Interface\\Icons\\Spell_Holy_BorrowedTime" },
@@ -318,8 +326,8 @@ local PAGE_SECTION = {
 	titles = "questlines", tooltips = "questlines",
 	tracking = "tracking",
 	helpers = "helpers", onscreen = "helpers", automation = "helpers", world = "helpers",
-	legacy = "guides", books = "guides", bedroll = "guides",
-	guidetracker = "guidesteps", guide = "guidesteps", orphans = "guidesteps",
+	legacy = "guides", books = "guides", bedroll = "guides", secrets = "guides",
+	guidetracker = "guidesteps", guide = "guidesteps", orphans = "orphans",
 	arrow = "arrow",
 	statsoverview = "overview", statsoptions = "overview",
 	statsrun = "run",
@@ -2291,7 +2299,7 @@ local function declareItems(db)
 		pageByKey.arrow.reset = resetGuide
 
 		-- 3.1.2: Forever Style is the only look of the RXP Tracker, so the page has no theme choice any more
-		page("guide", "guide", "Guide")
+		page("guide", "guide", "Tracker")
 		statusBox("Guide status", function()
 			local s = g.status()
 			local progress
@@ -2533,7 +2541,7 @@ local function sidebarWidth() return math.floor(SIDEBAR_W * math.max(ts(), 1) + 
 local function buildSidebar(f, top)
 	local sidebar = CreateFrame("Frame", nil, f)
 	sidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 14, top)
-	sidebar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 50)
+	sidebar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 20)
 	sidebar:SetWidth(sidebarWidth())
 	-- When the window is too short for the whole list it scrolls with the mouse wheel or its thin scrollbar (in the
 	-- gap right of the list, shown only while the list does not fit), and a row that does not fit in full is hidden
@@ -2579,6 +2587,27 @@ local function buildSidebar(f, top)
 				b.icon = b:CreateTexture(nil, "ARTWORK")
 				b.icon:SetTexture(s.icon)
 				b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+				local iconLayers = { b.icon }
+				-- RestedXP's own logo when RestedXP is loaded (its whole image, no icon crop)
+				if s.rxpIcon and C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides") then
+					b.icon:SetTexture(s.rxpIcon)
+					b.icon:SetTexCoord(0, 1, 0, 1)
+				end
+				-- a picture in layers (the arrow): the first layer is the icon, the others lie on it
+				if s.layers then
+					b.icon:SetTexture(s.layers[1][1])
+					b.icon:SetTexCoord(0, 1, 0, 1)
+					local c = s.layers[1][2]
+					if c then b.icon:SetVertexColor(c[1], c[2], c[3]) end
+					for i = 2, #s.layers do
+						local t = b:CreateTexture(nil, "ARTWORK", nil, i)
+						t:SetTexture(s.layers[i][1])
+						t:SetAllPoints(b.icon)
+						local lc = s.layers[i][2]
+						if lc then t:SetVertexColor(lc[1], lc[2], lc[3]) end
+						iconLayers[#iconLayers + 1] = t
+					end
+				end
 				b.text = text(b, "GameFontNormal", 1.12)
 				b.text:SetJustifyH("LEFT")
 				b.text:SetWordWrap(false)
@@ -2609,8 +2638,10 @@ local function buildSidebar(f, top)
 					local dim = b.isDim()
 					if dim then b.text:SetTextColor(0.5, 0.5, 0.5)
 					elseif on then b.text:SetTextColor(1, 1, 1) else b.text:SetTextColor(C.headText[1], C.headText[2], C.headText[3]) end
-					if b.icon.SetDesaturated then b.icon:SetDesaturated(dim and true or false) end
-					b.icon:SetAlpha(dim and 0.5 or 1)
+					for _, t in ipairs(iconLayers) do
+						if t.SetDesaturated then t:SetDesaturated(dim and true or false) end
+						t:SetAlpha(dim and 0.5 or 1)
+					end
 				end
 				b.section = s
 				nav[s.key] = b
@@ -2829,12 +2860,12 @@ local function build()
 	if titleFont then title:SetFont(titleFont, 17, "") end
 	title:SetShadowColor(0, 0, 0, 1)
 	title:SetShadowOffset(1, -1)
-	title:SetText("|cfff2e6c8RXP|r |cffffd100Forever|r|cfff0cf86Tracker|r")
+	-- 3.1.2: "ForeverTrackerPlus", with the addon's logo (Textures/MapPin.tga, also the toc and minimap icon)
+	title:SetText("|cffffd100Forever|r|cfff0cf86Tracker|r|cfff2e6c8Plus|r")
 	local logo = bar:CreateTexture(nil, "OVERLAY")
 	logo:SetSize(22, 22)
-	logo:SetTexture("Interface\\AddOns\\RXPGuides\\Textures\\rxp_logo-64")
-	local hasLogo = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides")
-	logo:SetShown(hasLogo and true or false)
+	logo:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Textures\\MapPin")
+	local hasLogo = true
 	-- logo + gap + text, centred together
 	local logoW = hasLogo and (22 + 6) or 0
 	title:SetPoint("CENTER", bar, "CENTER", logoW / 2, 0)
@@ -2862,14 +2893,16 @@ local function build()
 	end
 	rule("left")
 	rule("right")
-	-- the rules and glow shorten (down to nothing) so they never run under the opacity slider beside the close button
-	f.qtsFitTitle = function(rightTaken)
+	-- the rules and glow shorten (down to nothing) so they never run under the version and opacity slider (left) or
+	-- the search box and close button (right)
+	f.qtsFitTitle = function(leftTaken, rightTaken)
+		local taken = math.max(leftTaken or 0, rightTaken or 0)
 		local half = (bar:GetWidth() or 0) / 2
 		local textHalf = ((title:GetStringWidth() or 150) + logoW) / 2
-		local room = half - textHalf - 18 - (rightTaken or 0) - 12
+		local room = half - textHalf - 18 - taken - 12
 		local len = math.max(math.min(room, 110), 0)
 		for _, line in ipairs(rules) do line:SetWidth(math.max(len, 1)); line:SetShown(len >= 12) end
-		local glow = math.max(math.min(half - (rightTaken or 0) - 8, 170), textHalf)
+		local glow = math.max(math.min(half - taken - 8, 170), textHalf)
 		glowL:SetPoint("BOTTOMLEFT", bar, "BOTTOM", -glow, 3)
 		glowR:SetPoint("BOTTOMRIGHT", bar, "BOTTOM", glow, 3)
 	end
@@ -2895,16 +2928,20 @@ local function build()
 	wipe(nav)
 	declareItems(db)
 
-	local top = -(32 + 12 + 26 + 10)
+	-- 3.1.2: the version, the window's opacity and the search box are in the title bar, so the list and the page start
+	-- right under it
+	local top = -(32 + 12)
 	sidebarFrame = buildSidebar(f, top)
 	sidebarFrame.arrange()
 	f.qtsArrangeSidebar = function() sidebarFrame.arrange(); scheduleLayout() end
 
-	-- search box (Forever's SearchBoxTemplate) above the page, right-aligned
+	-- search box (Forever's SearchBoxTemplate) in the title bar, left of the close button
+	local SEARCH_W = 180
 	local nativeSearch
 	searchBox, nativeSearch = create("EditBox", "ForeverTrackerPlusConfigSearch", f, "SearchBoxTemplate")
-	searchBox:SetSize(320, 24)
-	searchBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -(32 + 12))
+	searchBox:SetSize(SEARCH_W, 22)
+	searchBox:SetPoint("RIGHT", close, "LEFT", -6, 0)
+	searchBox:SetFrameLevel(bar:GetFrameLevel() + 5)
 	searchBox:SetAutoFocus(false)
 	if nativeSearch then
 		if searchBox.Instructions then searchBox.Instructions:SetText("Search") end
@@ -2927,17 +2964,23 @@ local function build()
 		scheduleLayout()
 	end)
 
-	-- the window's own opacity (10-100 %), at the left above the category list, on the search box's line; only
-	-- this window
+	-- the addon's version, top left in the title bar
+	local versionText = text(bar, "GameFontHighlightSmall", 1.1, C.subLabel)
+	do
+		local version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")
+		versionText:SetText(version and ("v" .. version) or "")
+		versionText:SetPoint("LEFT", bar, "LEFT", 12, 0)
+	end
+
+	-- the window's own opacity (10-100 %), in the title bar right of the version; only this window
 	do
 		local MIN_ALPHA = 0.1
 		local function windowAlpha()
 			local v = tonumber(db.configAlpha) or 1
 			return math.min(math.max(v, MIN_ALPHA), 1)
 		end
-		local holder = CreateFrame("Frame", nil, f)
-		-- left edge with the category list (x 14), centred on the search box's line (its top -44, 24 tall)
-		holder:SetPoint("LEFT", f, "TOPLEFT", 14, -(32 + 12 + 12))
+		local holder = CreateFrame("Frame", nil, bar)
+		holder:SetPoint("LEFT", versionText, "RIGHT", 14, 0)
 		holder:SetHeight(20)
 		local label = text(holder, "GameFontHighlightSmall", 1.1, C.subLabel)
 		label:SetText("Opacity")
@@ -2947,7 +2990,7 @@ local function build()
 		slider:SetMinMaxValues(MIN_ALPHA * 100, 100)
 		slider:SetValueStep(5)
 		if slider.SetObeyStepOnDrag then slider:SetObeyStepOnDrag(true) end
-		slider:SetSize(90, 18)
+		slider:SetSize(80, 18)
 		local trackBg = slider:CreateTexture(nil, "BACKGROUND")
 		trackBg:SetPoint("LEFT"); trackBg:SetPoint("RIGHT"); trackBg:SetHeight(6)
 		paint(trackBg, C.trackEdge)
@@ -2969,7 +3012,9 @@ local function build()
 			value:SetPoint("LEFT", slider, "RIGHT", 8, 0)
 			value:SetWidth(math.ceil(40 * ts()))
 			holder:SetWidth(labelW + 8 + slider:GetWidth() + 8 + value:GetWidth())
-			if f.qtsFitTitle then f.qtsFitTitle(31) end -- only the close button sits in the title bar now
+			-- left: the version and this slider; right: the search box and the close button
+			local leftW = 12 + math.ceil(versionText:GetStringWidth() or 40) + 14 + holder:GetWidth()
+			if f.qtsFitTitle then f.qtsFitTitle(leftW, 3 + 28 + 6 + SEARCH_W) end
 		end
 		local setting = false
 		slider:SetScript("OnValueChanged", function(_, v)
@@ -3002,7 +3047,7 @@ local function build()
 	panel = CreateFrame("Frame", nil, f)
 	-- beside the category list, whatever its width
 	panel:SetPoint("TOPLEFT", sidebarFrame, "TOPRIGHT", 14, 0)
-	panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 50)
+	panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 20)
 	local panelBg = solid(panel, "BACKGROUND", C.panel)
 	panelBg:SetAllPoints()
 	border(panel, C.panelEdge)
@@ -3196,16 +3241,7 @@ local function build()
 	end
 	f.qtsStopGlide = function() glide.target = nil; glide:Hide() end
 
-	-- bottom bar: version and hint under the page (right of the category list), Close on the right
-	footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	-- under the page panel, to the right of the category list (it ran into the list when the window was short)
-	footer:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 2, -32)
-	footer:SetPoint("RIGHT", f, "RIGHT", -160, 0)
-	footer:SetWordWrap(false) -- one line; cut with "..." when the window is narrow
-	footer:SetJustifyH("LEFT")
-	local closeButton = makeButton(f, "Close", 110, function() f:Hide() end)
-	closeButton:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 13)
-
+	-- 3.1.2: no bottom bar (no hint line, no Close button: the title bar's X closes); the version is in the title bar
 	-- resize grip
 	local grip = CreateFrame("Button", nil, f)
 	grip:SetSize(16, 16)
@@ -3286,12 +3322,6 @@ local function build()
 	f:Hide() -- new frames start shown; toggleConfig decides when to show
 end
 
-local HINTS = {
-	quests = "/qt off then /reload restores Blizzard's tracker.",
-	guide = "In chat: /qt toggle, 0-100 or all, arrow, satellites, badge, status, why.",
-	window = "/qt or /qtrxp opens this window.  /qt setup runs the first-time setup again.",
-	stats = "Counted for every character on this account while you play.",
-}
 
 -- the last page opened in each section (a section opens on it again)
 local lastInSection = {}
@@ -3318,10 +3348,6 @@ selectPage = function(key)
 	local section = pageByKey[key] and pageByKey[key].section
 	if section then lastInSection[section] = key end
 	for sectionKey, b in pairs(nav) do b.setSelected(sectionKey == section) end
-	if footer then
-		local version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")
-		footer:SetText((version and ("Version " .. version .. "   ") or "") .. (HINTS[groupOf(key)] or ""))
-	end
 	if searchBox and searchBox:GetText() ~= "" then searchBox:SetText("") end
 	if frame and frame.qtsStopGlide then frame.qtsStopGlide() end
 	if scroll then scroll:SetVerticalScroll(0) end
@@ -3367,3 +3393,66 @@ function api.openConfigTab(key)
 	if not frame:IsShown() then api.toggleConfig() end
 end
 
+
+-- 3.1.2: a page in Esc > Options > AddOns (Forever's Settings, Blizzard_Settings_Shared), as other addons have: the
+-- logo, the name, the version, how to open the window and an "Open Options" button that opens /qt. Registered once.
+local function registerOptionsPanel()
+	if not (type(Settings) == "table" and type(Settings.RegisterCanvasLayoutCategory) == "function"
+		and type(Settings.RegisterAddOnCategory) == "function") then return end
+	local p = CreateFrame("Frame")
+	p:Hide()
+	local center = CreateFrame("Frame", nil, p)
+	center:SetSize(10, 1)
+	center:SetPoint("CENTER", p, "CENTER", 0, 60)
+	local name = p:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+	local font = GameFontNormalHuge and GameFontNormalHuge:GetFont() or STANDARD_TEXT_FONT
+	if font then name:SetFont(font, 44, "") end
+	name:SetTextColor(1, 0.82, 0)
+	name:SetShadowColor(0, 0, 0, 1)
+	name:SetShadowOffset(2, -2)
+	name:SetText("ForeverTrackerPlus")
+	local icon = p:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(60, 60)
+	icon:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Textures\\MapPin")
+	-- the logo and the name side by side, centred together
+	local function place()
+		local w = (name:GetStringWidth() or 360) + 16 + 60
+		icon:ClearAllPoints()
+		icon:SetPoint("LEFT", center, "CENTER", -w / 2, 0)
+		name:ClearAllPoints()
+		name:SetPoint("LEFT", icon, "RIGHT", 16, 0)
+	end
+	place()
+	p:SetScript("OnShow", place)
+	local version = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+	local v = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")
+	version:SetText("Version: " .. tostring(v or "?"))
+	version:SetPoint("TOP", center, "CENTER", 0, -50)
+	local how = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+	local hf, hs, hfl = how:GetFont()
+	if hf and hs then how:SetFont(hf, hs * 1.3, hfl) end
+	how:SetText("Access options with /qt")
+	how:SetPoint("TOP", version, "BOTTOM", 0, -14)
+	local open = makeButton(p, "Open Options", 300, function()
+		if SettingsPanel and SettingsPanel:IsShown() then
+			if HideUIPanel then HideUIPanel(SettingsPanel) else SettingsPanel:Hide() end
+		end
+		if not (frame and frame:IsShown()) then api.toggleConfig() end
+	end)
+	open:SetHeight(36)
+	open:SetPoint("TOP", how, "BOTTOM", 0, -28)
+	local fs = open.GetFontString and open:GetFontString()
+	if fs then
+		local bf, bs, bfl = fs:GetFont()
+		if bf and bs then fs:SetFont(bf, bs * 1.4, bfl) end
+	end
+	local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, p, "ForeverTrackerPlus")
+	if ok and category then
+		pcall(Settings.RegisterAddOnCategory, category)
+		api.optionsCategory = category
+	end
+end
+ns.onLogin[#ns.onLogin + 1] = function()
+	local ok, err = pcall(registerOptionsPanel)
+	if not ok then geterrorhandler()(err) end
+end

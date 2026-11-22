@@ -158,7 +158,7 @@ local checks, notes, byPage, current = {}, {}, {}, nil
 local kit = { page = function(key) current = key; byPage[key] = {} end, heading = function() end,
 	check = function(l, get, set, enabled, indent) checks[l] = { get = get, set = set, enabled = enabled, indent = indent };
 		byPage[current][#byPage[current] + 1] = l end,
-	help = function() end, note = function(t) notes[current] = t end, custom = function() end,
+	help = function() end, note = function(t) notes[current] = t end, custom = function() end, buttons = function() end,
 	pageByKey = setmetatable({}, { __index = function(t, k) local p = {}; rawset(t, k, p) return p end }), refresh = function() end }
 api.declareGuidePages(kit)
 check("legacy page: the only-mine switch", checks["Only challenges this character can do"] ~= nil)
@@ -235,9 +235,9 @@ tick(5)
 local r = sapi.statsRun()
 local t = r.levels[59].t
 check("swimming counted", math.floor(t.swim + 0.5) == 4)
-check("in the air counted as jumping", math.floor(t.jump + 0.5) == 2)
+check("in the air with no jump counted as falling", math.floor(t.fall + 0.5) == 2 and (t.jump or 0) == 0)
 check("crafting: window, tradeskill cast, gathering spell, fishing by name", math.floor(t.craft + 0.5) == 8)
-check("a normal cast is not crafting", math.floor(t.idle + 0.5) >= 6)
+check("a normal cast is not crafting (it is casting)", math.floor(t.cast + 0.5) == 1 and math.floor(t.idle + 0.5) >= 5)
 
 -- jumps
 check("jump hook installed", type(hooks.JumpOrAscendStart) == "function")
@@ -288,7 +288,9 @@ bl = table.concat(bl, ",")
 check("run analysis: Standing kept, Jumping / Swimming / Crafting in", bl:find("Standing", 1, true)
 	and bl:find("Jumping", 1, true) and bl:find("Swimming", 1, true) and bl:find("Crafting/gathering", 1, true) and true or false)
 local run = sapi.statsRunTiles()
-check("run analysis: a Jumps tile", run[#run][3] == "Jumps" and run[#run][2] == "3")
+check("run analysis: a Jumps tile", run[6][3] == "Jumps" and run[6][2] == "3")
+check("run analysis: Gold acquired after XP from quests, no coin on XP", run[3][3] == "XP from quests" and not run[3][1]:find("Coin", 1, true)
+	and run[4][3] == "Gold acquired" and run[4][1]:find("Coin", 1, true) ~= nil)
 local lines = sapi.statsLevelLines()
 check("time per level keeps standing", lines[1] and lines[1][3]:find("Standing", 1, true) ~= nil)
 check("discord text: jumps and the standing line", sapi.statsDiscordText():find("3 jumps", 1, true) ~= nil

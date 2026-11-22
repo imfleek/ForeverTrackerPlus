@@ -14,11 +14,13 @@
 --   bedroll  (Questie) the Cozy Sleeping Bag chain: its first quest is found by name (or by its known IDs), the rest
 --            by Questie's prerequisite links. Done, in the log, or open; click for a waypoint to the next step's giver.
 --            3.1.2: the last quest (or every step) done: only "You have completed this questchain.", Questie or not.
+--   secrets  3.1.2 hidden toys, quests and mysteries (SECRETS below), with a found counter.
 -- Every achievement call is in pcall; a page whose data is not there says so.
 local ADDON, root = ...; local ns = root.tracker
 if ns.disabled then return end
 local api = ns.api
 local db
+local refreshPage = function() end -- lays the open page out again (api.declareGuidePages sets it)
 
 local LEGACY_FLAG = 0x8000000
 local BEDROLL_START = "... and that note you found"
@@ -57,17 +59,23 @@ local function waypoint(map, x, y, label)
 	end
 	C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(map, x, y))
 	if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then C_SuperTrack.SetSuperTrackedUserWaypoint(true) end
+	-- 3.1.2 (an idea from SecretChecklist): TomTom's arrow too, when TomTom is loaded
+	local tt = rawget(_G, "TomTom")
+	if type(tt) == "table" and type(tt.AddWaypoint) == "function" then
+		pcall(tt.AddWaypoint, tt, map, x, y, { title = label, from = "ForeverTrackerPlus" })
+	end
 	DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99ForeverTrackerPlus|r waypoint: %s (%.1f, %.1f)"):format(label or "", x * 100, y * 100))
 end
 
 ---------------------------------------------------------------------------------------------------------------------
 -- A clickable list in the settings window's look. rows() -> { { icon, text, right, color, onClick, tip = {lines},
--- header = bool, note = bool } }; a tip line is a string (white) or { text, r, g, b }; a note row is grey and wraps
+-- header = bool, note = bool, fold = bool (folded), clickHint } }; a tip line is a string (white) or { text, r, g, b };
+-- a note row is grey and wraps
 ---------------------------------------------------------------------------------------------------------------------
 local function rowList(rows, emptyText, maxRows)
 	return function(holder, kit)
 		local C = kit.C
-		local list = {}
+		local list, arrows = {}, {}
 		local function line(i)
 			if list[i] then return list[i] end
 			local r = CreateFrame("Button", nil, holder)
@@ -91,7 +99,7 @@ local function rowList(rows, emptyText, maxRows)
 					if type(t) == "table" then GameTooltip:AddLine(t[1], t[2], t[3], t[4], true)
 					else GameTooltip:AddLine(t, 1, 1, 1, true) end
 				end
-				if d.onClick then GameTooltip:AddLine("Click: waypoint", 0.6, 0.85, 1) end
+				if d.onClick then GameTooltip:AddLine(d.clickHint or "Click: waypoint", 0.6, 0.85, 1) end
 				GameTooltip:Show()
 			end)
 			r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -123,6 +131,17 @@ local function rowList(rows, emptyText, maxRows)
 					r.icon:SetSize(is, is)
 					r.icon:ClearAllPoints()
 					r.icon:SetPoint("LEFT", r, "LEFT", 2, 0)
+					-- 3.1.2 a row that folds (fold = true): an arrow in the icon's place, pointing down while open
+					if d.fold ~= nil and not arrows[r] and kit.arrow then arrows[r] = kit.arrow(r, false, 12) end
+					local arrow = arrows[r]
+					if arrow then
+						arrow:SetShown(d.fold ~= nil)
+						if d.fold ~= nil then
+							arrow:ClearAllPoints()
+							arrow:SetPoint("CENTER", r, "LEFT", 2 + is / 2, 0)
+							if arrow.SetRotation then pcall(arrow.SetRotation, arrow, d.fold and 0 or -math.pi / 2) end
+						end
+					end
 					r.text:ClearAllPoints()
 					local h = rowH
 					if d.note then
@@ -132,7 +151,7 @@ local function rowList(rows, emptyText, maxRows)
 						r.text:SetWidth(math.max(width - 6, 40))
 					else
 						r.text:SetWordWrap(false)
-						r.text:SetPoint("LEFT", r, "LEFT", d[1] and (is + 8) or 2, 0)
+						r.text:SetPoint("LEFT", r, "LEFT", (d[1] or d.fold ~= nil) and (is + 8) or 2, 0)
 						r.text:SetPoint("RIGHT", r.right, "LEFT", -8, 0)
 					end
 					r.text:SetText(d[2] or "")
@@ -212,6 +231,46 @@ local function professionsIn(text, set)
 	end
 end
 
+-- 3.1.2 PvP: the PvP category is shown as "PVP Ranking", and a challenge for a PvP rank gets that rank's title for
+-- this character's faction. The rank is a number in its name or text ("Rank 6"), or a title of either faction in it.
+local PVP_TITLES = {
+	Alliance = { "Private", "Corporal", "Sergeant", "Master Sergeant", "Sergeant Major", "Knight", "Knight-Lieutenant",
+		"Knight-Captain", "Knight-Champion", "Lieutenant Commander", "Commander", "Marshal", "Field Marshal", "Grand Marshal" },
+	Horde = { "Scout", "Grunt", "Sergeant", "Senior Sergeant", "First Sergeant", "Stone Guard", "Blood Guard", "Legionnaire",
+		"Centurion", "Champion", "Lieutenant General", "General", "Warlord", "High Warlord" },
+}
+local function isPvpCategory(name)
+	if type(name) ~= "string" or isSecret(name) then return false end
+	local l = name:lower()
+	return l:find("pvp", 1, true) or l:find("player vs", 1, true) or l:find("honor", 1, true) or l:find("rank", 1, true) or false
+end
+-- the rank (1-14) a text names
+local function pvpRank(text)
+	if type(text) ~= "string" or isSecret(text) then return nil end
+	local n = tonumber(text:match("[Rr]ank%s*(%d+)") or text:match("^%s*(%d+)%s*$") or text:match("[Rr](%d+)%f[%D]"))
+	if n and n >= 1 and n <= 14 then return n end
+	-- a title: the longest that is in the text (so "Senior Sergeant" before "Sergeant", "Knight-Champion" before "Champion")
+	local best, bestLen
+	local lower = " " .. text:lower() .. " "
+	for _, list in pairs(PVP_TITLES) do
+		for i, t in ipairs(list) do
+			local s = t:lower()
+			local at = lower:find(s, 1, true)
+			if at then
+				local before, after = lower:sub(at - 1, at - 1), lower:sub(at + #s, at + #s)
+				if not before:find("[%a%-]") and not after:find("[%a%-]") and (not bestLen or #s > bestLen) then best, bestLen = i, #s end
+			end
+		end
+	end
+	return best
+end
+local function pvpTitle(rank)
+	local f = UnitFactionGroup and UnitFactionGroup("player")
+	local list = PVP_TITLES[f] or nil
+	return rank and list and list[rank] or nil
+end
+api.guidePvpRank, api.guidePvpTitle = pvpRank, pvpTitle -- (tests)
+
 local function legacyData()
 	if legacyCache and GetTime() - legacyAt < 10 then return legacyCache end
 	local out = { categories = {}, done = 0, total = 0 }
@@ -223,15 +282,18 @@ local function legacyData()
 		local okN, count = try(GetCategoryNumAchievements, cid, true)
 		local cat
 		for i = 1, okN and tonumber(count) or 0 do
-			local okI, id, name, _, done, _, _, _, desc, flags = try(GetAchievementInfo, cid, i)
+			local okI, id, name, _, done, _, _, _, desc, flags, icon = try(GetAchievementInfo, cid, i)
 			if okI and id and isLegacy(flags) then
 				if not cat then
 					local okC, title = try(GetCategoryInfo, cid)
-					cat = { name = okC and type(title) == "string" and title or "Legacy", list = {} }
+					title = okC and type(title) == "string" and title or "Legacy"
+					local pvp = isPvpCategory(title)
+					cat = { name = pvp and "PVP Ranking" or title, list = {}, pvp = pvp }
 					out.categories[#out.categories + 1] = cat
 				end
 				local a = { id = id, name = name, done = done and true or false, desc = desc, have = 0, need = 0, open = {},
-					category = cat.name, needs = {}, blocked = {} }
+					category = cat.name, needs = {}, blocked = {}, icon = (type(icon) == "number" or type(icon) == "string") and icon or nil,
+					rank = cat.pvp and (pvpRank(name) or pvpRank(desc)) or nil }
 				local profs = {}
 				professionsIn(name, profs)
 				professionsIn(desc, profs)
@@ -283,9 +345,19 @@ local function legacyRows()
 		local open = 0
 		for _, a in ipairs(list) do if not a.done then open = open + 1 end end
 		if #list > 0 and (showDone or open > 0) then
-			rows[#rows + 1] = { nil, cat.name, ("%d of %d done"):format(#list - open, #list), header = true,
+			-- 3.1.2: each category folds; open until you close it (db.legacyClosed[category name], kept)
+			local isOpen = not (db and type(db.legacyClosed) == "table" and db.legacyClosed[cat.name] == true)
+			local catName = cat.name
+			rows[#rows + 1] = { nil, cat.name, ("%d of %d done"):format(#list - open, #list), header = true, fold = not isOpen,
+				clickHint = isOpen and "Click: close" or "Click: open",
+				onClick = function()
+					if not db then return end
+					db.legacyClosed = type(db.legacyClosed) == "table" and db.legacyClosed or {}
+					db.legacyClosed[catName] = isOpen or nil
+					refreshPage()
+				end,
 				tip = { ("%d Legacy Challenges in this category: %d done, %d still open."):format(#list, #list - open, open) } }
-			for _, a in ipairs(list) do
+			for _, a in ipairs(isOpen and list or {}) do
 				if showDone or not a.done then
 					local tip = {}
 					if a.desc and a.desc ~= "" then tip[1] = a.desc end
@@ -307,9 +379,14 @@ local function legacyRows()
 						for i = 1, math.min(#a.open, 15) do tip[#tip + 1] = "  " .. a.open[i] end
 						if #a.open > 15 then tip[#tip + 1] = ("  and %d more"):format(#a.open - 15) end
 					end
-					local icon = a.done and ICON_DONE or (#a.blocked > 0 and ICON_NO) or ICON_OPEN
+					-- 3.1.2: an open challenge shows its own icon (not the "!")
+					local icon = a.done and ICON_DONE or (#a.blocked > 0 and ICON_NO) or a.icon or ICON_OPEN
 					local color = a.done and GREEN or (#a.blocked > 0 or #a.needs > 0) and GREY or nil
-					rows[#rows + 1] = { icon, a.name,
+					local title = pvpTitle(a.rank)
+					if title then tip[#tip + 1] = { "PvP title: " .. title, GOLD[1], GOLD[2], GOLD[3] } end
+					-- (not again when the name already is this title)
+					if title and type(a.name) == "string" and a.name:lower():find(title:lower(), 1, true) then title = nil end
+					rows[#rows + 1] = { icon, title and (a.name .. "  |cffffd100" .. title .. "|r") or a.name,
 						a.need > 0 and ("%d / %d"):format(a.have, a.need) or (a.done and "done" or ""),
 						color, tip = tip }
 				end
@@ -327,7 +404,7 @@ local function itemCount(id)
 	local n = (C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id)) or (GetItemCount and GetItemCount(id))
 	return tonumber(n) or 0
 end
-local refreshPage = function() end
+-- (refreshPage: declared at the top, set by declareGuidePages)
 local function onGuideReady() refreshPage() end
 local function guideData() return api.questieGuideData and api.questieGuideData({ BEDROLL_START }, onGuideReady) end
 
@@ -453,9 +530,286 @@ local function bedrollRows()
 end
 
 ---------------------------------------------------------------------------------------------------------------------
+-- 3.1.2 Secrets: WoW Forever's hidden toys, quests and mysteries. The idea comes from SecretChecklist (its Forever
+-- list, its self-ticking steps, waypoints and found counter); the code and the wording are our own. The facts (IDs,
+-- map spots) are the community's findings.
+--   A step is done when its quest is turned in (quest, or any of quests), or its item is in your bags or worn (item,
+--   count; with a quest too, the item in your bags only means "turn it in"). A step with neither is text: done only
+--   when a later step is done. Every step before a done step counts as done too (except optional ones and
+--   unordered = true). A secret is found when its toy is known or in your bags (toy), its quest is done (quest), or,
+--   for a mystery, its last step is done; unsolved = true: the community has not solved it yet.
+--   spots: a click on the step sets a waypoint at the next spot in turn (map is a uiMapID; x, y 0-1).
+--   faction: for only one faction (the other sees it grey, with no steps).
+-- A secret found for the first time says so in the chat (db.secretsFound["Name-Realm"][id]; not in profiles).
+---------------------------------------------------------------------------------------------------------------------
+local SECRETS = {
+	{ id = "alcaz", name = "Alcaz Operative Insignia", kind = "Toy", toy = 279471, icon = 279471,
+		about = "A toy from the Alcaz Prison story in Westfall.",
+		steps = {
+			{ "Free Mason Connery in Alcaz Prison", tip = "Leave The Questioner for last, then kill him for the key." },
+			{ "More Valuable Than Gold", quest = 96337, tip = "Moonbrook inn, top floor. It gives you a Document Box.",
+				spots = { { 1436, 0.434, 0.678, "Moonbrook inn" } } },
+			{ "State Secrets: hand in the Document Box", item = 274041, quests = { 96376, 96377, 96379 },
+				tip = "Horde: Rix Xizzix in Booty Bay. Alliance: Renzik \"The Shiv\" in Old Town, Stormwind." },
+			{ "Collect 6 Fractured Insignia", item = 279450, count = 6, tip = "Put the six together to learn the toy." },
+		} },
+	{ id = "torch", name = "Night Watchman's Torch", kind = "Quest", quest = 98372, icon = 280612,
+		about = "A slain Night Watch guard in Duskwood. Any level, both factions.",
+		steps = {
+			{ "Find the slain Night Watch Guard", tip = "He can be at any of six places. Click again for the next one.",
+				spots = { { 1431, 0.210, 0.320, "Raven Hill Cemetery, top" }, { 1431, 0.209, 0.344, "Raven Hill Cemetery" },
+					{ 1431, 0.459, 0.783, "Duskwood, south" }, { 1431, 0.478, 0.594, "Duskwood, middle" },
+					{ 1431, 0.170, 0.540, "Duskwood, west" }, { 1431, 0.300, 0.674, "Duskwood, south-west" } } },
+			{ "An Unfortunate End", quest = 98372, item = 280612, tip = "Turn it in at once at the guard." },
+		} },
+	{ id = "egg", name = "Chicken Egg", kind = "Quest", quest = 3861, icon = 11110, faction = "Alliance",
+		about = "The CLUCK! quest. Alliance only.",
+		steps = {
+			{ "/chicken at a farm chicken until it offers CLUCK!", tip = "Keep doing /chicken at it. Hillsbrad farms work well.",
+				spots = { { 1424, 0.504, 0.546, "Hillsbrad farms" } } },
+			{ "Buy Special Chicken Feed", item = 11109, tip = "From Farmer Saldean in Westfall.",
+				spots = { { 1436, 0.560, 0.312, "Farmer Saldean" } } },
+			{ "CLUCK!", quest = 3861, item = 11110, tip = "Give the feed to the chicken." },
+		} },
+	{ id = "symbols", name = "Traveler's Symbols", kind = "Toy", toy = 221315, icon = 221315,
+		about = "A jumping puzzle in Blackrock Depths. Level 60.",
+		steps = {
+			{ "Go to the platform east of the Ring of Law", tip = "Take the bridge north, over the lava." },
+			{ "Clear the Blazing Fireguards and Shadowforge Dwarves on the bridge" },
+			{ "Jump to the hidden spot and take the symbols", item = 221315 },
+			{ "Premo's Poise-Demanding Uniform", item = 221316, optional = true },
+			{ "Student Fodder", item = 216619, optional = true, tip = "Keep it. If you eat it, this step is open again." },
+		} },
+	{ id = "banner", name = "Scarlet Banner", kind = "Mystery", item = 278030, icon = 278030,
+		about = "Four echoes for the statues in the Scarlet Monastery library. Level 28+.",
+		steps = {
+			{ "Graveyard Echo", item = 215426, tip = "Scarlet Monastery, Graveyard.", unordered = true },
+			{ "Arathi Echo", item = 215427, tip = "Go'shek Farm.", unordered = true, spots = { { 1417, 0.620, 0.540, "Go'shek Farm" } } },
+			{ "Theramore Echo", item = 215428, tip = "A grave in Dustwallow Marsh.", unordered = true,
+				spots = { { 1445, 0.637, 0.425, "Dustwallow grave" } } },
+			{ "Swamp Echo", item = 215425, tip = "Swamp of Sorrows.", unordered = true, spots = { { 1435, 0.168, 0.538, "Swamp of Sorrows" } } },
+			{ "Give the echoes to the library statues", tip = "Warrior: Swamp. Mage: Arathi. Paladin: Theramore. Priest: Graveyard. Have a campfire near." },
+			{ "Scarlet Banner", item = 278030 },
+		} },
+	{ id = "dawn", name = "Dawn Waker", kind = "Mystery", unsolved = true, icon = 264908,
+		about = "A long Highborne chain that starts on Zephras Isle. The last step is not solved yet.",
+		steps = {
+			{ "Ancient Heirloom ring", item = 264908, tip = "Top floor, Zephras Isle (Ailee Farheart, Skyborne only). Wear it for the later steps.",
+				spots = { { 2521, 0.417, 0.234, "The ring" }, { 2521, 0.4283, 0.2345, "Ailee Farheart" } } },
+			{ "Night Watchman's Torch", quest = 98372, item = 280612, tip = "See the Night Watchman's Torch secret." },
+			{ "The Ancient Hilt", quest = 93161, tip = "Ruins of Ban'aethal.", spots = { { 2521, 0.5813, 0.2406, "Ruins of Ban'aethal" } } },
+			{ "Eluvi'ana", quest = 97029, item = 276188, tip = "The Ancient Skyborne Blade can be at four places. Then see Ealaane Nimbuswalker.",
+				spots = { { 2521, 0.4894, 0.7268, "Blade spot 1" }, { 2521, 0.5040, 0.4430, "Blade spot 2" },
+					{ 2521, 0.6625, 0.4315, "Blade spot 3" }, { 2521, 0.5990, 0.8220, "Blade spot 4" },
+					{ 2521, 0.6594, 0.7437, "Ealaane Nimbuswalker" } } },
+			{ "Befouled Water Globe", item = 282337, tip = "About level 22. Horde: Baron Aquanis in Blackfathom Deeps, then Je'neu at Zoram'gar. Alliance: 20 Mathystra Amulet Fragments, use the amulet at the Darkshore water ruin, Baron Marinous, then Onu.",
+				spots = { { 1440, 0.116, 0.342, "Horde: Zoram'gar" }, { 1439, 0.436, 0.764, "Alliance: Grove of the Ancients" } } },
+			{ "Speak to the Highborne Spirit on Zoram Strand", tip = "Wear the ring, have the globe in your bags.",
+				spots = { { 1440, 0.1568, 0.1933, "Highborne Spirit" } } },
+			{ "Narassin's Tome", item = 282404, tip = "Tower of Althalaxx: kill Narassin for the Azsharan Key, open the strongbox.",
+				spots = { { 1439, 0.564, 0.265, "Tower of Althalaxx" } } },
+			{ "Show the hilt, Eluvi'ana and the tome to Mordent Evenshade", spots = { { 2652, 0.3505, 0.4649, "Mordent Evenshade" } } },
+			{ "Star of Elune", item = 282548, unordered = true, tip = "Shen'dralar Vault, Feralas. Five players: four switches, the fifth opens it. Needs the ring's buff.",
+				spots = { { 1444, 0.585, 0.716, "Shen'dralar Vault" } } },
+			{ "Abyssal Mote", item = 282547, unordered = true, tip = "An Abyssal Chest under the water in Azshara. Needs the chain that ends with Azsharite.",
+				spots = { { 1447, 0.660, 0.541, "Abyssal Chest" } } },
+			{ "Tears of Anguish", item = 282431, unordered = true, tip = "Drops from Anguished and Suffering Highborne at Lake Kel'theril. Not every time.",
+				spots = { { 1452, 0.536, 0.432, "Lake Kel'theril" } } },
+			{ "Cleansed Water Globe", item = 282699, tip = "Shrine of Coalescence, Hyjal.", spots = { { 2482, 0.727, 0.372, "Shrine of Coalescence" } } },
+			{ "Speak to Prince Tortheldrin in Dire Maul" },
+			{ "Arcanum of Binding", item = 282707, tip = "Made from the Libram of Binding (Dire Maul): a Pristine Black Diamond, 2 Large Brilliant Shards and an Arcane Crystal." },
+			{ "Scrawled Note from Tortheldrin", item = 283387 },
+			{ "The hilt and Altairus", unsolved = true, tip = "Nobody has solved this step yet." },
+		} },
+	{ id = "hunt", name = "Manual Scavenger Hunt", kind = "Mystery", unsolved = true, unordered = true, icon = 281358,
+		about = "Stashes all over the world. Not solved yet; some things have moved.",
+		steps = {
+			{ "Night Watchman's Torch", quest = 98372, item = 280612, tip = "You need it as a tool." },
+			{ "Keystone Fragment", items = { 281350, 284092, 284093 }, tip = "A barrel in the Undercity sewers.",
+				spots = { { 1458, 0.2286, 0.3619, "Undercity sewers" } } },
+			{ "Stone Key", item = 281358, tip = "Riverglades.", spots = { { 2548, 0.2656, 0.4558, "Riverglades" } } },
+			{ "Burnt Page (Dreadmaul Hold)", item = 281356, tip = "Needs the Stone Key.", spots = { { 1419, 0.4519, 0.1647, "Dreadmaul Hold" } } },
+			{ "Burnt Page (Thoradin's Wall)", spots = { { 1417, 0.2269, 0.2417, "Thoradin's Wall" } } },
+			{ "Brittle Key", item = 221324, tip = "A hidden stash in Stonetalon.", spots = { { 1442, 0.4071, 0.5275, "Stonetalon stash" } } },
+			{ "Torn Page", item = 281347, tip = "The Traveler's Cache in Stranglethorn.", spots = { { 1434, 0.1443, 0.2715, "Traveler's Cache" } } },
+			{ "Ancient Runestone", item = 281352, tip = "A stash in Alterac.", spots = { { 1416, 0.556, 0.483, "Alterac stash" } } },
+			{ "Ringo's cave", tip = "Un'Goro Crater.", spots = { { 1449, 0.5216, 0.4964, "Ringo's cave" } } },
+			{ "Skeletal Chest", tip = "Under the water in the Western Plaguelands.", spots = { { 1422, 0.616, 0.728, "Skeletal Chest" } } },
+			{ "Other finds", tip = "A note in Stormwind, an orc in Redridge, a snake in the Deadmines.",
+				spots = { { 1453, 0.6720, 0.8253, "Stormwind note" } } },
+		} },
+}
+-- the counter also has the two secrets with pages of their own
+local OTHER_SECRETS = {
+	{ id = "bedroll", name = "Cozy Sleeping Bag", quests = { BEDROLL_LAST } },
+	{ id = "library", name = "Greater Friend of the Library", quests = { 79536, 82208, 84394 } },
+}
+
+local function anyDone(list)
+	for _, q in ipairs(list or {}) do if questDone(q) then return true end end
+	return false
+end
+local function stepItems(s)
+	if s.items then return s.items end
+	return s.item and { s.item } or nil
+end
+local function itemsHeld(s)
+	local need = s.count or 1
+	for _, id in ipairs(stepItems(s) or {}) do if itemCount(id) >= need then return true end end
+	return false
+end
+local function hasToy(id)
+	local fn = rawget(_G, "PlayerHasToy")
+	if type(fn) == "function" then
+		local ok, v = pcall(fn, id)
+		if ok and v == true then return true end
+	end
+	return itemCount(id) > 0
+end
+local function playerFaction()
+	local f = UnitFactionGroup and UnitFactionGroup("player")
+	return type(f) == "string" and f or nil
+end
+
+-- every step: "done", "bag" (the item is here, the quest to turn in) or "open"
+local function secretState(e)
+	local states = {}
+	for i, s in ipairs(e.steps) do
+		local quests = s.quests or (s.quest and { s.quest })
+		if quests then
+			states[i] = anyDone(quests) and "done" or itemsHeld(s) and "bag" or "open"
+		elseif stepItems(s) then
+			states[i] = itemsHeld(s) and "done" or "open"
+		else
+			states[i] = "open"
+		end
+	end
+	local found
+	if e.toy then found = hasToy(e.toy)
+	elseif e.quest then found = questDone(e.quest)
+	elseif e.item then found = itemCount(e.item) > 0
+	else found = false end
+	-- a later done step: the ones before it are done (not optional ones, not unordered ones)
+	if not e.unordered then
+		local last = 0
+		for i, s in ipairs(e.steps) do if states[i] == "done" and not s.optional then last = i end end
+		if found then last = #e.steps end
+		for i = 1, last do
+			local s = e.steps[i]
+			if not s.optional and not s.unordered and not s.unsolved then states[i] = "done" end
+		end
+	end
+	if e.unsolved then found = false end
+	return states, found
+end
+
+local function secretFound(e)
+	if e.steps then local _, found = secretState(e) return found end
+	return anyDone(e.quests)
+end
+local function secretsCount()
+	local found, total = 0, 0
+	for _, list in ipairs({ SECRETS, OTHER_SECRETS }) do
+		for _, e in ipairs(list) do
+			if not (e.faction and playerFaction() and e.faction ~= playerFaction()) then
+				total = total + 1
+				if secretFound(e) then found = found + 1 end
+			end
+		end
+	end
+	return found, total
+end
+api.guideSecretsCount = secretsCount
+
+-- a click: the next spot of the step in turn
+local spotTurn = {}
+local function spotClick(key, spots)
+	return function()
+		local i = (spotTurn[key] or 0) % #spots + 1
+		spotTurn[key] = i
+		local p = spots[i]
+		waypoint(p[1], p[2], p[3], #spots > 1 and ("%s (%d of %d)"):format(p[4], i, #spots) or p[4])
+	end
+end
+
+local function itemIcon(id)
+	local fn = C_Item and C_Item.GetItemIconByID or GetItemIcon
+	local ok, icon = try(fn, id)
+	return ok and icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+local function secretRows()
+	local rows = {}
+	local found, total = secretsCount()
+	rows[#rows + 1] = { nil, "Secrets", ("%d of %d found"):format(found, total), header = true,
+		tip = { "Counts the secrets on this page and the Cozy Sleeping Bag and Greater Friend of the Library." } }
+	local showFound = not (db and db.secretsShowFound == false)
+	local faction = playerFaction()
+	for _, e in ipairs(SECRETS) do
+		local states, isFound = secretState(e)
+		local other = e.faction and faction and e.faction ~= faction
+		local stepsDone, stepsAll = 0, 0
+		for i, s in ipairs(e.steps) do
+			if not s.optional then stepsAll = stepsAll + 1; if states[i] == "done" then stepsDone = stepsDone + 1 end end
+		end
+		local right = other and (e.faction .. " only") or isFound and "found"
+			or ("%s, %d of %d steps%s"):format(e.kind, stepsDone, stepsAll, e.unsolved and ", unsolved" or "")
+		if showFound or not isFound then
+			rows[#rows + 1] = { isFound and ICON_DONE or other and ICON_NO or itemIcon(e.icon), e.name, right,
+				isFound and GREEN or other and GREY or GOLD,
+				tip = { e.about, e.unsolved and { "Not solved yet: these are the steps found so far.", ORANGE[1], ORANGE[2], ORANGE[3] } or nil } }
+			if not isFound and not other then
+				for i, s in ipairs(e.steps) do
+					local st = states[i]
+					local text = "    " .. s[1] .. (s.optional and "  |cff999999(optional)|r" or "")
+					local r = st == "done" and "done" or st == "bag" and "in your bags: turn it in" or s.unsolved and "unsolved"
+						or (s.spots and (#s.spots > 1 and (#s.spots .. " spots") or "waypoint")) or ""
+					local tip = {}
+					if s.tip then tip[#tip + 1] = s.tip end
+					if s.spots and #s.spots > 1 then tip[#tip + 1] = { "Each click: the next spot.", GREY[1], GREY[2], GREY[3] } end
+					if not (s.quest or s.quests or stepItems(s)) and not s.unsolved then
+						tip[#tip + 1] = { "Ticks itself when a later step is done.", GREY[1], GREY[2], GREY[3] }
+					end
+					rows[#rows + 1] = { st == "done" and ICON_DONE or st == "bag" and ICON_BAG or s.unsolved and ICON_UNKNOWN or ICON_OPEN,
+						text, r, st == "done" and GREEN or s.unsolved and ORANGE or nil,
+						onClick = st ~= "done" and s.spots and spotClick(e.id .. i, s.spots) or nil,
+						tip = #tip > 0 and tip or nil }
+				end
+			end
+		end
+	end
+	return rows
+end
+
+-- the chat line when a secret is found for the first time
+local function announceFound()
+	if not db then return end
+	local who = (UnitName and UnitName("player") or "?") .. "-" .. (GetRealmName and GetRealmName() or "")
+	db.secretsFound = type(db.secretsFound) == "table" and db.secretsFound or {}
+	local mine = type(db.secretsFound[who]) == "table" and db.secretsFound[who] or {}
+	db.secretsFound[who] = mine
+	local seen = mine.seen
+	for _, list in ipairs({ SECRETS, OTHER_SECRETS }) do
+		for _, e in ipairs(list) do
+			if not mine[e.id] and secretFound(e) then
+				mine[e.id] = true
+				-- the first look only learns what was found before (no chat line for old finds)
+				if seen then
+					DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r |cffffd100Secret found: " .. e.name .. "!|r")
+					if PlaySound and SOUNDKIT and SOUNDKIT.UI_EPICLOOT_TOAST then pcall(PlaySound, SOUNDKIT.UI_EPICLOOT_TOAST) end
+				end
+			end
+		end
+	end
+	mine.seen = true
+end
+api.guideAnnounceSecrets = announceFound -- (tests)
+
+---------------------------------------------------------------------------------------------------------------------
 -- Settings > Guides (declared by Config.lua: api.declareGuidePages(kit))
 ---------------------------------------------------------------------------------------------------------------------
 api.guideLegacyRows, api.guideBookRows, api.guideBedrollRows = legacyRows, bookRows, bedrollRows -- (tests)
+api.guideSecretRows = secretRows -- (tests)
 function api.declareGuidePages(k)
 	refreshPage = function() if k.refresh then pcall(k.refresh) end end
 	k.page("legacy", "quests", "Legacy Challenges")
@@ -470,6 +824,15 @@ function api.declareGuidePages(k)
 		function(v) db.legacyWithProfs = v and true or false; refreshPage() end,
 		function() return db.legacyOnlyMine == true end, 24)
 	k.help("keeps challenges that need a profession this character could still learn")
+	-- 3.1.2: open or close every category at once (a click on a category opens or closes just that one)
+	k.buttons("Open all close all categories", {
+		{ "Open all", function() db.legacyClosed = {}; refreshPage() end, 110 },
+		{ "Close all", function()
+			db.legacyClosed = {}
+			for _, cat in ipairs(legacyData().categories) do db.legacyClosed[cat.name] = true end
+			refreshPage()
+		end, 110 },
+	})
 	k.custom("Legacy challenges dungeon explorer achievements", rowList(legacyRows,
 		"No Legacy Challenges found (or all are done).", 160), true)
 
@@ -484,6 +847,15 @@ function api.declareGuidePages(k)
 	k.page("bedroll", "quests", "Sleeping bag")
 	k.pageByKey.bedroll.cardTitle = "The Cozy Sleeping Bag quest chain"
 	k.custom("Cozy sleeping bag bedroll chain", rowList(bedrollRows, nil, 20), true)
+
+	k.page("secrets", "quests", "Secrets")
+	k.pageByKey.secrets.cardTitle = "WoW Forever's hidden toys, quests and mysteries"
+	k.note("Steps tick themselves when you have the item or the quest is done. Click a step for a waypoint; hover it for more. Ideas from SecretChecklist.")
+	k.check("Show found secrets", function() return db.secretsShowFound ~= false end,
+		function(v) db.secretsShowFound = v and true or false; refreshPage() end)
+	k.help("a found secret is one green line")
+	k.custom("Secrets toys mysteries alcaz insignia night watchman torch chicken egg traveler symbols scarlet banner dawn waker scavenger hunt",
+		rowList(secretRows, nil, 120), true)
 end
 
 ns.onLogin[#ns.onLogin + 1] = function()
@@ -493,4 +865,16 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	pcall(f.RegisterEvent, f, "CRITERIA_UPDATE")
 	pcall(f.RegisterEvent, f, "SKILL_LINES_CHANGED")
 	f:SetScript("OnEvent", function() legacyAt = -100 end)
+	-- secrets: a found one says so in the chat (looked at a moment after a quest, a bag or a toy change)
+	local s = CreateFrame("Frame")
+	for _, e in ipairs({ "QUEST_TURNED_IN", "BAG_UPDATE_DELAYED", "TOYS_UPDATED", "NEW_TOY_ADDED" }) do pcall(s.RegisterEvent, s, e) end
+	local after = C_Timer and C_Timer.After
+	if type(after) ~= "function" then return end
+	local pending = false
+	s:SetScript("OnEvent", function()
+		if pending then return end
+		pending = true
+		after(2, function() pending = false; pcall(announceFound) end)
+	end)
+	after(8, function() pcall(announceFound) end)
 end

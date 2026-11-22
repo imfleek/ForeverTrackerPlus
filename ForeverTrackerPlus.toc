@@ -4,7 +4,7 @@
 ## Version: 3.1.2
 ## Category: Quests
 ## X-Curse-Project-ID: 1801986
-## IconTexture: Interface\AddOns\ForeverTrackerPlus\Textures\Cow
+## IconTexture: Interface\AddOns\ForeverTrackerPlus\Textures\MapPin
 ## SavedVariables: ForeverTrackerPlusDB, ForeverTrackerPlusGuideDB
 ## AllowLoadGameType: camelot
 ## LoadSavedVariablesFirst: 1

@@ -169,7 +169,7 @@ local kit = { page = function(key) pages[#pages + 1] = key end, heading = functi
 api.declareScreenPage(kit)
 api.declareGuidePages(kit)
 local all = table.concat(pages, ",")
-check("pages declared", all == "onscreen,legacy,books,bedroll")
+check("pages declared", all == "onscreen,legacy,books,bedroll,secrets")
 
 -- Questie.lua: breadcrumbs
 local qfields = { [500] = { breadcrumbForQuestId = 900 }, [501] = { breadcrumbForQuestId = 901 }, [502] = {} }

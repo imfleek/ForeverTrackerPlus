@@ -3,12 +3,16 @@
 --
 -- What is recorded, per character, account-wide in ForeverTrackerPlusDB.statsRuns["Name-Realm"] (so any character can
 -- be compared with any other; never part of a profile, Profiles.lua EXCLUDE_TRACKER):
---   levels[level] = { t = { [state] = seconds }, quests, questXP, xp, deaths, jumps }
---     once a second the character is in one of eleven states, the first that fits: dead, flight, combat, craft
---     (3.1.2: a profession window open, or casting a profession or gathering spell), npc (a quest, gossip, vendor,
---     trainer, flight, bank, mail, trade or auction window open), afk, swim (3.1.2), jump (3.1.2: in the air),
---     mount (moving mounted), walk (moving on foot), idle (standing). That second is added to the current level (a
---     tick is at most 5 s, so a loading screen or a stall is not counted as standing still).
+--   levels[level] = { t = { [state] = seconds }, npc = { [window] = seconds }, dungeon, quests, questXP, xp, deaths, jumps }
+--     once a second the character is in one state, the first that fits: dead, flight, combat, eat (3.1.2: a Food or
+--     Drink buff), craft (3.1.2: a profession window open, or casting a profession or gathering spell), loot (3.1.2:
+--     a loot window open), npc (a quest, gossip, vendor, trainer, flight, bank, mail, trade or auction window open;
+--     3.1.2: also counted by window in npc, NPC_KINDS), cast (3.1.2: any other cast or channel), afk, swim (3.1.2),
+--     jump (3.1.2: in the air up to 2 s after a jump), fall (3.1.2: in the air otherwise), mount (moving mounted),
+--     walk (moving on foot), map (3.1.2: standing with the world map or quest log open), idle (standing). That second
+--     is added to the current level (a tick is at most 5 s, so a stall is not counted as standing still).
+--     3.1.2 load: a loading screen's whole time (LOADING_SCREEN_ENABLED to _DISABLED, at most 5 min); no ticks count
+--     meanwhile. dungeon: the seconds inside a dungeon or raid (IsInInstance), on top of the state (a tile, not a bar).
 --     3.1.2 Run analysis adds a jump tracker (the time in the air, and the jumps counted by a hook on
 --     JumpOrAscendStart); standing stays, in the bars and in Time per level.
 --   gold = { quests, loot } (3.1.2) copper: QUEST_TURNED_IN's money, and money that came in while a loot window of a
@@ -24,16 +28,31 @@
 -- The level-up line in chat (db.levelAnnounce, on by default): the new level, how long the last level took and the
 -- time played in total.
 -- CONSTRAINT: every Forever call is checked before use (RequestTimePlayed, UnitOnTaxi, GetUnitSpeed, UnitIsAFK,
--- IsMounted: Forever declares them, wow-api forever.json); a value that is secret counts as unknown.
+-- IsMounted, IsFalling, IsInInstance, C_UnitAuras.GetBuffDataByIndex, LOADING_SCREEN_ENABLED/DISABLED: Forever
+-- declares them, wow-api forever.json); a value that is secret counts as unknown.
 local ADDON, root = ...; local ns = root.tracker
 if ns.disabled then return end
 local api = ns.api
 local db, run, runKey
 
 local KIND_NAMES = { combat = "Combat", walk = "Running", mount = "Mounted", flight = "Flight", npc = "NPCs", dead = "Dead",
-	afk = "AFK", idle = "Standing", swim = "Swimming", jump = "Jumping", craft = "Crafting/gathering" }
+	afk = "AFK", idle = "Standing", swim = "Swimming", jump = "Jumping", craft = "Crafting/gathering",
+	eat = "Eating/drinking", loot = "Looting", cast = "Casting", fall = "Falling", map = "Map/quest log",
+	load = "Loading screens" }
 -- Run analysis (bars and the Discord text): every state
-local BAR_KINDS = { "combat", "walk", "mount", "swim", "jump", "craft", "flight", "npc", "dead", "afk", "idle" }
+local BAR_KINDS = { "combat", "walk", "mount", "swim", "jump", "fall", "craft", "eat", "loot", "cast", "flight", "npc",
+	"map", "load", "dead", "afk", "idle" }
+-- 3.1.2: the NPC time split by window (the Run analysis dropdown under NPCs); the first window that is open counts
+local NPC_KINDS = {
+	{ "vendor", "Vendors", { "MerchantFrame" } },
+	{ "trainer", "Trainers", { "ClassTrainerFrame" } },
+	{ "taxi", "Flight masters", { "TaxiFrame" } },
+	{ "bank", "Bank", { "BankFrame" } },
+	{ "mail", "Mailbox", { "MailFrame" } },
+	{ "auction", "Auction house", { "AuctionFrame", "AuctionHouseFrame" } },
+	{ "trade", "Trading", { "TradeFrame" } },
+	{ "quest", "Quest givers/talking", { "QuestFrame", "GossipFrame" } },
+}
 local MAX_TICK = 5
 local MAX_QUEST_TIME = 6 * 3600
 local session = { start = nil, quests = 0, xp = 0, jumps = 0, goldQuests = 0, goldLoot = 0 }
@@ -154,8 +173,6 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 -- The clock: one state a second
 ---------------------------------------------------------------------------------------------------------------------
-local NPC_FRAMES = { "QuestFrame", "GossipFrame", "MerchantFrame", "ClassTrainerFrame", "TaxiFrame", "BankFrame",
-	"MailFrame", "TradeFrame", "AuctionFrame", "AuctionHouseFrame" }
 local function shown(name)
 	local f = rawget(_G, name)
 	return type(f) == "table" and f.IsShown and f:IsShown() and true or false
@@ -213,35 +230,126 @@ local function craftingNow()
 	return castIsCraft(UnitCastingInfo, 6, 9) or castIsCraft(UnitChannelInfo, 6, 8)
 end
 
+-- 3.1.2 eating and drinking: a buff named Food, Drink, Food & Drink or Refreshment (or the game's name of spell 433
+-- Food / 430 Drink in its language)
+local foodNames
+local function isFoodName(name)
+	if type(name) ~= "string" or isSecret(name) then return false end
+	if not foodNames then
+		foodNames = { ["Food"] = true, ["Drink"] = true, ["Food & Drink"] = true, ["Refreshment"] = true }
+		local get = C_Spell and C_Spell.GetSpellInfo
+		if type(get) == "function" then
+			for _, id in ipairs({ 433, 430 }) do
+				local ok, info = pcall(get, id)
+				local n = ok and type(info) == "table" and info.name
+				if type(n) == "string" and not isSecret(n) then foodNames[n] = true end
+			end
+		end
+	end
+	return foodNames[name] == true
+end
+local function readFood()
+	local byData = C_UnitAuras and C_UnitAuras.GetBuffDataByIndex
+	local old = rawget(_G, "UnitBuff")
+	for i = 1, 40 do
+		local name
+		if type(byData) == "function" then
+			local d = byData("player", i)
+			if type(d) ~= "table" then return false end
+			name = d.name
+		elseif type(old) == "function" then
+			name = old("player", i)
+			if name == nil then return false end
+		else
+			return false
+		end
+		if isFoodName(name) then return true end
+	end
+	return false
+end
+-- (in pcall: a secret value only makes it "not eating")
+local function eatingNow()
+	local ok, v = pcall(readFood)
+	return ok and v == true
+end
+
+-- 3.1.2 casting: any other cast or channel out of combat (a hearthstone, a buff, a mount)
+local function castName(fn)
+	if type(fn) ~= "function" then return false end
+	local ok, name = pcall(fn, "player")
+	return ok and name ~= nil and not isSecret(name) and true or false
+end
+
+-- 3.1.2 a loot window is open (LOOT_OPENED to LOOT_CLOSED); a loading screen is on (LOADING_SCREEN_ENABLED/DISABLED)
+local lootOpen, loadStart = false, nil
+-- 3.1.2 jumping or falling: in the air up to 2 s after a jump (the JumpOrAscendStart hook) is a jump, else a fall
+local JUMP_AIR = 2
+local lastJumpAt, jumpHooked = -100, false
+
 local function stateNow()
 	if flag(UnitIsDeadOrGhost, "player") then return "dead" end
 	if flag(UnitOnTaxi, "player") then return "flight" end
 	if flag(UnitAffectingCombat, "player") then return "combat" end
+	if eatingNow() then return "eat" end
 	if craftingNow() then return "craft" end
-	for _, name in ipairs(NPC_FRAMES) do if shown(name) then return "npc" end end
+	if lootOpen then return "loot" end
+	for _, n in ipairs(NPC_KINDS) do
+		for _, name in ipairs(n[3]) do if shown(name) then return "npc", n[1] end end
+	end
+	if castName(UnitCastingInfo) or castName(UnitChannelInfo) then return "cast" end
 	if flag(UnitIsAFK, "player") then return "afk" end
 	if flag(IsSwimming) then return "swim" end
-	if flag(IsFalling) then return "jump" end
+	if flag(IsFalling) then
+		if not jumpHooked or GetTime() - lastJumpAt <= JUMP_AIR then return "jump" end
+		return "fall"
+	end
 	local speed = 0
 	if type(GetUnitSpeed) == "function" then
 		local ok, v = pcall(GetUnitSpeed, "player")
 		if ok and type(v) == "number" and not isSecret(v) then speed = v end
 	end
 	if speed > 0 then return flag(IsMounted) and "mount" or "walk" end
+	if shown("WorldMapFrame") or shown("QuestLogFrame") then return "map" end
 	return "idle"
 end
 api.statsStateNow = stateNow
+
+-- 3.1.2 dungeons and raids: IsInInstance's type is party or raid
+local function inDungeon()
+	if type(IsInInstance) ~= "function" then return false end
+	local ok, inside, kind = pcall(IsInInstance)
+	if not ok or isSecret(inside) or isSecret(kind) then return false end
+	return inside and (kind == "party" or kind == "raid") and true or false
+end
 
 local lastTick
 local function tick()
 	local now = GetTime()
 	local dt = lastTick and math.min(now - lastTick, MAX_TICK) or 0
 	lastTick = now
-	if not on() or dt <= 0 then return end
+	if loadStart or not on() or dt <= 0 then return end -- a loading screen counts as a whole when it ends
 	local rec = levelRec()
 	if not rec then return end
-	local state = stateNow()
+	local state, sub = stateNow()
 	rec.t[state] = (tonumber(rec.t[state]) or 0) + dt
+	if sub then
+		rec.npc = type(rec.npc) == "table" and rec.npc or {}
+		rec.npc[sub] = (tonumber(rec.npc[sub]) or 0) + dt
+	end
+	if inDungeon() then rec.dungeon = (tonumber(rec.dungeon) or 0) + dt end
+end
+
+-- a loading screen: its whole time, at most 5 minutes (a long one is a stall or the game in the background)
+local MAX_LOAD = 300
+local function onLoadStart() loadStart = GetTime() end
+local function onLoadEnd()
+	local began = loadStart
+	loadStart = nil
+	lastTick = GetTime()
+	if not (began and on()) then return end
+	local d = math.min(GetTime() - began, MAX_LOAD)
+	local rec = levelRec()
+	if rec and d > 0 then rec.t.load = (tonumber(rec.t.load) or 0) + d end
 end
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -382,8 +490,8 @@ local function lootIsMob()
 	end
 	return false
 end
-local function onLootOpened() lootFromMob = lootIsMob(); lootUntil = math.huge end
-local function onLootClosed() lootUntil = GetTime() + 1 end
+local function onLootOpened() lootFromMob = lootIsMob(); lootUntil = math.huge; lootOpen = true end
+local function onLootClosed() lootUntil = GetTime() + 1; lootOpen = false end
 local function onMoney()
 	local now = readMoney()
 	if not now then return end
@@ -401,6 +509,7 @@ api.statsOnMoney = onMoney -- (tests)
 
 -- jumps: a hook on the jump key's function (not while on a flight path)
 local function onJump()
+	lastJumpAt = GetTime()
 	if not on() or flag(UnitOnTaxi, "player") then return end
 	local r = ensure()
 	if not r then return end
@@ -487,9 +596,11 @@ end
 -- the whole run's clock: { [state] = seconds }, total
 function api.statsTotals(r)
 	local out, total = {}, 0
-	local deaths, quests, questXP, xp, jumps = 0, 0, 0, 0, 0
+	local deaths, quests, questXP, xp, jumps, dungeon, npc = 0, 0, 0, 0, 0, 0, {}
 	for _, rec in pairs(r and r.levels or {}) do
 		if type(rec) == "table" then
+			for k, v in pairs(type(rec.npc) == "table" and rec.npc or {}) do npc[k] = (npc[k] or 0) + (tonumber(v) or 0) end
+			dungeon = dungeon + (tonumber(rec.dungeon) or 0)
 			for k, v in pairs(type(rec.t) == "table" and rec.t or {}) do
 				out[k] = (out[k] or 0) + (tonumber(v) or 0)
 				total = total + (tonumber(v) or 0)
@@ -501,7 +612,7 @@ function api.statsTotals(r)
 			jumps = jumps + (tonumber(rec.jumps) or 0)
 		end
 	end
-	return out, total, { deaths = deaths, quests = quests, questXP = questXP, xp = xp, jumps = jumps }
+	return out, total, { deaths = deaths, quests = quests, questXP = questXP, xp = xp, jumps = jumps, dungeon = dungeon, npc = npc }
 end
 
 -- the largest three states of a level: "Standing 65%  NPCs 20%  Running 15%"
@@ -531,6 +642,7 @@ function api.statsDiscordText()
 		UnitLevel("player") or 0, tostring(class or ""):lower():gsub("^%l", string.upper))
 	lines[#lines + 1] = ("Recorded %s | %d quests | %d%% XP from quests | %d deaths | %d jumps"):format(clock(total), sums.quests,
 		sums.xp > 0 and math.floor(sums.questXP / sums.xp * 100 + 0.5) or 0, sums.deaths, sums.jumps)
+		.. (sums.dungeon >= 1 and (" | %s in dungeons"):format(clock(sums.dungeon)) or "")
 	lines[#lines + 1] = "```"
 	for _, k in ipairs(BAR_KINDS) do
 		local v = t[k] or 0
@@ -575,7 +687,7 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 local events = CreateFrame("Frame")
 local EVENTS = { "TIME_PLAYED_MSG", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP",
-	"PLAYER_DEAD", "PLAYER_MONEY", "LOOT_OPENED", "LOOT_CLOSED" }
+	"PLAYER_DEAD", "PLAYER_MONEY", "LOOT_OPENED", "LOOT_CLOSED", "LOADING_SCREEN_ENABLED", "LOADING_SCREEN_DISABLED" }
 events:SetScript("OnEvent", function(_, event, a, b, c)
 	if event == "TIME_PLAYED_MSG" then onPlayed(a, b)
 	elseif event == "QUEST_ACCEPTED" then onAccepted(a, b)
@@ -583,6 +695,8 @@ events:SetScript("OnEvent", function(_, event, a, b, c)
 	elseif event == "PLAYER_MONEY" then onMoney()
 	elseif event == "LOOT_OPENED" then onLootOpened()
 	elseif event == "LOOT_CLOSED" then onLootClosed()
+	elseif event == "LOADING_SCREEN_ENABLED" then onLoadStart()
+	elseif event == "LOADING_SCREEN_DISABLED" then onLoadEnd()
 	elseif event == "PLAYER_XP_UPDATE" then onXP()
 	elseif event == "PLAYER_LEVEL_UP" then
 		onXP()
@@ -603,7 +717,7 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	lastLevel = UnitLevel("player")
 	lastMoney = readMoney()
 	if hooksecurefunc then
-		if type(JumpOrAscendStart) == "function" then pcall(hooksecurefunc, "JumpOrAscendStart", onJump) end
+		if type(JumpOrAscendStart) == "function" then jumpHooked = pcall(hooksecurefunc, "JumpOrAscendStart", onJump) end
 		if type(AbandonQuest) == "function" then pcall(hooksecurefunc, "AbandonQuest", onAbandon) end
 		if C_QuestLog and type(C_QuestLog.AbandonQuest) == "function" then pcall(hooksecurefunc, C_QuestLog, "AbandonQuest", onAbandon) end
 	end
@@ -622,6 +736,8 @@ local ICONS = {
 	deaths = "Interface\\Icons\\Ability_Rogue_FeignDeath", xp = "Interface\\Icons\\Spell_Holy_PowerInfusion",
 	gold = "Interface\\Icons\\INV_Misc_Coin_02", goldLoot = "Interface\\Icons\\INV_Misc_Coin_04",
 	goldSession = "Interface\\Icons\\INV_Misc_Coin_01", jump = "Interface\\Icons\\Ability_Rogue_Sprint",
+	dungeon = "Interface\\Icons\\INV_Misc_Key_03", slow = "Interface\\Icons\\Spell_Nature_TimeStop",
+	compare = "Interface\\Icons\\Ability_Warrior_Challange",
 }
 
 -- tiles(kit, rows): rows() -> { { icon, value, label }, ... }; up to four a line
@@ -680,12 +796,15 @@ local function tiles(rows, maxTiles)
 	end
 end
 
--- bars(rows): rows() -> { { label, valueText, fraction }, ... }
-local function bars(rows, maxRows)
+-- bars(rows): rows() -> { { label, valueText, fraction, key = k, kids = { rows } }, ... }
+-- 3.1.2: a row with kids has an arrow and opens a dropdown of indented rows (closed by default, not saved); a click
+-- calls onToggle so the page lays out again
+local function bars(rows, maxRows, onToggle)
 	return function(holder, kit)
 		local C = kit.C
-		local list = {}
-		for i = 1, maxRows or 10 do
+		local list, open = {}, {}
+		local function row(i)
+			if list[i] then return list[i] end
 			local r = {}
 			r.label = kit.text(holder, "GameFontHighlight", 1.1, C.value)
 			r.label:SetJustifyH("LEFT")
@@ -695,34 +814,81 @@ local function bars(rows, maxRows)
 			r.fill = holder:CreateTexture(nil, "ARTWORK")
 			kit.hGradient(r.fill, C.on, 1, 0.75)
 			list[i] = r
+			return r
 		end
+		-- the dropdown's arrow and the click area over its row
+		local toggles = {}
+		local function toggle(key)
+			if toggles[key] then return toggles[key] end
+			local b = CreateFrame("Button", nil, holder)
+			local hl = b:CreateTexture(nil, "HIGHLIGHT")
+			hl:SetAllPoints()
+			hl:SetColorTexture(1, 0.9, 0.6, 0.08)
+			if kit.arrow then b.arrow = kit.arrow(holder, false, 12) end
+			b:SetScript("OnClick", function()
+				open[key] = not open[key]
+				if onToggle then onToggle() end
+			end)
+			toggles[key] = b
+			return b
+		end
+		for i = 1, maxRows or 10 do row(i) end
 		local w = {}
 		function w.draw(width)
 			local k = kit.ts()
-			local data = rows() or {}
+			local flat = {}
+			for _, d in ipairs(rows() or {}) do
+				flat[#flat + 1] = { d, 0 }
+				if d.kids and d.key and open[d.key] then
+					for _, kid in ipairs(d.kids) do flat[#flat + 1] = { kid, 1 } end
+				end
+			end
+			local made = #list
+			for i = 1, #flat do row(i) end
+			if #list > made and kit.refreshFonts then kit.refreshFonts() end
+			for _, b in pairs(toggles) do b:Hide(); if b.arrow then b.arrow:Hide() end end
 			local y = 0
 			local rowH = math.floor(18 * k + 0.5)
+			local arrowW = math.floor(16 * k + 0.5)
 			for i, r in ipairs(list) do
-				local d = data[i]
+				local d, depth = flat[i] and flat[i][1], flat[i] and flat[i][2]
 				local show = d ~= nil
 				r.label:SetShown(show); r.value:SetShown(show); r.track:SetShown(show); r.fill:SetShown(show)
 				if show then
+					local x = depth > 0 and arrowW + math.floor(8 * k) or 0
+					local top = y
+					if d.kids and d.key then
+						local b = toggle(d.key)
+						b:ClearAllPoints()
+						b:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -top)
+						b:SetSize(math.max(width, 1), rowH + 7)
+						b:Show()
+						if b.arrow then
+							b.arrow:ClearAllPoints()
+							b.arrow:SetPoint("CENTER", holder, "TOPLEFT", arrowW / 2, -top - rowH / 2)
+							if b.arrow.SetRotation then pcall(b.arrow.SetRotation, b.arrow, open[d.key] and -math.pi / 2 or 0) end
+							b.arrow:Show()
+						end
+						x = arrowW
+					end
 					r.label:SetText(d[1])
 					r.value:SetText(d[2] or "")
 					r.label:ClearAllPoints()
-					r.label:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
+					r.label:SetPoint("TOPLEFT", holder, "TOPLEFT", x, -y)
 					r.label:SetPoint("RIGHT", holder, "TOPRIGHT", -150, 0)
 					r.value:ClearAllPoints()
 					r.value:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -y)
 					r.value:SetWidth(150)
 					y = y + rowH + 2
+					local bx = depth > 0 and x or 0
+					local bw = math.max(width - bx, 1)
 					r.track:ClearAllPoints()
-					r.track:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
-					r.track:SetSize(width, 5)
+					r.track:SetPoint("TOPLEFT", holder, "TOPLEFT", bx, -y)
+					r.track:SetSize(bw, depth > 0 and 3 or 5)
 					local frac = math.min(math.max(tonumber(d[3]) or 0, 0), 1)
 					r.fill:ClearAllPoints()
-					r.fill:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
-					r.fill:SetSize(math.max(width * frac, 1), 5)
+					r.fill:SetPoint("TOPLEFT", holder, "TOPLEFT", bx, -y)
+					r.fill:SetSize(math.max(bw * frac, 1), depth > 0 and 3 or 5)
 					r.fill:SetShown(frac > 0)
 					y = y + 5 + math.floor(9 * k + 0.5)
 				end
@@ -856,20 +1022,39 @@ local function runTiles()
 		{ ICONS.clock, clock(total), "Recorded" },
 		{ ICONS.check, tostring(sums.quests), "Completed quests" },
 		{ ICONS.star, sums.xp > 0 and ("%d%%"):format(math.floor(sums.questXP / sums.xp * 100 + 0.5)) or "-", "XP from quests" },
+		-- 3.1.2: gold from quests and off mobs, the whole run
+		{ ICONS.gold, money(r.gold.quests + r.gold.loot), "Gold acquired" },
 		{ ICONS.deaths, tostring(sums.deaths), "Deaths" },
 		{ ICONS.jump, short(sums.jumps), "Jumps" },
+		-- 3.1.2: time inside a dungeon or raid (it overlaps the bars: combat, running and so on in there)
+		{ ICONS.dungeon, sums.dungeon >= 1 and clock(sums.dungeon) or "-", "In dungeons" },
 	}
 end
 
+local function pctText(v, total)
+	return ("%s  %d%%"):format(clock(v), total > 0 and math.floor(v / total * 100 + 0.5) or 0)
+end
 local function timeBars()
 	local r = ensure()
 	if not r then return {} end
-	local t, total = api.statsTotals(r)
+	local t, total, sums = api.statsTotals(r)
 	local out = {}
 	for _, k in ipairs(BAR_KINDS) do
 		local v = t[k] or 0
-		out[#out + 1] = { KIND_NAMES[k], ("%s  %d%%"):format(clock(v), total > 0 and math.floor(v / total * 100 + 0.5) or 0),
-			total > 0 and v / total or 0 }
+		local d = { KIND_NAMES[k], pctText(v, total), total > 0 and v / total or 0 }
+		-- NPCs: a dropdown by window; the percent and bar are of the NPC time
+		if k == "npc" and v > 0 then
+			local kids, split = {}, 0
+			for _, n in ipairs(NPC_KINDS) do
+				local s = sums.npc[n[1]] or 0
+				split = split + s
+				if s >= 1 then kids[#kids + 1] = { n[2], pctText(s, v), s / v } end
+			end
+			local rest = v - split
+			if rest >= 1 then kids[#kids + 1] = { "Not split (before 3.1.2)", pctText(rest, v), rest / v } end
+			if #kids > 0 then d.key, d.kids = "npc", kids end
+		end
+		out[#out + 1] = d
 	end
 	return out
 end
@@ -918,41 +1103,151 @@ local function levelLines()
 	return out
 end
 
-local function splitLines()
+-- 3.1.2 Level splits, fancier: summary tiles over a bar for each level (the slowest level is a full bar; green faster
+-- and red slower than the compared run, whose level shows as a thin grey bar under it)
+local function hex(c)
+	local function b(v) return math.floor(v * 255 + 0.5) end
+	return ("|cff%02x%02x%02x"):format(b(c[1]), b(c[2]), b(c[3]))
+end
+local function signed(d) return (d >= 0 and "+" or "-") .. clock(math.abs(d)) end
+local function splitData()
 	local r = ensure()
-	if not r then return {} end
+	if not r then return { rows = {} } end
 	local other = compareRun()
-	local out = {}
-	local top = UnitLevel("player") or 1
-	local sum, otherSum = 0, 0
+	local rows, top, maxT = {}, UnitLevel("player") or 1, 0
+	local done, sum, fast, slow = 0, 0, nil, nil
+	local both, otherBoth = 0, 0
 	for level = 1, top do
 		local took, now = api.statsLevelTime(r, level)
 		local o = other and api.statsLevelTime(other, level)
 		if took or o then
-			local right, colour = "", nil
-			if o then
-				if took and not now then
-					local d = took - o
-					sum, otherSum = sum + took, otherSum + o
-					right = ("%s  (%s%s)"):format(clock(o), d >= 0 and "+" or "-", clock(math.abs(d)))
-					colour = d > 0 and RED or GREEN
-				else
-					right = clock(o)
-				end
+			local d = took and o and not now and took - o or nil
+			table.insert(rows, 1, { level = level, took = took, now = now, other = o, diff = d })
+			maxT = math.max(maxT, took or 0, o or 0)
+			if took and not now then
+				done, sum = done + 1, sum + took
+				if not fast or took < fast[2] then fast = { level, took } end
+				if not slow or took > slow[2] then slow = { level, took } end
+				if o then both, otherBoth = both + took, otherBoth + o end
 			end
-			table.insert(out, 1, { ("Lv %d"):format(level), took and (clock(took) .. (now and "  now" or "")) or "-", right, colour })
 		end
 	end
-	if other and otherSum > 0 then
-		local d = sum - otherSum
-		table.insert(out, 1, { "Total", clock(sum), ("%s  (%s%s)"):format(clock(otherSum), d >= 0 and "+" or "-", clock(math.abs(d))),
-			d > 0 and RED or GREEN })
+	return { rows = rows, maxT = maxT, done = done, sum = sum, fast = fast, slow = slow, other = other,
+		ahead = otherBoth > 0 and both - otherBoth or nil, played = tonumber(r.played) }
+end
+
+local function splitTiles()
+	local s = splitData()
+	local out = {
+		{ ICONS.clock, s.played and long(s.played) or "-", "Played" },
+		{ ICONS.rate, s.done > 0 and clock(s.sum / s.done) or "-", "Average level" },
+		{ ICONS.jump, s.fast and clock(s.fast[2]) or "-", s.fast and ("Fastest: level %d"):format(s.fast[1]) or "Fastest level" },
+		{ ICONS.slow, s.slow and clock(s.slow[2]) or "-", s.slow and ("Slowest: level %d"):format(s.slow[1]) or "Slowest level" },
+	}
+	if s.ahead then
+		out[#out + 1] = { ICONS.compare, hex(s.ahead > 0 and RED or GREEN) .. signed(s.ahead) .. "|r",
+			s.ahead > 0 and "Behind the compared run" or "Ahead of the compared run" }
 	end
 	return out
 end
 
+-- rows: { label, valueText, fraction, otherFraction or nil, fillColour or nil, now }
+local function splitRows()
+	local s = splitData()
+	local out = {}
+	for _, d in ipairs(s.rows) do
+		local value = d.took and clock(d.took) or "-"
+		if d.diff then value = value .. "  " .. hex(d.diff > 0 and RED or GREEN) .. signed(d.diff) .. "|r"
+		elseif d.other and not d.took then value = value .. "  |cff999999(" .. clock(d.other) .. ")|r" end
+		local colour = d.diff and (d.diff > 0 and RED or GREEN) or nil
+		out[#out + 1] = { ("Level %d"):format(d.level) .. (d.now and "  |cff999999now|r" or ""), value,
+			s.maxT > 0 and (d.took or 0) / s.maxT or 0, s.other and s.maxT > 0 and (d.other or 0) / s.maxT or nil, colour, d.now }
+	end
+	return out
+end
+
+local function splitBars(emptyText)
+	return function(holder, kit)
+		local C = kit.C
+		local list = {}
+		local empty = kit.text(holder, "GameFontHighlight", 1.08, C.label)
+		empty:SetJustifyH("LEFT")
+		empty:SetText(emptyText)
+		local function row(i)
+			if list[i] then return list[i] end
+			local r = {}
+			r.label = kit.text(holder, "GameFontHighlight", 1.1, C.value)
+			r.label:SetJustifyH("LEFT")
+			r.value = kit.text(holder, "GameFontHighlight", 1.05, C.label)
+			r.value:SetJustifyH("RIGHT")
+			r.track = kit.solid(holder, "BORDER", C.track)
+			r.fill = holder:CreateTexture(nil, "ARTWORK")
+			r.other = holder:CreateTexture(nil, "ARTWORK")
+			r.other:SetColorTexture(0.6, 0.6, 0.6, 0.55)
+			list[i] = r
+			return r
+		end
+		local w = {}
+		function w.draw(width)
+			local k = kit.ts()
+			local data = splitRows()
+			local made = #list
+			for i = 1, #data do row(i) end
+			if #list > made and kit.refreshFonts then kit.refreshFonts() end
+			empty:SetShown(#data == 0)
+			if #data == 0 then
+				empty:ClearAllPoints()
+				empty:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+				empty:SetWidth(math.max(width, 40))
+				return math.floor(20 * k + 0.5)
+			end
+			local y = 0
+			local rowH = math.floor(18 * k + 0.5)
+			for i, r in ipairs(list) do
+				local d = data[i]
+				local show = d ~= nil
+				r.label:SetShown(show); r.value:SetShown(show); r.track:SetShown(show); r.fill:SetShown(show)
+				r.other:SetShown(show and d[4] ~= nil)
+				if show then
+					r.label:SetText(d[1])
+					r.label:ClearAllPoints()
+					r.label:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
+					r.label:SetPoint("RIGHT", holder, "TOPRIGHT", -170, 0)
+					r.value:SetText(d[2])
+					r.value:ClearAllPoints()
+					r.value:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, -y)
+					r.value:SetWidth(170)
+					y = y + rowH + 2
+					r.track:ClearAllPoints()
+					r.track:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
+					r.track:SetSize(width, 6)
+					local frac = math.min(math.max(d[3] or 0, 0), 1)
+					kit.hGradient(r.fill, d[5] or C.on, d[6] and 0.55 or 1, d[6] and 0.35 or 0.75)
+					r.fill:ClearAllPoints()
+					r.fill:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y)
+					r.fill:SetSize(math.max(width * frac, 1), 6)
+					r.fill:SetShown(frac > 0)
+					y = y + 6
+					if d[4] then
+						local of = math.min(math.max(d[4], 0), 1)
+						r.other:ClearAllPoints()
+						r.other:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -y - 2)
+						r.other:SetSize(math.max(width * of, 1), 2)
+						r.other:SetShown(of > 0)
+						y = y + 4
+					end
+					y = y + math.floor(9 * k + 0.5)
+				end
+			end
+			return math.max(y, 1)
+		end
+		return w
+	end
+end
+
 api.statsOverviewTiles, api.statsGoldTiles, api.statsLevelBar, api.statsRunTiles, api.statsTimeBars, api.statsLevelLines =
 	overviewTiles, goldTiles, levelBar, runTiles, timeBars, levelLines -- (tests)
+api.statsSplitTiles, api.statsSplitRows = splitTiles, splitRows -- (tests)
 function api.declareStatsPages(k)
 	local function refreshAfter(fn) return function(...) fn(...); k.refresh() end end
 	local function compareChoice()
@@ -999,9 +1294,11 @@ function api.declareStatsPages(k)
 
 	k.page("statsrun", "stats", "Run analysis")
 	k.pageByKey.statsrun.cardTitle = "What the run's time was spent on"
-	k.custom("Recorded completed quests xp from quests deaths jumps", tiles(runTiles, 5), true)
+	k.custom("Recorded completed quests xp from quests deaths jumps in dungeons", tiles(runTiles, 6), true)
 	k.heading("Where the time went")
-	k.custom("Combat running mounted swimming jumping crafting gathering flight npcs dead afk standing", bars(timeBars, #BAR_KINDS), true)
+	k.custom("Combat running mounted swimming jumping falling crafting gathering eating drinking looting casting flight npcs "
+		.. "vendors trainers bank mailbox auction map quest log loading screens dead afk standing",
+		bars(timeBars, #BAR_KINDS, function() k.refresh() end), true)
 	k.heading("Worth a look")
 	k.custom("Worth a look idle away", lines(worthALook, "Nothing stands out yet.", 6), true)
 	k.heading("Time per level")
@@ -1017,6 +1314,7 @@ function api.declareStatsPages(k)
 	k.page("statssplits", "stats", "Level splits")
 	k.pageByKey.statssplits.cardTitle = "How long each level took"
 	compareChoice()
-	k.note("Times come from /played, so time logged out never counts. The middle column is this run; the right one the run you compare with (red: slower, green: faster).")
-	k.custom("Level splits", lines(splitLines, "Level up once and the first split shows here.", 80), true)
+	k.custom("Played average level fastest slowest ahead behind", tiles(splitTiles, 5), true)
+	k.heading("Each level")
+	k.custom("Level splits", splitBars("Level up once and the first split shows here."), true)
 end

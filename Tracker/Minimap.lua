@@ -39,7 +39,7 @@ local function create()
 	local icon = button:CreateTexture(nil, "ARTWORK")
 	icon:SetSize(20, 20)
 	icon:SetPoint("TOPLEFT", 6, -5)
-	icon:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Textures\\Cow") -- addon-owned 64x64 TGA
+	icon:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Textures\\MapPin") -- addon-owned 64x64 TGA
 	local border = button:CreateTexture(nil, "OVERLAY")
 	border:SetSize(53, 53)
 	border:SetPoint("TOPLEFT")

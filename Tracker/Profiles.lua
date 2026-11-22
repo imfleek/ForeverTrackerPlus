@@ -15,7 +15,8 @@ local MAX_NAME = 40
 local EXCLUDE_TRACKER = { profiles = true, activeProfile = true, ahValue = true, conflictKept = true,
 	savedAutoWatch = true, zoneHidden = true, configPage = true, configTab = true, extra = true, guideScrolls = true,
 	showRep = true, instanceRuns = true, npcTypes = true,
-	statsRuns = true, statsCompare = true, flightLog = true, setupDone = true, configFolded = true }
+	statsRuns = true, statsCompare = true, flightLog = true, setupDone = true, configFolded = true,
+	secretsFound = true, legacyClosed = true }
 local EXCLUDE_GUIDE = { onboarded = true, questFocus = true, questFocusSaved = true, hidden = true, npcIds = true }
 
 local function trackerDB() return ns.db end
