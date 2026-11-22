@@ -32,11 +32,10 @@ function api.setEnabled(on)
 	ns.refresh(true)
 end
 
--- Guide look: "forever" (Forever Style, the default) or "rxp" (RXP Style)
-function api.setTheme(theme)
-	theme = theme == "rxp" and "rxp" or "forever"
-	if db.theme == theme then return end
-	db.theme = theme
+-- Guide look: 3.1.2 Forever Style is the only one; any value (an old profile's "rxp") keeps "forever"
+function api.setTheme()
+	if db.theme == "forever" then return end
+	db.theme = "forever"
 	ns.refresh(true)
 end
 

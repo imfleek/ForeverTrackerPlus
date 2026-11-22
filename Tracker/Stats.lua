@@ -3,11 +3,16 @@
 --
 -- What is recorded, per character, account-wide in ForeverTrackerPlusDB.statsRuns["Name-Realm"] (so any character can
 -- be compared with any other; never part of a profile, Profiles.lua EXCLUDE_TRACKER):
---   levels[level] = { t = { [state] = seconds }, quests, questXP, xp, deaths }
---     once a second the character is in one of eight states, the first that fits: dead, flight, combat, npc (a quest,
---     gossip, vendor, trainer, flight, bank, mail, trade or auction window open), afk, mount (moving mounted), walk
---     (moving on foot), idle (standing). That second is added to the current level (a tick is at most 5 s, so a
---     loading screen or a stall is not counted as standing still).
+--   levels[level] = { t = { [state] = seconds }, quests, questXP, xp, deaths, jumps }
+--     once a second the character is in one of eleven states, the first that fits: dead, flight, combat, craft
+--     (3.1.2: a profession window open, or casting a profession or gathering spell), npc (a quest, gossip, vendor,
+--     trainer, flight, bank, mail, trade or auction window open), afk, swim (3.1.2), jump (3.1.2: in the air),
+--     mount (moving mounted), walk (moving on foot), idle (standing). That second is added to the current level (a
+--     tick is at most 5 s, so a loading screen or a stall is not counted as standing still).
+--     3.1.2 Run analysis shows every state but standing (the jump tracker took its place: the time in the air and the
+--     jumps, counted by a hook on JumpOrAscendStart); standing stays in Time per level.
+--   gold = { quests, loot } (3.1.2) copper: QUEST_TURNED_IN's money, and money that came in while a loot window of a
+--     creature was open (or just closed)
 --   reached[level] = /played seconds when that level began: TIME_PLAYED_MSG gives the total and the time on this
 --     level, so the start of the current level is exact whenever the addon was installed. Asked at login and after
 --     each level up; the game's own chat line for our request is kept out of the chat (the chat frames do not get
@@ -25,12 +30,13 @@ if ns.disabled then return end
 local api = ns.api
 local db, run, runKey
 
-local KINDS = { "combat", "walk", "mount", "flight", "npc", "dead", "afk", "idle" }
 local KIND_NAMES = { combat = "Combat", walk = "Running", mount = "Mounted", flight = "Flight", npc = "NPCs", dead = "Dead",
-	afk = "AFK", idle = "Standing" }
+	afk = "AFK", idle = "Standing", swim = "Swimming", jump = "Jumping", craft = "Crafting/gathering" }
+-- Run analysis (bars and the Discord text): every state but standing
+local BAR_KINDS = { "combat", "walk", "mount", "swim", "jump", "craft", "flight", "npc", "dead", "afk" }
 local MAX_TICK = 5
 local MAX_QUEST_TIME = 6 * 3600
-local session = { start = nil, quests = 0, xp = 0 }
+local session = { start = nil, quests = 0, xp = 0, jumps = 0, goldQuests = 0, goldLoot = 0 }
 
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
 local function on() return db and db.statsOn ~= false end
@@ -62,7 +68,31 @@ local function short(n)
 	if BreakUpLargeNumbers then return BreakUpLargeNumbers(math.floor(n)) end
 	return tostring(math.floor(n))
 end
-api.statsClock, api.statsLong, api.statsShort = clock, long, short
+-- copper as "12g 34s", "5s 6c", "7c" (gold, silver and copper coloured)
+local function money(c)
+	c = math.max(math.floor(tonumber(c) or 0), 0)
+	local g, s, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
+	if g > 0 then return ("%s|cffffd100g|r %d|cffc7c7cfs|r"):format(short(g), s) end
+	if s > 0 then return ("%d|cffc7c7cfs|r %d|cffeda55fc|r"):format(s, cp) end
+	return ("%d|cffeda55fc|r"):format(cp)
+end
+api.statsClock, api.statsLong, api.statsShort, api.statsMoney = clock, long, short, money
+
+-- the level cap (the lowest the game reports; 60 when it reports none)
+local function maxLevel()
+	local best
+	for _, name in ipairs({ "GetMaxLevelForPlayerExpansion", "GetMaxPlayerLevel" }) do
+		local fn = _G[name]
+		if type(fn) == "function" then
+			local ok, v = pcall(fn)
+			v = ok and not isSecret(v) and tonumber(v)
+			if v and v > 0 and (not best or v < best) then best = v end
+		end
+	end
+	return best or tonumber(rawget(_G, "MAX_PLAYER_LEVEL")) or 60
+end
+local function atMaxLevel() return (UnitLevel("player") or 1) >= maxLevel() end
+api.statsAtMaxLevel = atMaxLevel
 
 ---------------------------------------------------------------------------------------------------------------------
 -- The record
@@ -84,6 +114,10 @@ local function fill(r)
 	q.zones = type(q.zones) == "table" and q.zones or {}
 	q.timeSum, q.timed = tonumber(q.timeSum) or 0, tonumber(q.timed) or 0
 	r.quests = q
+	local g = type(r.gold) == "table" and r.gold or {}
+	g.quests, g.loot = tonumber(g.quests) or 0, tonumber(g.loot) or 0
+	r.gold = g
+	r.jumps = tonumber(r.jumps) or 0
 	return r
 end
 
@@ -131,12 +165,63 @@ local function flag(fn, ...)
 	local ok, v = pcall(fn, ...)
 	return ok and not isSecret(v) and v and true or false
 end
+-- crafting and gathering: a profession window open, or a profession cast (the game's isTradeskill), or a gathering
+-- spell (by ID, or by the name of one of those IDs in the game's language)
+local CRAFT_FRAMES = { "TradeSkillFrame", "CraftFrame", "ProfessionsFrame" }
+local GATHER_SPELLS = {
+	[2366] = true, [2368] = true, [3570] = true, [11993] = true, [2369] = true, -- Herb Gathering
+	[2575] = true, [2576] = true, [3564] = true, [10248] = true, [2580] = true, -- Mining
+	[8613] = true, [8617] = true, [8618] = true, [10768] = true, -- Skinning
+	[7620] = true, [7731] = true, [7732] = true, [18248] = true, [7738] = true, -- Fishing
+	[13262] = true, -- Disenchant
+}
+local gatherNames
+local function gatherName(name)
+	if type(name) ~= "string" or isSecret(name) then return false end
+	if not gatherNames then
+		gatherNames = { ["Herb Gathering"] = true, ["Mining"] = true, ["Skinning"] = true, ["Fishing"] = true,
+			["Disenchant"] = true }
+		local get = C_Spell and C_Spell.GetSpellInfo
+		if type(get) == "function" then
+			for id in pairs(GATHER_SPELLS) do
+				local ok, info = pcall(get, id)
+				local n = ok and type(info) == "table" and info.name
+				if type(n) == "string" and not isSecret(n) then gatherNames[n] = true end
+			end
+		end
+	end
+	return gatherNames[name] == true
+end
+local function readCast(fn, tradeAt, spellAt)
+	local res = { fn("player") }
+	local name, trade, spell = res[1], res[tradeAt], res[spellAt]
+	if name == nil or isSecret(name) then return false end
+	if not isSecret(trade) and trade == true then return true end
+	if not isSecret(spell) and type(spell) == "number" and GATHER_SPELLS[spell] then return true end
+	return gatherName(name)
+end
+-- (in pcall: a secret value that slips through only makes it "not crafting")
+local function castIsCraft(fn, tradeAt, spellAt)
+	if type(fn) ~= "function" then return false end
+	local ok, v = pcall(readCast, fn, tradeAt, spellAt)
+	return ok and v == true
+end
+local function craftingNow()
+	for _, name in ipairs(CRAFT_FRAMES) do if shown(name) then return true end end
+	-- UnitCastingInfo: name, displayName, texture, start, end, isTradeskill (6), castID, notInterruptible, spellID (9)
+	-- UnitChannelInfo: name, displayName, texture, start, end, isTradeskill (6), notInterruptible, spellID (8)
+	return castIsCraft(UnitCastingInfo, 6, 9) or castIsCraft(UnitChannelInfo, 6, 8)
+end
+
 local function stateNow()
 	if flag(UnitIsDeadOrGhost, "player") then return "dead" end
 	if flag(UnitOnTaxi, "player") then return "flight" end
 	if flag(UnitAffectingCombat, "player") then return "combat" end
+	if craftingNow() then return "craft" end
 	for _, name in ipairs(NPC_FRAMES) do if shown(name) then return "npc" end end
 	if flag(UnitIsAFK, "player") then return "afk" end
+	if flag(IsSwimming) then return "swim" end
+	if flag(IsFalling) then return "jump" end
 	local speed = 0
 	if type(GetUnitSpeed) == "function" then
 		local ok, v = pcall(GetUnitSpeed, "player")
@@ -235,12 +320,17 @@ local function onAccepted(a, b)
 	r.accepted[id] = { at = time(), title = questTitle(id) }
 end
 
-local function onTurnedIn(id, xp)
+local function onTurnedIn(id, xp, gold)
 	if not on() then return end
 	local r = ensure()
 	if not r then return end
-	id, xp = tonumber(id), tonumber(xp) or 0
 	if isSecret(xp) then xp = 0 end
+	if isSecret(gold) then gold = 0 end
+	id, xp, gold = tonumber(id), tonumber(xp) or 0, tonumber(gold) or 0
+	if gold > 0 then
+		r.gold.quests = r.gold.quests + gold
+		session.goldQuests = session.goldQuests + gold
+	end
 	local q = r.quests
 	q.done = q.done + 1
 	q.xp = q.xp + xp
@@ -270,6 +360,56 @@ local function onAbandon()
 	local r = ensure()
 	if r then r.quests.abandoned = r.quests.abandoned + 1 end
 end
+
+-- gold off mobs: money that comes in while a creature's loot window is open (or up to a second after it closed)
+local lootFromMob, lootUntil, lastMoney = false, -100, nil
+local function readMoney()
+	if type(GetMoney) ~= "function" then return nil end
+	local ok, v = pcall(GetMoney)
+	if not ok or isSecret(v) then return nil end
+	return tonumber(v)
+end
+local function lootIsMob()
+	if type(GetNumLootItems) ~= "function" or type(GetLootSourceInfo) ~= "function" then return true end
+	local okN, n = pcall(GetNumLootItems)
+	n = okN and not isSecret(n) and tonumber(n) or 0
+	if n == 0 then return true end
+	for i = 1, n do
+		local ok, guid = pcall(GetLootSourceInfo, i)
+		if ok and type(guid) == "string" and not isSecret(guid) and (guid:find("^Creature") or guid:find("^Vehicle")) then
+			return true
+		end
+	end
+	return false
+end
+local function onLootOpened() lootFromMob = lootIsMob(); lootUntil = math.huge end
+local function onLootClosed() lootUntil = GetTime() + 1 end
+local function onMoney()
+	local now = readMoney()
+	if not now then return end
+	local before = lastMoney
+	lastMoney = now
+	if not (before and on() and lootFromMob and GetTime() <= lootUntil) then return end
+	local gained = now - before
+	local r = ensure()
+	if gained > 0 and r then
+		r.gold.loot = r.gold.loot + gained
+		session.goldLoot = session.goldLoot + gained
+	end
+end
+api.statsOnMoney = onMoney -- (tests)
+
+-- jumps: a hook on the jump key's function (not while on a flight path)
+local function onJump()
+	if not on() or flag(UnitOnTaxi, "player") then return end
+	local r = ensure()
+	if not r then return end
+	r.jumps = r.jumps + 1
+	local rec = levelRec()
+	if rec then rec.jumps = (tonumber(rec.jumps) or 0) + 1 end
+	session.jumps = session.jumps + 1
+end
+api.statsOnJump = onJump -- (tests)
 
 local function readXP()
 	local xp, max = UnitXP and UnitXP("player"), UnitXPMax and UnitXPMax("player")
@@ -347,7 +487,7 @@ end
 -- the whole run's clock: { [state] = seconds }, total
 function api.statsTotals(r)
 	local out, total = {}, 0
-	local deaths, quests, questXP, xp = 0, 0, 0, 0
+	local deaths, quests, questXP, xp, jumps = 0, 0, 0, 0, 0
 	for _, rec in pairs(r and r.levels or {}) do
 		if type(rec) == "table" then
 			for k, v in pairs(type(rec.t) == "table" and rec.t or {}) do
@@ -358,9 +498,10 @@ function api.statsTotals(r)
 			quests = quests + (tonumber(rec.quests) or 0)
 			questXP = questXP + (tonumber(rec.questXP) or 0)
 			xp = xp + (tonumber(rec.xp) or 0)
+			jumps = jumps + (tonumber(rec.jumps) or 0)
 		end
 	end
-	return out, total, { deaths = deaths, quests = quests, questXP = questXP, xp = xp }
+	return out, total, { deaths = deaths, quests = quests, questXP = questXP, xp = xp, jumps = jumps }
 end
 
 -- the largest three states of a level: "Standing 65%  NPCs 20%  Running 15%"
@@ -388,13 +529,13 @@ function api.statsDiscordText()
 	local lines = {}
 	lines[#lines + 1] = ("**%s** - level %d %s - ForeverTrackerPlus run analysis"):format(UnitName("player") or "?",
 		UnitLevel("player") or 0, tostring(class or ""):lower():gsub("^%l", string.upper))
-	lines[#lines + 1] = ("Recorded %s | %d quests | %d%% XP from quests | %d deaths"):format(clock(total), sums.quests,
-		sums.xp > 0 and math.floor(sums.questXP / sums.xp * 100 + 0.5) or 0, sums.deaths)
+	lines[#lines + 1] = ("Recorded %s | %d quests | %d%% XP from quests | %d deaths | %d jumps"):format(clock(total), sums.quests,
+		sums.xp > 0 and math.floor(sums.questXP / sums.xp * 100 + 0.5) or 0, sums.deaths, sums.jumps)
 	lines[#lines + 1] = "```"
-	for _, k in ipairs(KINDS) do
+	for _, k in ipairs(BAR_KINDS) do
 		local v = t[k] or 0
 		if v > 0 then
-			lines[#lines + 1] = ("%-9s %9s %3d%%"):format(KIND_NAMES[k], clock(v), total > 0 and math.floor(v / total * 100 + 0.5) or 0)
+			lines[#lines + 1] = ("%-18s %9s %3d%%"):format(KIND_NAMES[k], clock(v), total > 0 and math.floor(v / total * 100 + 0.5) or 0)
 		end
 	end
 	lines[#lines + 1] = "```"
@@ -434,11 +575,14 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 local events = CreateFrame("Frame")
 local EVENTS = { "TIME_PLAYED_MSG", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP",
-	"PLAYER_DEAD" }
-events:SetScript("OnEvent", function(_, event, a, b)
+	"PLAYER_DEAD", "PLAYER_MONEY", "LOOT_OPENED", "LOOT_CLOSED" }
+events:SetScript("OnEvent", function(_, event, a, b, c)
 	if event == "TIME_PLAYED_MSG" then onPlayed(a, b)
 	elseif event == "QUEST_ACCEPTED" then onAccepted(a, b)
-	elseif event == "QUEST_TURNED_IN" then onTurnedIn(a, b)
+	elseif event == "QUEST_TURNED_IN" then onTurnedIn(a, b, c)
+	elseif event == "PLAYER_MONEY" then onMoney()
+	elseif event == "LOOT_OPENED" then onLootOpened()
+	elseif event == "LOOT_CLOSED" then onLootClosed()
 	elseif event == "PLAYER_XP_UPDATE" then onXP()
 	elseif event == "PLAYER_LEVEL_UP" then
 		onXP()
@@ -457,7 +601,9 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	ensure()
 	lastXP, lastMax = readXP()
 	lastLevel = UnitLevel("player")
+	lastMoney = readMoney()
 	if hooksecurefunc then
+		if type(JumpOrAscendStart) == "function" then pcall(hooksecurefunc, "JumpOrAscendStart", onJump) end
 		if type(AbandonQuest) == "function" then pcall(hooksecurefunc, "AbandonQuest", onAbandon) end
 		if C_QuestLog and type(C_QuestLog.AbandonQuest) == "function" then pcall(hooksecurefunc, C_QuestLog, "AbandonQuest", onAbandon) end
 	end
@@ -469,11 +615,13 @@ end
 -- The pages' widgets: tiles, bars and lines, in the settings window's look (api.themeKit from Config.lua)
 ---------------------------------------------------------------------------------------------------------------------
 local ICONS = {
-	check = "Interface\\RaidFrame\\ReadyCheck-Ready", star = "Interface\\Icons\\INV_Misc_Coin_02",
+	-- 3.1.2: experience from quests has a light icon (the coin is for the gold tiles now)
+	check = "Interface\\RaidFrame\\ReadyCheck-Ready", star = "Interface\\Icons\\Spell_Holy_SurgeOfLight",
 	clock = "Interface\\Icons\\INV_Misc_PocketWatch_01", rate = "Interface\\Icons\\INV_Scroll_03",
 	session = "Interface\\GossipFrame\\ActiveQuestIcon", trash = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
-	fast = "Interface\\Icons\\Ability_Rogue_Sprint", deaths = "Interface\\Icons\\Ability_Rogue_FeignDeath",
-	xp = "Interface\\Icons\\Spell_Holy_SurgeOfLight",
+	deaths = "Interface\\Icons\\Ability_Rogue_FeignDeath", xp = "Interface\\Icons\\Spell_Holy_PowerInfusion",
+	gold = "Interface\\Icons\\INV_Misc_Coin_02", goldLoot = "Interface\\Icons\\INV_Misc_Coin_04",
+	goldSession = "Interface\\Icons\\INV_Misc_Coin_01", jump = "Interface\\Icons\\Ability_Rogue_Sprint",
 }
 
 -- tiles(kit, rows): rows() -> { { icon, value, label }, ... }; up to four a line
@@ -654,22 +802,35 @@ local function overviewTiles()
 	local _, total = api.statsTotals(r)
 	local avg = q.timed > 0 and clock(q.timeSum / q.timed) or "-"
 	local rate = total >= 600 and ("%.1f"):format(q.done / (total / 3600)) or "-"
-	local fastest = type(q.fastest) == "table" and tonumber(q.fastest.t) and clock(q.fastest.t) or "-"
+	-- 3.1.2: no "Fastest quest"; at the level cap no experience tiles
+	local maxed = atMaxLevel()
+	local out = { { ICONS.check, short(q.done), "Completed quests" } }
+	if not maxed then out[#out + 1] = { ICONS.star, short(q.xp), "Experience from quests" } end
+	out[#out + 1] = { ICONS.clock, avg, "Avg. quest time" }
+	out[#out + 1] = { ICONS.rate, rate, "Quests per hour" }
+	out[#out + 1] = { ICONS.session, tostring(session.quests), "Session quests" }
+	out[#out + 1] = { ICONS.trash, tostring(q.abandoned), "Abandoned" }
+	if not maxed then out[#out + 1] = { ICONS.xp, short(session.xp), "Session experience" } end
+	return out
+end
+
+-- 3.1.2 gold: from quests and off mobs, this run and this session
+local function goldTiles()
+	local r = ensure()
+	if not r then return {} end
 	return {
-		{ ICONS.check, short(q.done), "Completed quests" },
-		{ ICONS.star, short(q.xp), "Experience from quests" },
-		{ ICONS.clock, avg, "Avg. quest time" },
-		{ ICONS.rate, rate, "Quests per hour" },
-		{ ICONS.session, tostring(session.quests), "Session quests" },
-		{ ICONS.trash, tostring(q.abandoned), "Abandoned" },
-		{ ICONS.fast, fastest, "Fastest quest" },
-		{ ICONS.xp, short(session.xp), "Session experience" },
+		{ ICONS.gold, money(r.gold.quests), "Gold from quests" },
+		{ ICONS.goldLoot, money(r.gold.loot), "Gold off mobs" },
+		{ ICONS.goldSession, money(session.goldQuests + session.goldLoot), "Gold this session" },
+		{ ICONS.gold, money(r.gold.quests + r.gold.loot), "Gold in total" },
 	}
 end
 
 local function levelBar()
 	local xp, max = readXP()
 	local level = UnitLevel("player") or 1
+	-- 3.1.2: at the level cap there is no next level: a full bar, no experience numbers
+	if atMaxLevel() then return { { ("Level %d"):format(level), "maximum level", 1 } } end
 	if not (xp and max and max > 0) then return { { ("Level %d"):format(level), "", 0 } } end
 	local fmt = BreakUpLargeNumbers or tostring
 	return { { ("Level %d"):format(level), ("%s / %s"):format(fmt(xp), fmt(max)), xp / max } }
@@ -696,6 +857,7 @@ local function runTiles()
 		{ ICONS.check, tostring(sums.quests), "Completed quests" },
 		{ ICONS.star, sums.xp > 0 and ("%d%%"):format(math.floor(sums.questXP / sums.xp * 100 + 0.5)) or "-", "XP from quests" },
 		{ ICONS.deaths, tostring(sums.deaths), "Deaths" },
+		{ ICONS.jump, short(sums.jumps), "Jumps" },
 	}
 end
 
@@ -704,7 +866,7 @@ local function timeBars()
 	if not r then return {} end
 	local t, total = api.statsTotals(r)
 	local out = {}
-	for _, k in ipairs(KINDS) do
+	for _, k in ipairs(BAR_KINDS) do
 		local v = t[k] or 0
 		out[#out + 1] = { KIND_NAMES[k], ("%s  %d%%"):format(clock(v), total > 0 and math.floor(v / total * 100 + 0.5) or 0),
 			total > 0 and v / total or 0 }
@@ -789,6 +951,8 @@ local function splitLines()
 	return out
 end
 
+api.statsOverviewTiles, api.statsGoldTiles, api.statsLevelBar, api.statsRunTiles, api.statsTimeBars, api.statsLevelLines =
+	overviewTiles, goldTiles, levelBar, runTiles, timeBars, levelLines -- (tests)
 function api.declareStatsPages(k)
 	local function refreshAfter(fn) return function(...) fn(...); k.refresh() end end
 	local function compareChoice()
@@ -800,7 +964,9 @@ function api.declareStatsPages(k)
 
 	k.page("statsoverview", "stats", "Overview")
 	k.pageByKey.statsoverview.cardTitle = "Your quests in numbers"
-	k.custom("Completed quests experience quest time quests per hour session abandoned fastest", tiles(overviewTiles, 8), true)
+	k.custom("Completed quests experience quest time quests per hour session abandoned", tiles(overviewTiles, 8), true)
+	k.heading("Gold")
+	k.custom("Gold from quests off mobs money session", tiles(goldTiles, 4), true)
 	k.heading("Level progress")
 	k.custom("Level progress", bars(levelBar, 1), true)
 	k.heading("Top quest zones")
@@ -833,9 +999,9 @@ function api.declareStatsPages(k)
 
 	k.page("statsrun", "stats", "Run analysis")
 	k.pageByKey.statsrun.cardTitle = "What the run's time was spent on"
-	k.custom("Recorded completed quests xp from quests deaths", tiles(runTiles, 4), true)
+	k.custom("Recorded completed quests xp from quests deaths jumps", tiles(runTiles, 5), true)
 	k.heading("Where the time went")
-	k.custom("Combat running mounted flight npcs dead afk standing", bars(timeBars, #KINDS), true)
+	k.custom("Combat running mounted swimming jumping crafting gathering flight npcs dead afk", bars(timeBars, #BAR_KINDS), true)
 	k.heading("Worth a look")
 	k.custom("Worth a look idle away", lines(worthALook, "Nothing stands out yet.", 6), true)
 	k.heading("Time per level")

@@ -1379,7 +1379,7 @@ local function buildButtons(item, parent)
 	end
 end
 
--- Orphaned quests (Themes & guide): RestedXP's list of quests in your log the current guide does not use. Hover a quest
+-- Orphaned quests (Guide): RestedXP's list of quests in your log the current guide does not use. Hover a quest
 -- for its Abandon button; "Cleanup orphaned quests" abandons them all. Both ask once more (click again within 4 s):
 -- abandoning cannot be undone.
 local CONFIRM_SECONDS = 4
@@ -2290,10 +2290,8 @@ local function declareItems(db)
 			function(v) g.setFlag("arrowLocked", v) end, function() return arrowOn() and not g.lockedByRestedXP() end)
 		pageByKey.arrow.reset = resetGuide
 
-		page("guide", "guide", "Themes and guide")
-		choice("Theme", function()
-			return { { "forever", "Forever Style (default)" }, { "rxp", "RXP Style" } }
-		end, function() return g.get("theme") == "rxp" and "rxp" or "forever" end, function(v) g.setTheme(v) end)
+		-- 3.1.2: Forever Style is the only look of the RXP Tracker, so the page has no theme choice any more
+		page("guide", "guide", "Guide")
 		statusBox("Guide status", function()
 			local s = g.status()
 			local progress
@@ -2334,7 +2332,7 @@ local function declareItems(db)
 			note("RestedXP returns to your saved place whenever a guide loads, so a guide that once ran to its end opens at its end again. Restart it here, or reset every guide.")
 		end
 		pageByKey.guide.reset = resetGuide
-		-- its own page under Themes & guide: how the list is sorted, then the list
+		-- its own page under Guide: how the list is sorted, then the list
 		if g.orphansAvailable and g.orphansAvailable() then
 			page("orphans", "guide", "Orphaned quests")
 			note("The same list as RestedXP's \"Cleanup Orphaned Quests\": quests in your log that the current guide does not use and no later guide turns in. Finished quests are never listed. Abandoning cannot be undone.")

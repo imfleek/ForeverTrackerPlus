@@ -883,6 +883,19 @@ function api.questieSpot(kind, id)
 	return map, x and x / 100, y and y / 100, zoneName(zone)
 end
 function api.questieGet(kind, id, field) return get(kind, id, field) end
+-- 3.1.2 (Guides.lua books): Questie hides the quest (its blacklist: taken out, or not in the game yet)
+function api.questieHidden(id)
+	local corrections = module("QuestieCorrections")
+	local hidden = corrections and corrections.hiddenQuests
+	return type(hidden) == "table" and hidden[id] and true or false
+end
+-- the name of the NPC a quest is turned in at, or nil
+function api.questieLibrarian(id)
+	local fin = get("Quest", id, "finishedBy")
+	local npc = type(fin) == "table" and type(fin[1]) == "table" and fin[1][1]
+	local name = npc and get("Npc", npc, "name")
+	return type(name) == "string" and name or nil
+end
 
 -- 3.0 "a quest close by" (Helpers.lua): the nearest quest Questie lists as available (its AvailableQuests module's
 -- __availableQuests) whose giver NPC stands within maxYards; skip: quest IDs already shown. Grey quests are left out.

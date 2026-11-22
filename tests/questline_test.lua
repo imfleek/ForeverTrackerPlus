@@ -154,7 +154,8 @@ check("auto pick keeps a quest you picked yourself", setTo == nil)
 local rows = api.guideLegacyRows()
 check("legacy: category header", rows[1] and rows[1].header and rows[1][2] == "Dungeon Explorer" and rows[1][3] == "1 of 2 done")
 check("legacy: open challenge with criteria count", rows[2] and rows[2][2] == "Explore Deadmines" and rows[2][3] == "1 / 2")
-check("legacy: open criteria in the tooltip", rows[2] and table.concat(rows[2].tip, "|"):find("Boss room", 1, true) ~= nil)
+local function tipText(tip) local t = {} for i, l in ipairs(tip or {}) do t[i] = type(l) == "table" and l[1] or l end return table.concat(t, "|") end
+check("legacy: open criteria in the tooltip", rows[2] and tipText(rows[2].tip):find("Boss room", 1, true) ~= nil)
 check("legacy: done and non-legacy left out", #rows == 2)
 ns.db.legacyShowDone = true
 ns.api.guideLegacyRows() -- cached for 10 s, the switch resets it in the page; here the cache still holds

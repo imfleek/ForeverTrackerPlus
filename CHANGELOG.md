@@ -4,8 +4,30 @@ All notable changes to ForeverTrackerPlus (called RXP ForeverTracker before 3.1.
 
 ## 3.1.2
 
+### Added
+- **Legacy Challenges: "Only challenges this character can do"** (Settings > Guides > Legacy Challenges, off by default). It hides challenges for another race, class or faction, and challenges that need a profession you have not learned. The box under it, **"Include professions you have not learned"**, keeps the profession ones. Every challenge and category now has a tooltip: what it is, how many steps are done, what is still to do, and why you cannot do it.
+- **Library books: a "?"** for a book whose status is unknown: Questie says its quest is not in the game, or Questie does not know where the book is. The tooltip says why. Every book has a tooltip: where it lies, or that it is in your bags or turned in, and who takes it.
+- **Library books: "Show collected books"** switch (on). Turn it off to see only the books you still need.
+- **Gold tracker** (Statistics > Overview > Gold): gold from quests, gold off mobs, gold this session and in total.
+- **Run analysis: jump tracker.** Time in the air and a count of your jumps, in place of standing still.
+- **Run analysis: swimming** and **crafting/gathering** (a profession window open, or crafting, mining, herb picking, skinning, fishing or disenchanting).
+
 ### Changed
+- **Cozy Sleeping Bag:** a finished chain now shows a green check and "You have completed this questchain.", and nothing else. This works with or without Questie. The chain is also found by its quest IDs when Questie's name search finds nothing.
+- **Level progress at the level cap:** no bar to the next level. It shows "maximum level" with a full bar.
+- **"Experience from quests"** has an experience icon, not a coin.
+- **Overview at the level cap:** "Experience from quests" and "Session experience" are hidden.
+- **Standing still** stays in Time per level (the three biggest parts of each level), but not in the run analysis bars.
+- **The RXP Tracker has one look: Forever Style.** RXP Style and the Theme setting are gone. If you used RXP Style, you now get Forever Style. The settings page "Themes and guide" is now "Guide".
+
+### Removed
+- **"Fastest quest"** tile in Statistics > Overview.
+
+### Changed (speed)
 - **Faster when you accept a quest:** the game draws the quest tracker many times then. Our quest title and objective text hooks no longer do their work twice, and the line limit is only set when it changes.
+
+### Fixed
+- **3D model in "More quests":** quests past the game's tracking limit now show the 3D model when you hover an objective line, the same as tracked quests.
 
 ## 3.1.1
 

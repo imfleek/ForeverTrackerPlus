@@ -24,7 +24,7 @@ local DEFAULTS = {
 	arrowSatellites = true,
 	arrowCollapse = false,
 	followingSteps = 3,
-	theme = "forever", -- "forever" (Forever Style, the default) or "rxp" (RXP Style)
+	theme = "forever", -- 3.1.2: always "forever" (Forever Style); RXP Style is gone
 	upcomingCollapsed = false,
 	currentCollapsed = false, -- the RXP Tracker's own collapse button folds the current step(s) only
 	arrowColor = false, arrowAlpha = 1, -- Waypoint arrow: its colour (false = the theme's) and opacity
@@ -54,7 +54,7 @@ if type(db.onboarded) ~= "table" then db.onboarded = {} end
 if type(db.questFocus) ~= "table" then db.questFocus = {} end
 if type(db.questFocusSaved) ~= "table" then db.questFocusSaved = {} end
 db.followingSteps = Clamp(math.floor(tonumber(db.followingSteps) or DEFAULTS.followingSteps), 0, ns.ALL_STEPS)
-if db.theme ~= "rxp" then db.theme = "forever" end -- new installs (and unknown values) get Forever Style
+db.theme = "forever" -- 3.1.2: Forever Style is the only look; a saved "rxp" (RXP Style) becomes Forever Style
 db.upcomingShown = Clamp(math.floor(tonumber(db.upcomingShown) or DEFAULTS.upcomingShown), 1, ns.ALL_STEPS)
 db.upcomingScrollbarColor = nil -- removed: every scrollbar uses the Forever art (ScrollSkin.lua)
 ns.db = db
@@ -70,8 +70,9 @@ function ns.pingLine()
 end
 
 -- Forever Style: the guide drawn like the game's own quest tracker sections (Header.lua, Rows.lua).
+-- 3.1.2: always on (RXP Style was removed); the RXP Style branches in Header.lua and Rows.lua no longer run
 function ns.forever()
-	return db.theme == "forever"
+	return true
 end
 
 function ns.say(text)

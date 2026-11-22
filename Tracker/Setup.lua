@@ -128,7 +128,9 @@ local function buildSteps()
 		"|cffffd100Sleeping bag|r: the Cozy Sleeping Bag quest chain, from level 14.\n\n" ..
 		(questieLoaded() and "" or "The books and the sleeping bag chain need Questie.\n\n"), rows = list(
 		row("Show finished challenges", "off: Legacy Challenges lists only the ones still to do",
-			function() return d.legacyShowDone == true end, function(v) d.legacyShowDone = v end)
+			function() return d.legacyShowDone == true end, function(v) d.legacyShowDone = v end),
+		row("Only challenges this character can do", "hides Legacy Challenges for another race, class or faction, or for a profession you have not learned",
+			function() return d.legacyOnlyMine == true end, function(v) d.legacyOnlyMine = v end)
 	) }
 	out[#out + 1] = { title = "Statistics", text = "Your run in numbers: Settings > Statistics.", rows = list(
 		row("Record statistics", "quests, experience, deaths and where your time goes, per level",
