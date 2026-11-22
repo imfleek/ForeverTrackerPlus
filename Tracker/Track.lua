@@ -4,8 +4,6 @@
 --   manual  new quests are not tracked automatically: the game's autoQuestWatch setting is switched off (and restored
 --           when the mode ends). If the client has no such setting, a freshly accepted quest is un-tracked instead.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Track", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
-local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local db
@@ -39,7 +37,7 @@ local timer
 local function schedule(fn, delay)
 	if timer then return end
 	timer = true
-	C_Timer.After(delay or 0.7, function() timer = nil; xpcall(timed, geterrorhandler(), "track all quests", fn) end)
+	C_Timer.After(delay or 0.7, function() timer = nil; xpcall(fn, geterrorhandler()) end)
 end
 
 local lastAccepted

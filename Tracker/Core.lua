@@ -13,8 +13,6 @@
 --   tracker   made EXTRA pixels taller than Blizzard wants (it lives inside the viewport, so this is never visible), so
 --             Blizzard lays out every module instead of truncating those that do not fit; grows if still truncated.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Core", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
-local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 ns.api, ns.onLogin = {}, {}
 local tracker = _G.ObjectiveTrackerFrame
 if not tracker or root.disabledAll then ns.disabled = true return end
@@ -1358,7 +1356,7 @@ local pending
 function schedule()
 	if pending then return end
 	pending = true
-	C_Timer.After(0, function() pending = nil; timed("tracker scroll and size", refresh) end)
+	C_Timer.After(0, function() pending = nil; refresh() end)
 end
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -2159,7 +2157,6 @@ local QT_HELP = {
 	{ "unlock", "unlock the tracker (drag it like a frame in Edit Mode)" },
 	{ "distance", "why a quest title shows or hides its distance arrow" },
 	{ "bags", "what the quest marks in your bags see (open your bags first)" },
-	{ "lag", "finds what makes a freeze when you accept a quest" },
 	{ "fontlog", "record the tracker's font changes for 10 s (open the map meanwhile), then show who made them" },
 	{ "reset", "scroll the tracker back to the top" },
 	{ "on", "turn the quest tracker on (then /reload)" },
@@ -2222,8 +2219,6 @@ SlashCmdList.ALLTRACKERRXP = function(msg)
 		if ns.api.distanceReport then ns.api.distanceReport(say) end
 	elseif cmd == "bags" then
 		if ns.api.bagReport then ns.api.bagReport(say) end
-	elseif cmd == "lag" then
-		if ns.api.lagWatch then ns.api.lagWatch(say) end
 	elseif cmd == "fontlog" then
 		if ns.api.fontLog then ns.api.fontLog(say) end
 	elseif cmd == "reset" then ns.api.scrollToTop()

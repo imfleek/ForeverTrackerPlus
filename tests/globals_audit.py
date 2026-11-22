@@ -3,7 +3,7 @@
 import subprocess, re, glob, sys
 root = sys.argv[1]
 known = set("""ipairs pairs type tostring tonumber math string table select pcall xpcall error assert unpack next rawget rawset
-setmetatable getmetatable print _G hooksecurefunc tinsert tremove wipe geterrorhandler securecallfunction issecretvalue debugprofilestop
+setmetatable getmetatable print _G hooksecurefunc tinsert tremove wipe geterrorhandler securecallfunction issecretvalue
 strsplit strtrim format date time floor max min abs debugstack issecurevariable strlower strupper tContains coroutine""".split())
 saved = {"ForeverTrackerPlusDB", "ForeverTrackerPlusGuideDB", "SLASH_ALLOBJECTIVESRXP1"}
 problems = 0
@@ -18,8 +18,6 @@ for f in sorted(p for p in glob.glob(root + '/**/*.lua', recursive=True) if '/te
             n = n.strip()
             if re.fullmatch(r'[A-Za-z_]\w*', n): locals_.add(n)
     name = f[len(root) + 1:]
-    # the /qt lag line takes the global once and keeps a local copy of the same name on purpose (Bootstrap.lua lagWrap)
-    if '-- /qt lag' in src: locals_ -= {'hooksecurefunc', 'CreateFrame', 'C_Timer'}
     for n in sorted(reads & locals_): print("READ-BEFORE-LOCAL", name, n); problems += 1
     for n in sorted(r for r in reads if r[0].islower() and r not in known): print("LOWERCASE-GLOBAL", name, n); problems += 1
     for n in sorted(writes - saved): print("GLOBAL-WRITE", name, n); problems += 1

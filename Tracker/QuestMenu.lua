@@ -8,7 +8,6 @@
 -- The link: WoW Forever's own pages on Wowhead, https://www.wowhead.com/forever/quest=<id>.
 -- The box is the addon's own frame, not a StaticPopup (an addon's StaticPopup can taint the game's popups).
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("QuestMenu", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 

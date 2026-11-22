@@ -15,7 +15,6 @@
 -- (dead or a ghost, not feigning) twice a second while inside, kept per run (DungeonJournal's run, else the
 -- instance) so a /reload keeps the count.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Dungeon", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

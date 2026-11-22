@@ -18,7 +18,6 @@
 -- SetModel (wow-api-widget, forever); each call is guarded. The model turns from the panel's OnUpdate, which runs only
 -- while the panel is shown; while a quest is hovered, a 0.05 s check finds the line under the mouse.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("NpcPanel", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

@@ -5,7 +5,6 @@
 -- own code), so the button selects all of the text and waits for Ctrl+C; the window closes once it is copied.
 -- Escape or the X closes it without copying.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("DebugWindow", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 

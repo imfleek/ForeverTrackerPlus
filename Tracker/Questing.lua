@@ -16,8 +16,6 @@
 -- made, moved, shown, hidden or changed in combat, so every bar change waits for PLAYER_REGEN_ENABLED. Objective texts
 -- are checked with issecretvalue before use.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Questing", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
-local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local db
@@ -368,14 +366,14 @@ ns.onLogin[#ns.onLogin + 1] = function()
 		if event == "PLAYER_REGEN_ENABLED" and not pending then return end
 		if event == "QUEST_LOG_UPDATE" and not scanQueued then
 			scanQueued = true
-			C_Timer.After(0.2, function() scanQueued = false; pcall(timed, "progress check", scanProgress) end)
+			C_Timer.After(0.2, function() scanQueued = false; pcall(scanProgress) end)
 		end
 		-- 3.1.1 speed: a burst of quest log and bag changes rebuilds the bar once, 0.2 s later
 		if event == "QUEST_LOG_UPDATE" or event == "BAG_UPDATE_DELAYED" then
 			if inCombat() then pending = true return end -- rebuilt once combat ends
 			if not barQueued then
 				barQueued = true
-				C_Timer.After(0.2, function() barQueued = false; timed("quest item bar", refreshBar) end)
+				C_Timer.After(0.2, function() barQueued = false; refreshBar() end)
 			end
 			return
 		end

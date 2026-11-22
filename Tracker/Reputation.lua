@@ -10,7 +10,6 @@
 -- or moved: the status bars sit in Blizzard's own layout (StatusTrackingBarManager in Retail-style clients,
 -- ReputationWatchBar in Classic-style ones), and hiding them from an addon fights that layout.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Reputation", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

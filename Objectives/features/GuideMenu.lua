@@ -7,7 +7,6 @@
 -- come up with nothing but a divider. This menu takes that same guide part, and when it holds no guide it lists every
 -- loadable guide from addon.guideList instead. It never offers the importer.
 local _, root = ...; local ns = root.objectives
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("GuideMenu", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if not ns.rxp then return end
 
 local RXP = ns.rxp

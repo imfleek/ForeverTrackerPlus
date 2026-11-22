@@ -14,7 +14,6 @@
 -- block's OnMouseUp, Extras.lua), never from a timer. In a group, only its leader can do this.
 -- Blizzard's own left-click opens the quest on the map; a Ctrl+left-click closes the map again when it was closed.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("GroupFinder", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

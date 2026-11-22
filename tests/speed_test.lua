@@ -84,8 +84,5 @@ do
 	check("line limit set only when it is not 0 already", ex:find("not (fs.GetMaxLines and fs:GetMaxLines() == 0)", 1, true) ~= nil)
 	local _, guarded = ex:gsub("applying = true%s+pcall%(prepareText", "")
 	check("both SetText hooks run prepareText guarded (no second pass from our own calls)", guarded >= 2)
-	check("a title set again within 1 s (same quest, width, finished state) reuses its last text",
-		ex:find("memo.base == base and memo.id == id and memo.w == entryW and memo.done == done and now - memo.at < 1", 1, true) ~= nil)
-	check("a new render (setting, 0.1 s pass) drops the reused text", ex:find("block.qtsMemo = nil", 1, true) ~= nil)
 end
 print(pass and "ALL OK" or "SOME FAILED")

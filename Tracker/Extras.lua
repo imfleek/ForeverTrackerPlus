@@ -5,8 +5,6 @@
 -- Both are written without Blizzard's Forever tracker source: if a field or reward function does not exist in the
 -- client, that part silently does nothing (see /qt debug).
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Extras", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
-local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 local db
@@ -564,7 +562,6 @@ api.keepCoinsTogether = keepCoinsTogether
 
 local function render(block)
 	local fs = block.HeaderText
-	block.qtsMemo = nil -- a new render (a setting, the 0.1 s pass): the title hook's saved text is old now
 	if not fs or not block.qtsBase then return end
 	block.qtsBase = baseTitle(block.qtsBase) -- never decorate an already decorated title
 	local text = block.qtsBase
@@ -741,25 +738,7 @@ local function hookBlock(block)
 	hooksecurefunc(fs, "SetText", function(_, text)
 		if applying or type(text) ~= "string" or isSecret(text) then return end
 		if text == block.qtsLast then return end -- our own text set again: nothing new
-		local base = baseTitle(text)
-		-- 3.1.2 speed: after a quest is accepted the game draws the tracker many times and sets each title again (443
-		-- times in 4 s, /qt lag). The same title, quest, width and finished state within 1 s: our last text again,
-		-- without working out the rewards, icons and coins again. Never longer: rewards that load late show at the
-		-- latest 1 s on (the 0.1 s pass renders without this too).
-		local id, entryW, now = questIDOf(block), fs:GetWidth(), GetTime()
-		local done = id and questComplete(id) or false
-		local memo = block.qtsMemo
-		if memo and memo.base == base and memo.id == id and memo.w == entryW and memo.done == done and now - memo.at < 1 then
-			block.qtsBase = base
-			fs.qtsReserve, fs.qtsYardsW = memo.reserve, memo.yardsW
-			applying = true
-			pcall(fs.SetText, fs, memo.text)
-			pcall(prepareText, fs, block)
-			applying = false
-			block.qtsLast = memo.text
-			return
-		end
-		block.qtsBase = base
+		block.qtsBase = baseTitle(text)
 		if db.showGold or db.showXP or db.condense then render(block) end
 		-- the distance's room first: the title's width is then final before Blizzard measures its height (a title
 		-- narrowed afterwards wrapped onto a line Blizzard left no room for, over the first objective)
@@ -772,11 +751,6 @@ local function hookBlock(block)
 		-- the width changed: the coins measured again at the final width (still before Blizzard measures the title)
 		if math.abs((block.HeaderText:GetWidth() or 0) - (width or 0)) > 1 and (db.showGold or db.showXP or db.condense) then
 			render(block)
-		end
-		local final = fs:GetText()
-		if type(final) == "string" and not isSecret(final) then
-			block.qtsMemo = { base = base, id = id, w = entryW, done = done, at = now, text = final,
-				reserve = fs.qtsReserve, yardsW = fs.qtsYardsW }
 		end
 	end)
 	-- CONSTRAINT: Blizzard sets the title's width, word wrap or line limit again after its text (a rebuilt block: the
@@ -1304,7 +1278,7 @@ function prepareText(fs, block)
 		local want = wrap or (fs.qtsOrigWrap and true or false)
 		if not fs.CanWordWrap or fs:CanWordWrap() ~= want then pcall(fs.SetWordWrap, fs, want) end
 		-- 3.1.2 speed: only when it is not 0 already (each call ran our SetMaxLines hook: 1686 times in 4 s after a quest
-		-- was accepted, /qt lag)
+		-- was accepted, measured in game)
 		if wrap and fs.SetMaxLines and not (fs.GetMaxLines and fs:GetMaxLines() == 0) then pcall(fs.SetMaxLines, fs, 0) end
 	end
 	-- R106-65: an objective line level with the distance column (the yards and the arrow under them reach below the
@@ -2127,7 +2101,7 @@ function schedule()
 	timer = true
 	C_Timer.After(0.1, function()
 		timer = nil
-		xpcall(function() if timed("tracker extras", apply) then timed("tracker extras: layout", cappedRelayout) end end, geterrorhandler())
+		xpcall(function() if apply() then cappedRelayout() end end, geterrorhandler())
 	end)
 end
 

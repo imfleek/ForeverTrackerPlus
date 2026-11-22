@@ -1,6 +1,4 @@
 local _, root = ...; local ns = root.objectives
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("RxpAwake", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
-local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if not ns.rxp then return end
 
 local RXP, db = ns.rxp, ns.db
@@ -151,12 +149,12 @@ for _, tag in ipairs({"fly", "fp", "home", "buy", "deathskip", "tradeskill"}) do
 local REFRESH_DELAY = 0.2
 local queued = false
 local function questChanged()
-	timed("guide: keep RestedXP awake", sync)
+	sync()
 	if queued then return end
 	queued = true
 	C_Timer.After(REFRESH_DELAY, function()
 		queued = false
-		timed("guide steps redraw", ns.invalidate)
+		ns.invalidate()
 	end)
 end
 

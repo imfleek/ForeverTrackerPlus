@@ -1,6 +1,5 @@
 -- What the settings window's AllObjectives RXP tab reads and changes: the same state and calls as /qt (Slash.lua).
 local _, root = ...; local ns = root.objectives
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Settings", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if not ns.rxp then return end
 
 local RXP, db = ns.rxp, ns.db

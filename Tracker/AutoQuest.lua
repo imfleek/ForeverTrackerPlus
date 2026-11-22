@@ -15,7 +15,6 @@
 -- QUEST_COMPLETE with the old global functions (AcceptQuest, CompleteQuest, GetQuestReward, ...), each type-checked
 -- before use. None of them is protected.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("AutoQuest", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

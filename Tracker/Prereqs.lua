@@ -2,7 +2,6 @@
 -- cannot be accepted yet because a prerequisite quest is not done, and step by step how to do those prerequisites.
 -- Data from Questie (Questie.lua api.prereqPlan); the look is the /qt window's (Config.lua api.themeKit).
 local _, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Prereqs", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if not ns or root.disabledAll then return end
 local api = ns.api
 

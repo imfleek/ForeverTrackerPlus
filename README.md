@@ -122,7 +122,6 @@ Type `/qt help` in game for this list.
 | `/qt unlock` | Unlocks the tracker so you can drag it. |
 | `/qt distance` | Tells why a quest shows or hides its distance arrow. |
 | `/qt bags` | Shows what the quest marks in your bags see (open your bags first). |
-| `/qt lag` | Finds what makes a short freeze when you accept a quest. |
 | `/qt reset` | Scrolls the tracker back to the top. |
 | `/qt on` / `/qt off` | Turns the quest tracker on or off (then type `/reload`). |
 | `/qt debug` | Opens the tracker's layout details in a window, to copy into a bug report. |

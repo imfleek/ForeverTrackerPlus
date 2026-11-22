@@ -9,7 +9,6 @@
 --            prerequisite links. Done, in the log, or open; click for a waypoint to the next step's giver.
 -- Every achievement call is in pcall; a page whose data is not there says so.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Guides", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

@@ -6,8 +6,6 @@
 -- ns.textStyle (Objectives/rxp/Readers.lua), the settings window through applyFonts (Config.lua), zone headers
 -- through styleLabel (ZoneSort.lua).
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Fonts", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
-local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
 
@@ -191,7 +189,7 @@ end
 api.afterTrackerUpdateFonts = afterUpdate
 -- once on the next frame however often the tracker updates in this one (and nothing at all with the game's font)
 local soon = false
-local function afterUpdateFired() soon = false; timed("tracker fonts", afterUpdate) end
+local function afterUpdateFired() soon = false; afterUpdate() end
 function afterUpdateSoon()
 	if soon or not fontActive() then return end
 	soon = true

@@ -4,7 +4,6 @@
 -- Loading a profile writes its values into the settings and reloads the interface, which applies each of them.
 -- Export: "RXPFT1:" + base64 of a small text serialisation (no Lua code is ever run on an imported string).
 local _, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Profiles", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if not ns or root.disabledAll then return end
 local api = ns.api
 

@@ -11,7 +11,6 @@
 -- runs only while a rare is listed. Deaths: UNIT_DIED (its GUID; skipped when secret), never the combat log: an addon
 -- may not register COMBAT_LOG_EVENT_UNFILTERED on Forever (HasRestrictions; ADDON_ACTION_FORBIDDEN, user's error).
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Rares", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

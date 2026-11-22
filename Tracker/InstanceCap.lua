@@ -11,7 +11,6 @@
 -- CONSTRAINT: GetNumSavedInstances / GetSavedInstanceInfo / RequestRaidInfo are the old global API (not in the
 -- generated Forever docs; NovaInstanceTracker calls them on Forever): each is type-checked and pcall'd.
 local ADDON, root = ...; local ns = root.tracker
-local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("InstanceCap", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db
