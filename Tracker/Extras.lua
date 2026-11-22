@@ -746,7 +746,10 @@ local function hookBlock(block)
 		-- narrowed afterwards wrapped onto a line Blizzard left no room for, over the first objective)
 		if api.titleReserve then block.HeaderText.qtsReserve, block.HeaderText.qtsYardsW = api.titleReserve(block) end
 		local width = block.HeaderText:GetWidth()
-		prepareText(block.HeaderText, block)
+		-- 3.1.2 speed: our own width / wrap calls inside do not run reshape (below) a second time
+		applying = true
+		pcall(prepareText, block.HeaderText, block)
+		applying = false
 		-- the width changed: the coins measured again at the final width (still before Blizzard measures the title)
 		if math.abs((block.HeaderText:GetWidth() or 0) - (width or 0)) > 1 and (db.showGold or db.showXP or db.condense) then
 			render(block)
@@ -1276,7 +1279,9 @@ function prepareText(fs, block)
 	if fs.SetWordWrap then
 		local want = wrap or (fs.qtsOrigWrap and true or false)
 		if not fs.CanWordWrap or fs:CanWordWrap() ~= want then pcall(fs.SetWordWrap, fs, want) end
-		if wrap and fs.SetMaxLines then pcall(fs.SetMaxLines, fs, 0) end
+		-- 3.1.2 speed: only when it is not 0 already (each call ran our SetMaxLines hook: 1686 times in 4 s after a quest
+		-- was accepted, /qt lag)
+		if wrap and fs.SetMaxLines and not (fs.GetMaxLines and fs:GetMaxLines() == 0) then pcall(fs.SetMaxLines, fs, 0) end
 	end
 	-- R106-65: an objective line level with the distance column (the yards and the arrow under them reach below the
 	-- title) leaves the same room on its right (user: the objective text ran under the arrow). Level with it: the line
@@ -1858,7 +1863,10 @@ local function hookObjectiveText(fs, block)
 	hooksecurefunc(fs, "SetText", function(self)
 		if applying then return end
 		decorateObjective(self, self.qtsBlock)
-		prepareText(self, self.qtsBlock)
+		-- 3.1.2 speed: our own SetWidth / SetWordWrap / SetMaxLines inside do not run reshape (below) a second time
+		applying = true
+		pcall(prepareText, self, self.qtsBlock)
+		applying = false
 		placeProgress(self)
 	end)
 	-- Blizzard setting the width, word wrap or line limit after the text: ours again at once (the bar's room, the wrap)

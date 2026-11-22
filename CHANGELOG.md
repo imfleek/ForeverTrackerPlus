@@ -4,6 +4,9 @@ All notable changes to ForeverTrackerPlus (called RXP ForeverTracker before 3.1.
 
 ## 3.1.2
 
+### Changed
+- **Faster when you accept a quest:** the game draws the quest tracker many times then. Our quest title and objective text hooks no longer do their work twice, and the line limit is only set when it changes.
+
 ### Added
 - **/qt lag**: finds what makes a short freeze when you accept a quest. Type it, then accept a quest. 4 seconds later it shows the longest frame, the time of each addon (with the game's script profiler on: `/console scriptProfile 1`, then /reload) and the time of our own main parts.
 

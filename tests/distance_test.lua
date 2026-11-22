@@ -198,7 +198,8 @@ check("its distance appears: the title is laid out again (to get the room)", rel
 refresh(true)
 check("at most every 2 s", relayouts == 1)
 check("the title's SetText hook sets the room before the width (before Blizzard measures it)",
-	src:find("if api.titleReserve then block.HeaderText.qtsReserve, block.HeaderText.qtsYardsW = api.titleReserve(block) end\n\t\tlocal width = block.HeaderText:GetWidth()\n\t\tprepareText(block.HeaderText, block)", 1, true) ~= nil)
+	src:find("if api.titleReserve then block.HeaderText.qtsReserve, block.HeaderText.qtsYardsW = api.titleReserve(block) end\n\t\tlocal width = block.HeaderText:GetWidth()\n", 1, true) ~= nil
+	and src:find("applying = true\n\t\tpcall(prepareText, block.HeaderText, block)", 1, true) ~= nil)
 check("More quests keeps the room only for quests with a distance",
 	more:find("api.questHasDistance(quest.id)", 1, true) ~= nil)
 
