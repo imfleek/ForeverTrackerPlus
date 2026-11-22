@@ -100,7 +100,7 @@ local function buildSteps()
 		row("Big progress messages", "quest progress in large letters, like \"Wolves slain: 3/8\"",
 			function() return d.toasts ~= false end, function(v) d.toasts = v; call(api.applyToastsHideGame) end),
 		row("Marker in the world", "your tracked quest's name, next step and distance over its spot",
-			function() return d.worldMarker ~= false end, function(v) d.worldMarker = v end),
+			function() return d.worldMarker ~= false end, function(v) d.worldMarker = v; call(api.refreshWorldMarker) end),
 		row("Track the nearest quest by itself", "the marker moves on to the closest quest",
 			function() return d.markerAuto == true end, function(v) d.markerAuto = v end),
 		row("Say in party chat when a quest is done", "only in a party",

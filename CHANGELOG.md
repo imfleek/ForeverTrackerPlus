@@ -13,6 +13,7 @@ All notable changes to RXP ForeverTracker. Newest first. Settings window: `/qt`.
 - **Big progress messages** also show an objective that finishes without a number.
 - **Flight times for every route:** a route you have not flown yet shows an estimate ("about") on the flight map and on the flight bar. It comes from the route's stops on the flight map. Each flight you take makes the estimates better. A flown route shows its real time.
 - **Two addons, one feature:** if OneForAll's reward coin or EllesmereUI's Flight Timer is on too, a window asks which one to keep. "Use ours" turns off that addon's feature. "Keep theirs" turns off ours. EllesmereUI's flight map time has no switch, so our time on the flight map stays hidden while EllesmereUI Forever Essentials is loaded.
+- **Faster:** the world marker does no work while it is off or has nothing to show, and it only changes text that changed. The quest item bar and the quest marks in your bags are redone once per burst of changes, not on each one. The progress check is skipped while big messages and party chat are off. "Quest close by" spreads its first check over a few seconds and looks up only quests close to you.
 
 ### Fixed
 - **Party switches:** "Say each quest step in party chat" (Helpers > On screen) and "Show party progress" (Quest lines) no longer change each other. They used one saved setting.

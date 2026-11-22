@@ -887,7 +887,10 @@ function api.questieGet(kind, id, field) return get(kind, id, field) end
 -- 3.0 "a quest close by" (Helpers.lua): the nearest quest Questie lists as available (its AvailableQuests module's
 -- __availableQuests) whose giver NPC stands within maxYards; skip: quest IDs already shown. Grey quests are left out.
 -- The givers' world positions are worked out once per quest and kept until Questie's data reloads.
+-- 3.1.1 speed: at most BUILD_PER_CALL quests get their places worked out per call (the first calls after login spread
+-- the work over a few seconds), and the level and breadcrumb lookups run only for a giver that is close enough.
 local giverPlaces = {}
+local BUILD_PER_CALL = 40
 function api.questieAvailableNear(me, maxYards, skip)
 	if not (me and api.questieOn() and C_Map.GetWorldPosFromMapPos) then return nil end
 	local aq = module("AvailableQuests")
@@ -896,10 +899,13 @@ function api.questieAvailableNear(me, maxYards, skip)
 	local myLevel = UnitLevel("player") or 1
 	local grey = myLevel - ((GetQuestGreenRange and GetQuestGreenRange()) or 8)
 	local best
+	local maxSq = maxYards * maxYards
+	local built = 0
 	for id in pairs(list) do
 		if not (skip and skip[id]) then
 			local places = giverPlaces[id]
-			if places == nil then
+			if places == nil and built < BUILD_PER_CALL then
+				built = built + 1
 				places = {}
 				local by = get("Quest", id, "startedBy")
 				local npcs = type(by) == "table" and by[1]
@@ -922,15 +928,19 @@ function api.questieAvailableNear(me, maxYards, skip)
 				end
 				giverPlaces[id] = places
 			end
-			local level = tonumber(get("Quest", id, "questLevel"))
-			if not (level and level > 0 and level < grey) and not api.questieBreadcrumbDone(id) then
-				for _, p in ipairs(places) do
-					if p.continent == me.continent then
-						local d = math.sqrt((p.wx - me.x) ^ 2 + (p.wy - me.y) ^ 2)
-						if d <= maxYards and (not best or d < best.d) then
-							best = { id = id, d = d, map = p.map, x = p.x, y = p.y, npc = p.npc, level = level }
-						end
+			local near, nearSq
+			for _, p in ipairs(places or {}) do
+				if p.continent == me.continent and p.wx and p.wy then
+					local dSq = (p.wx - me.x) ^ 2 + (p.wy - me.y) ^ 2
+					if dSq <= maxSq and (not best or dSq < best.d * best.d) and (not nearSq or dSq < nearSq) then
+						near, nearSq = p, dSq
 					end
+				end
+			end
+			if near then
+				local level = tonumber(get("Quest", id, "questLevel"))
+				if not (level and level > 0 and level < grey) and not api.questieBreadcrumbDone(id) then
+					best = { id = id, d = math.sqrt(nearSq), map = near.map, x = near.x, y = near.y, npc = near.npc, level = level }
 				end
 			end
 		end

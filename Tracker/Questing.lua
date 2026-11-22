@@ -173,22 +173,32 @@ local function refreshBar()
 	for i, b in ipairs(buttons) do
 		local e = list[i]
 		if e then
-			b:SetAttribute("item", "item:" .. e.itemID)
+			-- 3.1.1 speed: a button whose item did not change is left as it is
+			if b.itemID ~= e.itemID or not b:IsShown() then
+				b:SetAttribute("item", "item:" .. e.itemID)
+				b.icon:SetTexture(e.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+				if not b.placed then
+					b.placed = true
+					b:ClearAllPoints()
+					b:SetPoint("LEFT", bar, "LEFT", (i - 1) * (SIZE + 4), 0)
+				end
+				b:Show()
+			end
 			b.link, b.title, b.itemID = e.link, e.title, e.itemID
-			b.icon:SetTexture(e.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-			b:ClearAllPoints()
-			b:SetPoint("LEFT", bar, "LEFT", (i - 1) * (SIZE + 4), 0)
-			b:Show()
 			shown = i
-		else
+		elseif b.itemID or b:IsShown() then
 			b.link, b.itemID = nil, nil
 			b:SetAttribute("item", nil)
 			b:Hide()
 		end
 	end
-	keyButton:SetAttribute("item", list[1] and ("item:" .. list[1].itemID) or nil)
-	bar:SetWidth(math.max(shown * (SIZE + 4) - 4, SIZE))
-	bar:SetShown(shown > 0)
+	local first = list[1] and ("item:" .. list[1].itemID) or nil
+	if keyButton.rxpftItem ~= first then keyButton.rxpftItem = first; keyButton:SetAttribute("item", first) end
+	if bar.shownCount ~= shown then
+		bar.shownCount = shown
+		bar:SetWidth(math.max(shown * (SIZE + 4) - 4, SIZE))
+		bar:SetShown(shown > 0)
+	end
 	updateCooldowns()
 end
 api.refreshItemBar = refreshBar
@@ -261,6 +271,8 @@ local function objectives(q)
 end
 
 local function scanProgress()
+	-- 3.1.1 speed: nothing to say: no reading of every quest's steps (the next scan starts fresh)
+	if not (opt("toasts") or optOn("partyChatSteps") or optOn("partyDone")) then seen = nil return end
 	local first = seen == nil
 	local now = {}
 	for _, q in ipairs(logQuests()) do
@@ -347,7 +359,7 @@ api.applyToastsHideGame = applyHideGame
 ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
 	applyHideGame()
-	local scanQueued = false
+	local scanQueued, barQueued = false, false
 	onEvents({ "QUEST_LOG_UPDATE", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_DELAYED", "SUPER_TRACKING_CHANGED",
 		"BAG_UPDATE_COOLDOWN", "PLAYER_ENTERING_WORLD" }, function(event)
 		if event == "BAG_UPDATE_COOLDOWN" then updateCooldowns() return end
@@ -355,6 +367,15 @@ ns.onLogin[#ns.onLogin + 1] = function()
 		if event == "QUEST_LOG_UPDATE" and not scanQueued then
 			scanQueued = true
 			C_Timer.After(0.2, function() scanQueued = false; pcall(scanProgress) end)
+		end
+		-- 3.1.1 speed: a burst of quest log and bag changes rebuilds the bar once, 0.2 s later
+		if event == "QUEST_LOG_UPDATE" or event == "BAG_UPDATE_DELAYED" then
+			if inCombat() then pending = true return end -- rebuilt once combat ends
+			if not barQueued then
+				barQueued = true
+				C_Timer.After(0.2, function() barQueued = false; refreshBar() end)
+			end
+			return
 		end
 		refreshBar()
 	end)
@@ -390,10 +411,10 @@ function api.declareScreenPage(k)
 	})
 	k.heading("World marker")
 	k.check("Marker in the world", function() return db.worldMarker ~= false end,
-		function(v) db.worldMarker = v and true or false end)
+		function(v) db.worldMarker = v and true or false; if api.refreshWorldMarker then api.refreshWorldMarker() end end)
 	k.help("over your tracked quest's spot in the world: its name, next step, distance and a light beam")
 	k.check("Hide the marker in combat", function() return db.markerCombatHide ~= false end,
-		function(v) db.markerCombatHide = v and true or false end)
+		function(v) db.markerCombatHide = v and true or false; if api.refreshWorldMarker then api.refreshWorldMarker() end end)
 	k.help("keeps your screen clear while you fight")
 	k.check("Track the nearest quest by itself", function() return db.markerAuto == true end,
 		function(v) db.markerAuto = v and true or false end)

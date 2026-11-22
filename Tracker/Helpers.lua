@@ -708,6 +708,7 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 -- Start
 ---------------------------------------------------------------------------------------------------------------------
+local repaintQueued = false
 ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
 	if C_Timer and C_Timer.After then C_Timer.After(8, function() checkClashes() end) end
@@ -722,8 +723,11 @@ ns.onLogin[#ns.onLogin + 1] = function()
 			checkSold()
 		end
 		if event == "QUEST_LOG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "BAG_OPEN" then
-			hookBags()
-			repaintBags()
+			-- 3.1.1 speed: a burst of quest log and bag changes repaints the bags once, 0.2 s later
+			if not repaintQueued then
+				repaintQueued = true
+				C_Timer.After(0.2, function() repaintQueued = false; hookBags(); repaintBags() end)
+			end
 		end
 	end)
 	onEvents({ "QUEST_COMPLETE", "GET_ITEM_INFO_RECEIVED", "QUEST_FINISHED" }, function(event)

@@ -76,27 +76,61 @@ local function target()
 	return nil
 end
 
+-- 3.1.1 speed: the clock runs only while the marker can show (switch on, a navigation frame, not hidden by combat).
+-- Each tick only changes what changed: the anchor when the navigation frame is new, a text when it differs. The quest
+-- name and next step are read again only after a quest log or super-track change, or every 0.5 s.
+local TICK, TEXT_EVERY = 0.05, 0.5
+local clock, anchoredTo
+local shownText = {}
+local textDirty, sinceText = true, 0
+local function setText(fs, key, text)
+	if shownText[key] ~= text then shownText[key] = text; fs:SetText(text) end
+end
+local function hideMarker()
+	if marker and marker:GetAlpha() ~= 0 then marker:SetAlpha(0) end
+end
 local function update(self, elapsed)
 	self.wait = (self.wait or 0) + elapsed
-	if self.wait < 0.05 then return end
+	if self.wait < TICK then return end
+	sinceText = sinceText + self.wait
 	self.wait = 0
 	local nav = C_Navigation and try(C_Navigation.GetFrame)
-	local hide = not opt("worldMarker") or not nav or (opt("markerCombatHide") and inCombat())
-	local title, goal
-	if not hide then title, goal = target(); hide = not title end
-	if hide then marker:SetAlpha(0) return end
-	marker:SetAlpha(1)
-	marker:ClearAllPoints()
-	marker:SetPoint("BOTTOM", nav, "TOP", 0, 6)
-	marker.title:SetText(title)
-	marker.goal:SetText(goal or "")
+	if not nav or not opt("worldMarker") or (opt("markerCombatHide") and inCombat()) then hideMarker() return end
+	if textDirty or sinceText >= TEXT_EVERY then
+		textDirty, sinceText = false, 0
+		local title, goal = target()
+		marker.hasTarget = title and true or false
+		if title then
+			setText(marker.title, "title", title)
+			setText(marker.goal, "goal", goal or "")
+		end
+	end
+	if not marker.hasTarget then hideMarker() return end
+	if anchoredTo ~= nav then
+		anchoredTo = nav
+		marker:ClearAllPoints()
+		marker:SetPoint("BOTTOM", nav, "TOP", 0, 6)
+		marker.beam:ClearAllPoints()
+		marker.beam:SetPoint("BOTTOM", nav, "CENTER", 0, 0)
+	end
+	if marker:GetAlpha() ~= 1 then marker:SetAlpha(1) end
 	local yards = try(C_Navigation.GetDistance)
-	marker.dist:SetText(yards and not isSecret(yards) and (math.floor(yards + 0.5) .. " yd") or "")
-	local clamped = try(C_Navigation.WasClampedToScreen)
-	marker.beam:ClearAllPoints()
-	marker.beam:SetPoint("BOTTOM", nav, "CENTER", 0, 0)
-	marker.beam:SetShown(not clamped)
+	setText(marker.dist, "dist", yards and not isSecret(yards) and (math.floor(yards + 0.5) .. " yd") or "")
+	local beam = not try(C_Navigation.WasClampedToScreen)
+	if marker.beamOn ~= beam then marker.beamOn = beam; marker.beam:SetShown(beam) end
 end
+-- start or stop the clock (events, the settings switches)
+local navEvents = false
+local function wake()
+	if not clock then return end
+	textDirty = true
+	local can = opt("worldMarker") and not (opt("markerCombatHide") and inCombat())
+	-- without the navigation frame events the clock cannot know when a frame comes, so it keeps running while on
+	if can and navEvents then can = (C_Navigation and try(C_Navigation.GetFrame)) and true or false end
+	if can then clock:Show() else clock:Hide(); hideMarker(); anchoredTo = nil end
+end
+api.refreshWorldMarker = wake
+api.worldMarkerRunning = function() return clock and clock:IsShown() or false end -- (tests)
 
 ---------------------------------------------------------------------------------------------------------------------
 -- The nearest quest, by itself
@@ -135,9 +169,23 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
 	if not (C_Navigation and C_Navigation.GetFrame) then return end
 	build():Show()
-	marker:SetScript("OnUpdate", function(self, elapsed)
+	marker:SetAlpha(0)
+	clock = CreateFrame("Frame")
+	clock:SetScript("OnUpdate", function(self, elapsed)
 		local ok, err = pcall(update, self, elapsed)
 		if not ok then self:SetScript("OnUpdate", nil); geterrorhandler()(err) end
 	end)
+	local events = CreateFrame("Frame")
+	navEvents = pcall(events.RegisterEvent, events, "NAVIGATION_FRAME_CREATED")
+		and pcall(events.RegisterEvent, events, "NAVIGATION_FRAME_DESTROYED")
+	for _, e in ipairs({ "SUPER_TRACKING_CHANGED", "QUEST_LOG_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+		"PLAYER_ENTERING_WORLD" }) do pcall(events.RegisterEvent, events, e) end
+	events:SetScript("OnEvent", function(_, event)
+		if event == "QUEST_LOG_UPDATE" then textDirty = true return end
+		-- the navigation frame is made or dropped just after its event: look again a moment later
+		wake()
+		if C_Timer and C_Timer.After then C_Timer.After(0.1, wake) end
+	end)
+	wake()
 	if C_Timer.NewTicker then C_Timer.NewTicker(3, function() pcall(autoPick) end) end
 end
