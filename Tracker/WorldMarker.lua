@@ -10,6 +10,7 @@
 --                             super-track change in combat makes the map's protected pins refresh.
 -- All of C_Navigation / C_SuperTrack is checked before use and called in pcall.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("WorldMarker", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

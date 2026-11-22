@@ -5,6 +5,7 @@
 -- Both are written without Blizzard's Forever tracker source: if a field or reward function does not exist in the
 -- client, that part silently does nothing (see /qt debug).
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Extras", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api

@@ -10,6 +10,7 @@
 -- Artwork is drawn with plain textures (colours from the mock-up); buttons, the close button, the search box and the
 -- scroll frame are Forever's native templates, each with a plain fallback if a template is missing.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Config", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 

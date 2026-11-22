@@ -58,7 +58,7 @@ local function report(say)
 	local sum = 0
 	for _, j in ipairs(jobs) do sum = sum + j[2] end
 	if #jobs == 0 then add("our timed jobs: none ran") end
-	for i = 1, math.min(8, #jobs) do
+	for i = 1, math.min(15, #jobs) do
 		local j = root.lag.jobs[jobs[i][1]]
 		add(("our job \"%s\": %.1f ms (%d runs, longest %.1f ms)"):format(jobs[i][1], j.total, j.n, j.max))
 	end

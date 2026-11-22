@@ -16,6 +16,7 @@
 -- made, moved, shown, hidden or changed in combat, so every bar change waits for PLAYER_REGEN_ENABLED. Objective texts
 -- are checked with issecretvalue before use.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Questing", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api

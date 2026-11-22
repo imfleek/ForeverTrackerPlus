@@ -1,4 +1,5 @@
 local ADDON, root = ...; local ns = root.objectives
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Pin", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 
 local arrow = ns.arrow
 if not arrow then return end

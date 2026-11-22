@@ -4,6 +4,7 @@
 -- login), "Don't ask again" (this character). Only while RXPGuides is loaded; never in combat (waits for its end).
 -- Without RXPGuides the RXP Tracker part of this addon has no guide to show; the quest tracker keeps working.
 local _, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("LevelCap", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 
 local LEVEL_CAP = 60
 local DELAY = 8 -- seconds after login, so the popup does not land in the loading-screen rush

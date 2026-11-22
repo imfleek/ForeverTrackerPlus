@@ -1,4 +1,5 @@
 local _, root = ...; local ns = root.objectives
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Circle", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if not ns.rxp then return end
 
 local RING, RING_PUSHED = "UI-QuestPoi-QuestNumber", "UI-QuestPoi-QuestNumber-Pressed"

@@ -5,6 +5,7 @@
 -- together hide or overlap each other. Choices: disable ForeverTrackerPlus, disable the other addon (for Questie: turn
 -- off only its tracker) (both reload the UI), or keep both (not asked again for that addon). Escape and the close button do nothing.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Conflicts", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 
 local DELAY = 8
 -- Addons that replace or hide the default quest tracker. Questie only when its own tracker is switched on.

@@ -13,6 +13,7 @@
 --   tracker   made EXTRA pixels taller than Blizzard wants (it lives inside the viewport, so this is never visible), so
 --             Blizzard lays out every module instead of truncating those that do not fit; grows if still truncated.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Core", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 ns.api, ns.onLogin = {}, {}
 local tracker = _G.ObjectiveTrackerFrame

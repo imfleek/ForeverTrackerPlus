@@ -30,6 +30,22 @@ assert(loadfile(dir .. "/Tracker/Lag.lua", "t", env))("ForeverTrackerPlus", root
 local api = root.tracker.api
 
 local function job() t = t + 12 return "done" end
+
+-- each file's copies: hooks, plain frames' scripts and timers are timed under the file's name
+local hooked, ran = {}, {}
+local hook, create, timer = root.lagWrap("Extras", function(a, b, c) hooked[#hooked + 1] = c or b end,
+	function() local f = {}; function f:SetScript(k, fn) self[k] = fn end; return f end,
+	{ After = function(_, fn) ran[#ran + 1] = fn end })
+hook({}, "SetText", function() t = t + 5 end)
+local plain = create("Frame"); plain:SetScript("OnEvent", function() t = t + 3 end)
+timer.After(0, function() t = t + 2 end)
+root.lag.on = true
+hooked[1](); plain.OnEvent(plain, "QUEST_ACCEPTED"); ran[1]()
+check("a hook is timed by file and method", root.lag.jobs["Extras hook SetText"] and root.lag.jobs["Extras hook SetText"].total == 5)
+check("an event script is timed by file and event", root.lag.jobs["Extras QUEST_ACCEPTED"] and root.lag.jobs["Extras QUEST_ACCEPTED"].total == 3)
+check("a timer is timed by file", root.lag.jobs["Extras timer"] and root.lag.jobs["Extras timer"].total == 2)
+root.lag.on = false
+for k in pairs(root.lag.jobs) do root.lag.jobs[k] = nil end
 check("not watching: the job just runs", root.timed("zone sort", job) == "done" and next(root.lag.jobs) == nil)
 
 local said = {}

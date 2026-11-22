@@ -17,6 +17,7 @@
 -- CONSTRAINT: secure hooks only (hooksecurefunc runs after the game's function and cannot taint it); every event is
 -- registered in a pcall (an unknown event errors on Forever) and every global is checked before use.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Helpers", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api

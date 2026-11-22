@@ -4,6 +4,7 @@
 -- The switches read and change the very settings the settings window shows, so the setup starts from what is set
 -- now and every choice applies at once. Nothing is changed by only opening or skipping it.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Setup", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local SETUP_VERSION = 3

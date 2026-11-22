@@ -6,6 +6,7 @@
 -- level, in difficulty colour) and objectives. It is anchored below the lowest Blizzard section, so it scrolls with
 -- the list, and Core's scroll range includes it (api.moreQuestsBottom). Plain frames only: nothing protected.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("MoreQuests", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api

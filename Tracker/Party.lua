@@ -6,6 +6,7 @@
 -- remoteQuestLogs: objectives with fulfilled/required), when both of you run Questie. Only when neither shares counts
 -- does the line fall back to whether they are on the quest at all (C_QuestLog.IsUnitOnQuest).
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Party", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 local db

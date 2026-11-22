@@ -13,6 +13,7 @@
 --   ready     Questie.API.isReady, else (an older or newer Questie without that API) as soon as its data answers
 --   caches    cleared when Questie reports ready and on Questie data reloads; nothing is remembered from before then
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("Questie", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if ns.disabled then return end
 local api = ns.api
 

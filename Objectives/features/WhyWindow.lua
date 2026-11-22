@@ -1,4 +1,5 @@
 local _, root = ...; local ns = root.objectives
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("WhyWindow", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 if not ns.rxp then return end
 
 -- /qt why: "Why did guide skip?" in the same look as the /qt settings window and the Prerequisite Journal (the theme

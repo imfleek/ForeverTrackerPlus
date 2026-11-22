@@ -11,6 +11,7 @@
 -- the bottom of the block above (SetHeight post-hook, the technique AllObjectives RXP uses) and the header text is a
 -- child of that block, so it scrolls and clips with the list. Nothing of Blizzard's is replaced.
 local ADDON, root = ...; local ns = root.tracker
+local hooksecurefunc, CreateFrame, C_Timer = (root.lagWrap or function(_, ...) return ... end)("ZoneSort", hooksecurefunc, CreateFrame, C_Timer) -- /qt lag
 local timed = root.timed or function(_, fn, ...) return fn(...) end -- /qt lag (Bootstrap.lua)
 if ns.disabled then return end
 local api = ns.api
