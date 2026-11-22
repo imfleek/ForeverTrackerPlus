@@ -48,4 +48,25 @@ check("the longest frame is the last report line", said[#said - 1]:find("LONGEST
 check("after the report: not measuring", root.lag.on == false and next(root.lag.jobs) == nil)
 api.lagWatch(function(s) said[#said + 1] = s end)
 check("/qt lag again: stops", events.event == nil and said[#said] == "lag: stopped.")
+
+-- with the time meter on: a quiet 4 s follows, with our addon's time while nothing happens
+cvar = "1"
+local cpu = 0
+env.C_AddOns.GetNumAddOns = function() return 1 end
+env.C_AddOns.GetAddOnInfo = function() return "ForeverTrackerPlus" end
+env.C_AddOns.IsAddOnLoaded = function() return true end
+env.GetAddOnCPUUsage = function() return cpu end
+env.UpdateAddOnCPUUsage = function() end
+said = {}
+api.lagWatch(function(s) said[#said + 1] = s end)
+events.OnEvent(events, "QUEST_ACCEPTED")
+cpu = 700
+timers[#timers]()                   -- the accept report
+check("meter on: our addon's time", table.concat(said, " | "):find("ADDON ForeverTrackerPlus: 700 ms", 1, true) ~= nil)
+timers[#timers]()                   -- 1 s later the quiet window starts
+events.OnEvent(events, "QUEST_ACCEPTED") -- an accept now is not a new round
+cpu = 1300
+timers[#timers]()                   -- quiet window ends
+all = table.concat(said, " | ")
+check("quiet window: our addon's time while nothing happens", all:find("QUIET 4 s, nothing accepted: ADDON ForeverTrackerPlus: 600 ms", 1, true) ~= nil or print(all))
 print(pass and "ALL OK" or "SOME FAILED")

@@ -9,7 +9,7 @@ if not ns or ns.disabled then return end
 local api = ns.api
 
 local WINDOW, ROUNDS = 4, 3
-local watching, rounds, before, longest = false, 0, nil, 0
+local watching, rounds, before, longest, quiet = false, 0, nil, 0, false
 local clock = CreateFrame("Frame")
 clock:Hide()
 clock:SetScript("OnUpdate", function(_, elapsed) if elapsed > longest then longest = elapsed end end)
@@ -81,13 +81,42 @@ local function report(say)
 	if api.showDebugWindow and api.themeKit then pcall(api.showDebugWindow, lines) end
 	wipe(root.lag.jobs)
 	rounds = rounds + 1
-	if rounds >= ROUNDS then watching = false; say("lag: done. Type /qt lag to watch again.")
-	else say("lag: still watching. Accept another quest, or type /qt lag to stop.") end
+	if not profilerOn() then
+		if rounds >= ROUNDS then watching = false; say("lag: done. Type /qt lag to watch again.")
+		else say("lag: still watching. Accept another quest, or type /qt lag to stop.") end
+		return
+	end
+	-- the same 4 s again with nothing accepted: is the time from the quest, or there all the time? (user's report:
+	-- ForeverTrackerPlus 773 ms, our timed jobs only 152 ms of it)
+	quiet = true
+	say("lag: now the same check with nothing happening. Do not accept a quest for 5 seconds.")
+	C_Timer.After(1, function()
+		local start = addonTimes()
+		wipe(root.lag.jobs)
+		root.lag.on = true
+		C_Timer.After(WINDOW, function()
+			root.lag.on = false
+			quiet = false
+			local after = addonTimes()
+			local ours = (after[ADDON] or 0) - (start[ADDON] or 0)
+			add(("QUIET 4 s, nothing accepted: ADDON %s: %d ms"):format(ADDON, ours))
+			local qjobs = sorted(root.lag.jobs, function(v) return v.total end)
+			for i = 1, math.min(4, #qjobs) do
+				local j = root.lag.jobs[qjobs[i][1]]
+				add(("QUIET our job \"%s\": %.1f ms (%d runs)"):format(qjobs[i][1], j.total, j.n))
+			end
+			for i = #lines - math.min(4, #qjobs), #lines do say(lines[i]) end
+			if api.showDebugWindow and api.themeKit then pcall(api.showDebugWindow, lines) end
+			wipe(root.lag.jobs)
+			if rounds >= ROUNDS then watching = false; say("lag: done. Type /qt lag to watch again.")
+			else say("lag: still watching. Accept another quest, or type /qt lag to stop.") end
+		end)
+	end)
 end
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function()
-	if not watching or root.lag.on then return end
+	if not watching or root.lag.on or quiet then return end
 	before = addonTimes()
 	wipe(root.lag.jobs)
 	longest = 0
