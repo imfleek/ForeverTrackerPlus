@@ -34,7 +34,10 @@ local loaded = C_AddOns.IsAddOnLoaded
 local oldTracker = loaded("AllTrackerRXP")       -- the previous name of this addon (1.x or 2.0.0)
 local oldGuide = loaded("AllObjectivesRXP")      -- the separate AllObjectives RXP addon
 
-local oldName = loaded("RXPForeverTracker")     -- the previous name of this addon (2.x to 3.1.1)
+local oldName = loaded("RXPForeverTracker")     -- the previous name of this addon (2.x to 3.1)
+-- From 3.1.1 that folder is a stub that only loads the old settings (Legacy/), so the CurseForge app's update keeps them
+local stub = oldName and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("RXPForeverTracker", "X-ForeverTrackerPlus-Stub")
+if stub then oldName = false end
 
 adopt("ForeverTrackerPlusDB", "RXPForeverTrackerDB", "AllTrackerRXPDB")
 adopt("ForeverTrackerPlusGuideDB", "RXPForeverTrackerGuideDB", "AllTrackerRXPObjectivesDB", "AllObjectivesRXPDB")

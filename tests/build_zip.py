@@ -19,6 +19,8 @@ out = os.path.join(os.path.dirname(repo), f'ForeverTrackerPlus-{version}-dev.zip
 tmp = out + '.tmp'
 with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as z:
     for f in files:
-        z.write(os.path.join(repo, f), 'ForeverTrackerPlus/' + f)
+        # .pkgmeta move-folders: Legacy/RXPForeverTracker ships as its own top-level folder
+        name = f[len('Legacy/'):] if f.startswith('Legacy/') else 'ForeverTrackerPlus/' + f
+        z.write(os.path.join(repo, f), name)
 os.replace(tmp, out)
 print(f'{out} ({len(files)} files)')

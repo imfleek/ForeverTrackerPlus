@@ -7,7 +7,8 @@ local function check(l, c) print((c and "ok   " or "FAIL ") .. l); pass = pass a
 local function run(loadedSet)
 	local disabled, said, root = {}, {}, {}
 	local env = setmetatable({
-		C_AddOns = { IsAddOnLoaded = function(n) return loadedSet[n] or false end,
+		C_AddOns = { IsAddOnLoaded = function(n) return loadedSet[n] and true or false end,
+			GetAddOnMetadata = function(n, k) return loadedSet[n] == "stub" and k == "X-ForeverTrackerPlus-Stub" and "1" or nil end,
 			DisableAddOn = function(n) disabled[#disabled + 1] = n end },
 		C_Timer = { After = function(_, f) f() end },
 		DEFAULT_CHAT_FRAME = { AddMessage = function(_, t) said[#said + 1] = t end },
@@ -35,6 +36,13 @@ env.RXPForeverTrackerDB = { scale = 1.2 }
 env.ForeverTrackerPlusDB = { scale = 0.8 }
 go()
 check("own settings kept", env.ForeverTrackerPlusDB.scale == 0.8)
+
+-- the CurseForge app's update put the settings stub in the old folder: copy, but run and keep the stub on
+env, root, disabled, said, go = run({ RXPForeverTracker = "stub" })
+env.RXPForeverTrackerDB = { scale = 1.3 }
+go()
+check("stub: settings copied", env.ForeverTrackerPlusDB and env.ForeverTrackerPlusDB.scale == 1.3)
+check("stub: runs, stub stays on, no message", not root.disabledAll and #disabled == 0 and #said == 0)
 
 -- old addon gone: runs normally
 env, root, disabled, said, go = run({})

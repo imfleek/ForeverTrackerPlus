@@ -9,3 +9,6 @@ ignore:
   - tests
   - .github
   - CURSEFORGE.md
+
+move-folders:
+  ForeverTrackerPlus/Legacy/RXPForeverTracker: RXPForeverTracker

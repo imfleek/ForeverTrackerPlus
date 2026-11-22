@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: ForeverTrackerPlus (old settings)
+## Notes: Keeps your settings from the old name, RXP ForeverTracker, so ForeverTrackerPlus can copy them. It does nothing else.
+## Version: 3.1.1
+## AllowLoadGameType: camelot
+## X-ForeverTrackerPlus-Stub: 1
+## SavedVariables: RXPForeverTrackerDB, RXPForeverTrackerGuideDB
+
+Stub.lua

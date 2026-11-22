@@ -5,7 +5,7 @@ All notable changes to ForeverTrackerPlus (called RXP ForeverTracker before 3.1.
 ## 3.1.1
 
 ### Changed name
-- **RXP ForeverTracker is now ForeverTrackerPlus.** All features stay the same, RestedXP guide support too. The addon folder is now `ForeverTrackerPlus`. Install it next to the old `RXPForeverTracker` folder and log in once: your settings are copied and the old addon is turned off. Then type /reload and delete the old folder.
+- **RXP ForeverTracker is now ForeverTrackerPlus.** All features stay the same, RestedXP guide support too. The addon folder is now `ForeverTrackerPlus`. The CurseForge app updates it for you, and your settings come with it. The zip also has a small `RXPForeverTracker` folder, "ForeverTrackerPlus (old settings)": it only keeps your old settings loading, so leave it on. Installing by hand: delete the old `RXPForeverTracker` folder first, then put both new folders in AddOns.
 
 ### Added
 - **Quest items in your bags** are now also marked in **EllesmereUI Bags** (bags, reagent bag and bank). The marks use EllesmereUI Bags' own overlay hook, the way Peddler draws its coin, so they show above its slot art.
