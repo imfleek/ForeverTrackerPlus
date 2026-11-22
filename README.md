@@ -14,7 +14,7 @@
 
 ## 📦 How to Install
 
-1. Download **`ForeverTrackerPlus.zip`** from the [latest release](https://github.com/imfleek/ForeverTrackerPlus/releases/latest) or from CurseForge.
+1. Download **`ForeverTrackerPlus.zip`** from the [latest release](https://github.com/imfleek/ForeverTrackerPlus/releases/latest) or from [CurseForge](https://www.curseforge.com/wow/addons/forevertrackerplus).
 2. Extract the `ForeverTrackerPlus` folder into:
 
    ```
