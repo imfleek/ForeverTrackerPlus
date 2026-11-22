@@ -373,6 +373,7 @@ local function classifier(questID)
 	if isElite then return getIcons().skull, name end
 	if isGroup then return ("|cffff8040[+%s]|r"):format(size > 1 and size or "?"), name end
 end
+api.questClassifier = classifier -- R106-128: More quests (MoreQuests.lua) shows the same marker
 
 local function stripTag(text, tagName)
 	-- "[Elite] Title", "[60 Elite] Title" or "[60+] Title" -> "Title" / "[60] Title"

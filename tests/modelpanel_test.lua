@@ -202,8 +202,20 @@ api.questObjectiveNpcs = function(q) return q == 999 and {} or npcs end
 api.npcHoverStart(frame("Frame"), 999)
 check("another quest (no objectives to show) hovered: the old panel closes", not panel.shown)
 api.questObjectiveNpcs = function() return npcs end
+-- R106-127: a "More quests" line's hover button (MoreQuests.lua)
+local moreLine = frame("Button")
+moreLine.over, moreLine.top = true, 480
+api.npcLineHover(moreLine, 4141, "Un'Goro Soil: 0/25")
+check("More quests line: the item's object model", panel.shown and model.calls.SetModel[1] == 201234
+	and api.npcPanelShown().owner == moreLine)
+api.hideNpcPanel(moreLine)
+check("More quests line left: the panel closes", not panel.shown)
+api.npcLineHover(moreLine, 4141, "Explore the cave")
+check("More quests line naming nothing: no panel", not panel.shown)
 ns.db.npcPanelQuests = false
 api.hideNpcPanel()
 api.npcHoverStart(block, 826)
 check("option off: no panel", not panel.shown)
+api.npcLineHover(moreLine, 4141, "Un'Goro Soil: 0/25")
+check("option off: no panel on a More quests line", not panel.shown)
 print(pass and "PASS" or "FAILED")

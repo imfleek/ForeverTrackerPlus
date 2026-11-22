@@ -17,6 +17,7 @@ local frame, rows = nil, {}
 -- the Quest Tracker opacity (general x Quest Tracker, /qt Advanced): the section is on UIParent, outside the viewport
 function api.applyMoreQuestsAlpha()
 	if frame and api.questTrackerAlpha then frame:SetAlpha(api.questTrackerAlpha()) end
+	if api.placeMoreQuestItems then api.placeMoreQuestItems() end
 end
 local used = 0
 
@@ -47,20 +48,79 @@ local function row(i)
 	return r
 end
 
+local function openQuest(id)
+	if QuestMapFrame_OpenToQuestDetails then
+		pcall(QuestMapFrame_OpenToQuestDetails, id)
+	elseif ToggleQuestLog then
+		pcall(ToggleQuestLog)
+	end
+end
+
+-- R106-128: the right-click menu of a tracked quest, made here (the game makes it only for its own quest blocks). It
+-- carries the same tag, MENU_QUEST_OBJECTIVE_TRACKER, so lines other code adds to that menu (QuestMenu.lua: Wowhead
+-- URL) show here too. Focus, open in the quest log, share (in a group, when the quest can be shared). Not "Abandon":
+-- the game's abandon box is a StaticPopup, which addon code can taint; abandon from the quest log.
+local function shareQuest(id)
+	if not (C_QuestLog.SetSelectedQuest and QuestLogPushQuest) then return end
+	local old = C_QuestLog.GetSelectedQuest and C_QuestLog.GetSelectedQuest()
+	C_QuestLog.SetSelectedQuest(id)
+	pcall(QuestLogPushQuest)
+	if old then C_QuestLog.SetSelectedQuest(old) end
+end
+local function showMenu(owner, id)
+	local MU = _G.MenuUtil
+	if not (MU and MU.CreateContextMenu) then return end
+	MU.CreateContextMenu(owner, function(_, root)
+		if root.SetTag then root:SetTag("MENU_QUEST_OBJECTIVE_TRACKER") end
+		local ST = C_SuperTrack
+		if ST and ST.SetSuperTrackedQuestID then
+			local focused = ST.GetSuperTrackedQuestID and ST.GetSuperTrackedQuestID() == id
+			root:CreateButton(focused and "Stop focusing" or "Focus", function()
+				pcall(ST.SetSuperTrackedQuestID, focused and 0 or id)
+			end)
+		end
+		root:CreateButton("Open in quest log", function() openQuest(id) end)
+		local grouped = IsInGroup and IsInGroup()
+		local pushable = C_QuestLog.IsPushableQuest and C_QuestLog.IsPushableQuest(id)
+		if grouped and pushable then root:CreateButton("Share quest", function() shareQuest(id) end) end
+	end)
+end
+api.moreQuestsMenu = showMenu
+
+-- R106-128: clicks as on tracked quests (Extras.lua): left opens the quest log; Ctrl+left looks for a group
+-- (GroupFinder.lua); right opens the quest's menu; Ctrl+right puts its reward links in the chat box
+local function onClick(self, button)
+	local id = self.questID
+	if not id then return end
+	local ctrl = IsControlKeyDown and IsControlKeyDown()
+	if button == "RightButton" then
+		if ctrl then
+			if api.linkQuestRewards then pcall(api.linkQuestRewards, id) end
+		else
+			showMenu(self, id)
+		end
+		return
+	end
+	if ctrl and api.findGroupForQuest and api.questGroupFinderOn and api.questGroupFinderOn() then
+		pcall(api.findGroupForQuest, id)
+		return
+	end
+	openQuest(id)
+end
+api.moreQuestsClick = onClick
+
 local clickers = {}
-local function clicker(i, fs, questID)
+-- title: the quest's title (an objective line's button shows the quest's tooltip too); objective: the line's text
+local function clicker(i, fs, questID, title, objective)
 	local b = clickers[i]
 	if not b then
 		b = CreateFrame("Button", nil, frame)
-		b:RegisterForClicks("LeftButtonUp")
-		b:SetScript("OnClick", function(self)
-			local id = self.questID
-			if not id then return end
-			if QuestMapFrame_OpenToQuestDetails then
-				pcall(QuestMapFrame_OpenToQuestDetails, id)
-			elseif ToggleQuestLog then
-				pcall(ToggleQuestLog)
-			end
+		b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		b:SetScript("OnClick", onClick)
+		-- the quest the right-click menu is for (QuestMenu.lua reads it: the menu does not say)
+		b:SetScript("OnMouseDown", function(self)
+			local map = _G.WorldMapFrame
+			api.lastQuestPressed = { id = self.questID, at = GetTime(), mapOpen = map and map:IsShown() or false }
 		end)
 		b:SetScript("OnEnter", function(self)
 			local limit = watchLimit()
@@ -68,20 +128,27 @@ local function clicker(i, fs, questID)
 				tip:AddLine(" ")
 				tip:AddLine(("Not tracked: the game tracks at most %s quests."):format(limit or "a limited number of"),
 					0.8, 0.8, 0.8, true)
-				tip:AddLine("Click: open in the quest log.", 0.6, 0.6, 0.6, true)
+				tip:AddLine("Click: open in the quest log. Right-click: its menu.", 0.6, 0.6, 0.6, true)
 			end
 			-- the same quest tooltip as the tracked quests (overview, objectives, rewards, party), when tooltips are on
-			if api.showQuestTooltip and api.showQuestTooltip(self, self.questID, self.title, notTracked) then return end
-			GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-			GameTooltip:SetText(self.title or "", 1, 1, 1, 1, true)
-			notTracked(GameTooltip)
-			GameTooltip:Show()
+			if not (api.showQuestTooltip and api.showQuestTooltip(self, self.questID, self.title, notTracked)) then
+				GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+				GameTooltip:SetText(self.title or "", 1, 1, 1, 1, true)
+				notTracked(GameTooltip)
+				GameTooltip:Show()
+			end
+			-- R106-127: an objective line: the 3D model of the NPC or object it names (NpcPanel.lua)
+			if self.objective and api.npcLineHover then pcall(api.npcLineHover, self, self.questID, self.objective) end
 		end)
-		b:SetScript("OnLeave", function(self) if GameTooltip:GetOwner() == self then GameTooltip:Hide() end end)
+		b:SetScript("OnLeave", function(self)
+			if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+			if api.hideNpcPanel then pcall(api.hideNpcPanel, self) end
+		end)
 		clickers[i] = b
 	end
 	b.questID = questID
-	b.title = fs:GetText()
+	b.title = title or fs:GetText()
+	b.objective = objective
 	b:ClearAllPoints()
 	b:SetPoint("TOPLEFT", fs, "TOPLEFT")
 	b:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT")
@@ -338,6 +405,167 @@ local function progressBit()
 	return b
 end
 
+---------------------------------------------------------------------------------------------------------------------
+-- R106-128: quest item buttons, as on tracked quests (the item the game gives a quest, GetQuestLogSpecialItemInfo):
+-- left of the objectives, under the title (or right of the list with the item side set to the right).
+-- CONSTRAINT: an item button is secure (SecureActionButtonTemplate, attribute type "item"): in combat it cannot be
+-- made, moved, shown, hidden or changed, and a frame it is anchored to cannot move either. So the buttons sit on
+-- UIParent at a place worked out from the title (the list itself stays free to move: the wheel scrolls it in combat,
+-- R106-50). They are placed again whenever the title moves; in combat a button whose title moved is made see-through
+-- (SetAlpha is allowed) and placed when the fight ends. A button whose line is scrolled out of the list is hidden.
+---------------------------------------------------------------------------------------------------------------------
+local ITEM_SIZE = 26 * 0.875 -- the game's quest item button, 12.5 % smaller (Extras.lua R106-53)
+local itemButtons, itemPlaces, itemDirty = {}, {}, false
+local function inCombat() return InCombatLockdown and InCombatLockdown() end
+
+local function itemFor(questID)
+	if type(GetQuestLogSpecialItemInfo) ~= "function" then return nil end
+	local index = C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(questID)
+	if not index then return nil end
+	local ok, link, icon, _, showWhenComplete = pcall(GetQuestLogSpecialItemInfo, index)
+	if not ok or type(link) ~= "string" or isSecret(link) then return nil end
+	local itemID = tonumber(link:match("item:(%d+)"))
+	if not itemID then return nil end
+	if C_QuestLog.IsComplete and C_QuestLog.IsComplete(questID) and not showWhenComplete then return nil end
+	return { itemID = itemID, link = link, icon = icon }
+end
+api.moreQuestsItemFor = itemFor
+
+local function itemButton(i)
+	local b = itemButtons[i]
+	if b then return b end
+	b = CreateFrame("Button", "ForeverTrackerPlusMoreQuestItem" .. i, UIParent, "SecureActionButtonTemplate")
+	b:SetSize(ITEM_SIZE, ITEM_SIZE)
+	b:RegisterForClicks("AnyUp", "AnyDown")
+	b:SetAttribute("type", "item")
+	b.icon = b:CreateTexture(nil, "ARTWORK")
+	b.icon:SetAllPoints()
+	b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	if api.themeKit then api.themeKit.border(b, { 0.55, 0.43, 0.18 }, 1, "OVERLAY") end
+	b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+	b.count:SetPoint("BOTTOMRIGHT", -1, 1)
+	b.cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+	b.cd:SetAllPoints()
+	local hl = b:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	hl:SetColorTexture(1, 0.9, 0.6, 0.15)
+	b:SetScript("OnEnter", function(self)
+		if not self.link or self:GetAlpha() == 0 then return end
+		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+		pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", function(self) if GameTooltip:GetOwner() == self then GameTooltip:Hide() end end)
+	b:Hide()
+	itemButtons[i] = b
+	return b
+end
+
+local function updateItemCooldowns()
+	local getCd = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+	local getCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+	for _, b in ipairs(itemButtons) do
+		if b:IsShown() and b.itemID then
+			if getCd then
+				local ok, start, duration, enable = pcall(getCd, b.itemID)
+				if ok and start and duration and duration > 0 and enable ~= 0 and enable ~= false then
+					b.cd:SetCooldown(start, duration)
+				elseif b.cd.Clear then
+					b.cd:Clear()
+				end
+			end
+			local ok, n = getCount and pcall(getCount, b.itemID)
+			b.count:SetText(ok and type(n) == "number" and n > 1 and tostring(n) or "")
+		end
+	end
+end
+
+-- where a quest's button goes (TOPRIGHT, or TOPLEFT with the item side on the right), in the list's own scale
+local function itemSpot(fs)
+	if api.itemSide and api.itemSide() == "right" then
+		local right, top = frame:GetRight(), fs:GetTop()
+		if right and top then return "TOPLEFT", right + 4, top end
+		return nil
+	end
+	local left, bottom = fs:GetLeft(), fs:GetBottom()
+	if left and bottom then return "TOPRIGHT", left - 4, bottom - 1 end
+end
+
+-- the list's visible part (the scroll viewport) in screen pixels
+local function visibleSpan()
+	local v = _G.ForeverTrackerPlusViewport
+	local top, bottom = v and v.GetTop and v:GetTop(), v and v.GetBottom and v:GetBottom()
+	if not (top and bottom) then return nil end
+	local s = v:GetEffectiveScale()
+	return top * s, bottom * s
+end
+
+local function placeItemButtons()
+	local listShown = frame and frame:IsVisible() and used > 0
+	if inCombat() then
+		-- nothing secure may change: a button whose title moved (or whose list went) is made see-through until the end
+		itemDirty = true -- the list may have changed too: placed again when the fight ends
+		for _, b in ipairs(itemButtons) do
+			if b:IsShown() then
+				local fs = b.placedFs
+				local moved = not listShown or not fs or not fs:IsVisible() or fs:GetTop() ~= b.placedTop
+				b:SetAlpha(moved and 0 or (frame and frame:GetAlpha() or 1))
+			end
+		end
+		return
+	end
+	itemDirty = false
+	local s = frame and frame:GetEffectiveScale() or 1
+	local vTop, vBottom = visibleSpan()
+	local count = math.max(#itemPlaces, #itemButtons)
+	for i = 1, count do
+		local p = listShown and itemPlaces[i] or nil
+		local point, x, y
+		if p and p.fs:IsVisible() then point, x, y = itemSpot(p.fs) end
+		-- hidden when its line is scrolled out of the list's visible part
+		if point and vTop then
+			local mid = (y - ITEM_SIZE / 2) * s
+			if mid > vTop or mid < vBottom then point = nil end
+		end
+		if point then
+			local b = itemButton(i)
+			if b.itemID ~= p.item.itemID then
+				b:SetAttribute("item", "item:" .. p.item.itemID)
+				b.icon:SetTexture(p.item.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+				b.itemID = p.item.itemID
+			end
+			b.link = p.item.link
+			local scale = s / UIParent:GetEffectiveScale()
+			if math.abs(b:GetScale() - scale) > 1e-4 then b:SetScale(scale) end
+			b:ClearAllPoints()
+			b:SetPoint(point, UIParent, "BOTTOMLEFT", x, y)
+			b:SetFrameStrata(frame:GetFrameStrata())
+			b:SetFrameLevel(frame:GetFrameLevel() + 5)
+			b:SetAlpha(frame:GetAlpha())
+			b.placedFs, b.placedTop = p.fs, p.fs:GetTop()
+			b:Show()
+		elseif itemButtons[i] then
+			local b = itemButtons[i]
+			b.placedFs, b.placedTop = nil, nil
+			if b:IsShown() then b:Hide() end
+		end
+	end
+	updateItemCooldowns()
+end
+api.placeMoreQuestItems = placeItemButtons
+
+-- the title under the first button moved (a scroll, a re-layout): placed again
+local lastWatchTop
+local function watchItems()
+	local p = itemPlaces[1]
+	if not p then return end
+	local top = p.fs:GetTop()
+	if top ~= lastWatchTop then
+		lastWatchTop = top
+		placeItemButtons()
+	end
+end
+
 local function build()
 	if not db then return end
 	if not frame then
@@ -345,6 +573,10 @@ local function build()
 		if api.applyMoreQuestsAlpha then api.applyMoreQuestsAlpha() end
 		frame:SetSize(200, 10)
 		frame:Hide()
+		-- R106-128: the item buttons follow the list (they are not in it: see above)
+		frame:SetScript("OnUpdate", watchItems)
+		frame:SetScript("OnShow", function() lastWatchTop = nil; placeItemButtons() end)
+		frame:SetScript("OnHide", function() placeItemButtons() end)
 	end
 	local function clear()
 		for _, r in ipairs(rows) do
@@ -358,6 +590,8 @@ local function build()
 		for _, b in ipairs(zoneButtons) do b:Hide() end
 		for _, d in ipairs(dashes) do d:Hide() end
 		for _, b in ipairs(progressBits) do api.hideProgressBar(b) end
+		for k in pairs(itemPlaces) do itemPlaces[k] = nil end
+		lastWatchTop = nil
 		progressUsed = 0
 		used = 0
 		lastSignature = nil
@@ -368,6 +602,7 @@ local function build()
 		local had = used > 0
 		clear()
 		hide()
+		placeItemButtons()
 		if had and api.applyLayout then api.applyLayout() end
 		return
 	end
@@ -393,6 +628,16 @@ local function build()
 		if forever then icons[#icons + 1] = forever end
 		local star = api.attunementIcon and api.attunementIcon(quest.id)
 		if star then icons[#icons + 1] = star end
+		-- R106-128: the type marker next to the title, as on tracked quests ("Icon Classifications", db.condense):
+		-- an icon (elite, dungeon, raid, PvP), or "[+N]" for a group quest in front of the title
+		local marker = db.condense and api.questClassifier and select(2, pcall(api.questClassifier, quest.id)) or nil
+		local markerKey = ""
+		if type(marker) == "table" then
+			icons[#icons + 1] = marker
+			markerKey = tostring(marker.atlas or marker.file or "icon")
+		elseif type(marker) == "string" then
+			title = marker .. " " .. title
+		end
 		local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(quest.id) and true or false
 		local lines = {}
 		if complete then
@@ -404,8 +649,11 @@ local function build()
 				if text and text ~= "" then lines[#lines + 1] = { text, o.finished and true or false } end
 			end
 		end
-		entries[#entries + 1] = { quest = quest, title = title, icons = icons, complete = complete, lines = lines }
-		parts[#parts + 1] = (isFolded(quest.header) and "F" or "") .. quest.id .. "|" .. tostring(quest.header) .. "|" .. title .. (star and "*" or "") .. (forever and "~" or "") .. (complete and "v" or "")
+		local item = itemFor(quest.id)
+		entries[#entries + 1] = { quest = quest, title = title, icons = icons, complete = complete, lines = lines,
+			item = item }
+		parts[#parts + 1] = (isFolded(quest.header) and "F" or "") .. quest.id .. "|" .. tostring(quest.header) .. "|" .. title .. (star and "*" or "") .. (forever and "~" or "") .. (complete and "v" or "") .. markerKey
+			.. "|" .. tostring(item and item.itemID)
 		for _, line in ipairs(lines) do parts[#parts + 1] = (line[2] and "+" or "-") .. line[1] end
 	end
 	local signature = table.concat(parts, "\n")
@@ -490,6 +738,7 @@ local function build()
 		if api.placeCheck then api.placeCheck(fs, entry.complete) end
 		click = click + 1
 		clicker(click, fs, quest.id)
+		if entry.item then itemPlaces[#itemPlaces + 1] = { fs = fs, item = entry.item } end
 		local lines = {}
 		for i, line in ipairs(entry.lines) do
 			lines[i] = { line[1], line[2] and look.completeColor or look.normalColor }
@@ -505,7 +754,7 @@ local function build()
 				d:SetPoint("TOPLEFT", frame, "TOPLEFT", look.dashX, -y)
 				d:Show()
 			end
-			local name, have, need
+			local name, have, need, lineFs
 			if db.progressBars ~= false and api.progressParts and api.drawProgressBar then
 				name, have, need = api.progressParts(line[1])
 			end
@@ -513,7 +762,7 @@ local function build()
 				local b = progressBit()
 				if api.progressBarUnder and api.progressBarUnder() then
 					-- under the objective: the bar on a line of its own, from the text's left to the right edge
-					add(name, look.line, look.textX, line[2])
+					lineFs = add(name, look.line, look.textX, line[2])
 					-- the same gaps above and below as on Blizzard's quests (Extras.lua), the room in this layout
 					local top, bottom = api.progressUnderGaps()
 					local bh = api.progressUnderBarHeight(look.line[2])
@@ -522,17 +771,21 @@ local function build()
 					y = y + top + bh + bottom + look.lineGap
 				else
 					local reserve = api.progressBarSize(look.line[2]) + BAR_GAP
-					local fs = add(name, look.line, look.textX, line[2], 4 + reserve)
-					api.drawProgressBar(b, fs, BAR_GAP, look.line[1], look.line[2], look.line[3], have, need)
+					lineFs = add(name, look.line, look.textX, line[2], 4 + reserve)
+					api.drawProgressBar(b, lineFs, BAR_GAP, look.line[1], look.line[2], look.line[3], have, need)
 				end
 			else
-				add(line[1], look.line, look.textX, line[2])
+				lineFs = add(line[1], look.line, look.textX, line[2])
 			end
+			-- R106-127: a hover button on the line: the quest's tooltip and the 3D model of what the line names
+			click = click + 1
+			clicker(click, lineFs, quest.id, entry.title, line[1])
 		end
 		end -- (not folded)
 	end
 	frame:SetHeight(math.max(y, 1))
 	api.layoutMoreQuests()
+	placeItemButtons()
 	if api.applyLayout then api.applyLayout() end -- the scroll range changed
 end
 
@@ -607,12 +860,20 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
 	local events = CreateFrame("Frame")
 	for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_WATCH_LIST_CHANGED", "PLAYER_ENTERING_WORLD", "QUEST_ACCEPTED",
-		"QUEST_REMOVED", "UNIT_QUEST_LOG_CHANGED", "ZONE_CHANGED_NEW_AREA" }) do
+		"QUEST_REMOVED", "UNIT_QUEST_LOG_CHANGED", "ZONE_CHANGED_NEW_AREA", "PLAYER_REGEN_ENABLED", "BAG_UPDATE_COOLDOWN",
+		"BAG_UPDATE_DELAYED" }) do
 		pcall(events.RegisterEvent, events, e)
 	end
 	events:SetScript("OnEvent", function(_, event)
 		-- a new zone: the zones opened by hand fold again (R106-86)
 		if event == "ZONE_CHANGED_NEW_AREA" then wipe(openZones) end
+		-- R106-128: item buttons: cooldowns and counts; placed again after a fight
+		if event == "BAG_UPDATE_COOLDOWN" then updateItemCooldowns() return end
+		if event == "PLAYER_REGEN_ENABLED" then
+			if itemDirty then placeItemButtons() end
+			return
+		end
+		if event == "BAG_UPDATE_DELAYED" then updateItemCooldowns() return end
 		schedule()
 	end)
 	schedule()

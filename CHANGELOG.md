@@ -27,6 +27,7 @@ All notable changes to ForeverTrackerPlus (called RXP ForeverTracker before 3.1.
 
 ### Fixed
 - **3D model in "More quests":** quests past the game's tracking limit now show the 3D model when you hover an objective line, the same as tracked quests.
+- **"More quests" works like tracked quests:** the type icon (elite, dungeon, raid, PvP) or "[+N]" next to the title, the right-click menu (Focus, Open in quest log, Share quest, Wowhead URL), Ctrl+right-click for reward links, Ctrl+left-click to look for a group, and the quest item button.
 
 ## 3.1.1
 

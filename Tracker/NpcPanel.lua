@@ -826,6 +826,16 @@ local function questLines(block)
 	return out
 end
 
+-- the panel for an objective's NPC or object (from questObjectiveNpcs), beside the hovered line
+local function showFound(found, owner)
+	if found.objectId then
+		api.showNpcPanel(found.item or found.name or found.text, { objectId = found.objectId, kind = "object", owner = owner,
+			source = found.item and found.name or nil })
+	else
+		api.showNpcPanel(found.name or found.text, { id = found.id, kind = "enemy", owner = owner })
+	end
+end
+
 local hover -- { block, questId, npcs, line }
 local watcher, elapsed = nil, 0
 local function check()
@@ -850,17 +860,20 @@ local function check()
 	local found = ok and npcOnLine(text, h.npcs)
 	if found then
 		h.line = over
-		if found.objectId then
-			api.showNpcPanel(found.item or found.name or found.text, { objectId = found.objectId, kind = "object", owner = over,
-				source = found.item and found.name or nil })
-		else
-			api.showNpcPanel(found.name or found.text, { id = found.id, kind = "enemy", owner = over })
-		end
+		showFound(found, over)
 	end
 end
 
 local function enabled() return db and db.npcPanelQuests ~= false end
 api.npcPanelQuestsOn = enabled
+
+-- R106-127: a "More quests" objective line (MoreQuests.lua: quests past the game's tracking limit, drawn by us) has
+-- its own hover button: hovering it shows the model of the NPC or object the line names, as on the tracked quests
+function api.npcLineHover(owner, questId, text)
+	if not (enabled() and type(owner) == "table" and questId) then return end
+	local found = npcOnLine(text, api.questObjectiveNpcs and api.questObjectiveNpcs(questId) or {})
+	if found then showFound(found, owner) end
+end
 
 function api.npcHoverStart(block, questId)
 	if not (enabled() and type(block) == "table" and questId) then return end

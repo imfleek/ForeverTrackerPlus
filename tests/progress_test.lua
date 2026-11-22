@@ -119,7 +119,7 @@ check("never on the quest title", block.HeaderText.qtsProgress == nil)
 
 local more = io.open(dir .. "/Tracker/MoreQuests.lua"):read("a")
 check("More quests draws the same bar", more:find("api.progressParts(line[1])", 1, true) ~= nil
-	and more:find("api.drawProgressBar(b, fs", 1, true) ~= nil)
+	and more:find("api.drawProgressBar(b, lineFs", 1, true) ~= nil)
 local f = io.open(dir .. "/Textures/BarBG.tga", "rb")
 local g = io.open(dir .. "/Textures/BarFillGreen.tga", "rb")
 check("Textures/BarBG.tga and BarFillGreen.tga exist (128x32)", f and g and f:read(18):byte(13) == 128 and g:read(18):byte(13) == 128)
