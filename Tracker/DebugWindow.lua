@@ -9,7 +9,7 @@ if ns.disabled then return end
 local api = ns.api
 
 local WIDTH, HEIGHT, PAD = 640, 460, 14
-local frame, scroll, box, copyButton, hint, waitingForCopy
+local frame, scroll, box, copyButton, hint, waitingForCopy, titleText
 
 local HINT_IDLE = "Drag the title bar to move. Escape closes."
 local HINT_COPY = "|cffffd100All text is selected: press Ctrl+C to copy it. The window then closes.|r"
@@ -70,6 +70,7 @@ local function build()
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("LEFT", PAD, 0)
 	title:SetText("Quest tracker debug")
+	titleText = title
 	local close = k.create("Button", nil, f, "UIPanelCloseButton")
 	close:SetSize(28, 28)
 	close:SetPoint("TOPRIGHT", -3, -4)
@@ -127,7 +128,8 @@ local function build()
 	f:Hide() -- new frames start shown; the first Show lays it out
 end
 
-function api.showDebugWindow(lines)
+-- 3.2: an optional title (the flight log uses this window too)
+function api.showDebugWindow(lines, title)
 	if not api.themeKit then
 		for _, text in ipairs(lines) do DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r " .. text) end
 		return
@@ -135,6 +137,7 @@ function api.showDebugWindow(lines)
 	if not frame then build() end
 	-- plain text for a bug report: no colour codes
 	local text = table.concat(lines, "\n"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+	if titleText then titleText:SetText(title or "Quest tracker debug") end
 	box.qtsText = text
 	box:SetText(text)
 	box:SetCursorPosition(0)

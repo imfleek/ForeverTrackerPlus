@@ -2,14 +2,24 @@
 
 **A scrollable, smarter quest tracker for WoW Forever, with your RestedXP guide built right in.**
 
-## ✨ New in 3.1.2
+## ✨ New in 3.2
 
-- 🔍 **Secrets** – find WoW Forever's hidden toys, quests and mysteries, step by step
-- 💰 **Gold tracker** – gold from quests and mobs, per session and in total
-- 🏆 **Legacy Challenges filter** – show only what your character can do
-- 📊 **More run analysis** – jumps, swimming, dungeons, gold and a new Level splits look
-- 📍 **New logo** – a fresh map pin on your minimap
+- 🧭 **Our own tracker** – a new tracker in its own frame, now the only one: no more "secret auras" errors from Blizzard's tracker. With Battleground timer bars, Professions, Legacy Challenges and the reputation bar
+- 🎯 **Big quest item button** – near the place your closest quest's item is used, a big button at the bottom middle; Ctrl+right-drag moves it
+- ✨ **Animations** – flashes, slides, glows and a level-up banner, each with its own switch
+- 👻 **Corpse run helper**, 📋 **run summary** for dungeons, and a 🔀 **LayerSwap button** on the Quests header
+- 🧭 **Distance on your 3 closest quests** – with an optional time to arrive
+- 🎓 **Reminders** – new trainer spells and unspent talent points, at the top of the tracker
+- 🎁 **Better rewards** – an upgrade arrow, a disenchant icon and an optional auto pick
+- 🏰 **Dungeon card** – boss splits, your party's quests, a share button and boss abilities
+- 📜 **New guides** – attunements, class quests and profession quests
+- ⚔️ **Combat fade, hide done objectives, more sorting, kill counts, your path on the map and a session summary**
+- 🔇 **One switch for all sounds**, and less lag
+- 📊 **Run analysis** – time in dungeons, raids and battlegrounds, and "Where the time went" in groups you can reorder
+- 🔍 **Legacy Challenges filters** – search, progress, category and sort, and no other classes' challenges
+- 📰 **What's new window** after each update, and tooltips on every setting
 
+**Also new in 3.1.2:** Secrets, a gold tracker, a Legacy Challenges filter and more run analysis.<br>
 **Also new in 3.1:** quest item bar, big progress messages, a world marker over your quest, and a Guides section.<br>
 **Since 2.0:** a brand-new settings window, statistics with run analysis, and a first-time setup.
 
@@ -17,11 +27,11 @@
 
 1. 📦 **Install** and log in.
 2. 🧭 **First-time setup** opens – turn each feature on or off.
-3. ⚙️ **/qt** opens the settings any time – **/qt setup** opens the setup again.
+3. ⚙️ **/ftp** opens the settings any time – **/ftp setup** opens the setup again.
 
 ## 📜 Quest tracker
 
-- 🖱️ **Mouse-wheel scrolling** – for Blizzard's own tracker, with an optional scrollbar
+- 🖱️ **Our own scrollable tracker** – with an optional scrollbar; Blizzard's tracker stays hidden
 - 🗺️ **Zone sorting** – quests under zone headers, closest first, with distance arrows
 - 💎 **Rewards at a glance** – experience and gold after each title, progress bars, a check on finished quests and rich tooltips
 - 🏷️ **Quest icons** – elite, group, dungeon, raid, PvP and new-in-Forever quests
@@ -34,6 +44,8 @@
 ## 🛠️ Helpers
 
 - 🎒 **Quest item bar** – with a key binding (Key Bindings > AddOns > ForeverTrackerPlus)
+- 🎯 **Big quest item button** – at the bottom middle when you are where the item is used; Ctrl+right-drag moves it
+- 👻 **Corpse run helper** – an arrow to your corpse and when you can come back
 - 📣 **Big progress messages** – "Wolves slain: 3/8" in large letters, and "Ready to turn in"
 - 🎯 **World marker** – your quest's name, next step, distance and a light beam over its spot; can track the nearest quest by itself
 - 🧳 **Quest items marked in your bags** – with a warning if you sell or delete one
@@ -63,21 +75,21 @@
 
 - 👣 **Guide steps in the tracker** – click-to-use buttons, a waypoint arrow and back / restart / forward buttons
 - 📓 **Prerequisite Journal** (Questie) – what you are missing for quests ahead in your guide
-- ❓ **"Why did guide skip?"** – type /qt why
+- ❓ **"Why did guide skip?"** – type /ftp why
 - 🧹 **Orphaned quest cleanup** – find quests your guide no longer needs
 
 ## 🧩 Optional addons
 
 - 🧭 **RestedXP Guides** – guide steps in the tracker
 - ❗ **Questie** – quest locations, chains, party progress, nearby quests, library books and the sleeping bag chain
-- 🏰 **DungeonJournal** and **NovaInstanceTracker** – extra lines on the dungeon card
+- 🏰 **DungeonJournal** – extra lines on the dungeon card
 
 ## ⌨️ Commands
 
-- ⚙️ **/qt** – settings
-- 🧭 **/qt setup** – first-time setup
-- 📊 **/qt stats**, **/qt run** – statistics
-- ❓ **/qt help** – every command
+- ⚙️ **/ftp** – settings
+- 🧭 **/ftp setup** – first-time setup
+- 📊 **/ftp stats**, **/ftp run** – statistics
+- ❓ **/ftp help** – every command
 
 ## 💌 Feedback
 

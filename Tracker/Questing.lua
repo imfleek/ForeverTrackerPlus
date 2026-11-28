@@ -52,8 +52,18 @@ end
 ---------------------------------------------------------------------------------------------------------------------
 -- Quest item bar
 ---------------------------------------------------------------------------------------------------------------------
-local MAX_ITEMS = 8
+local MAX_ITEMS = 16 -- 3.2: rows and columns (db.itemBarPerRow x db.itemBarRows), at most 16 buttons
 local SIZE = 36
+local function perRow() return math.min(math.max(math.floor(tonumber(db and db.itemBarPerRow) or 8), 1), 16) end
+local function barRows() return math.min(math.max(math.floor(tonumber(db and db.itemBarRows) or 1), 1), 4) end
+local function maxShown() return math.min(perRow() * barRows(), MAX_ITEMS) end
+-- 3.2: items never shown (Alt+right-click a button) and items always shown while in your bags (item IDs)
+local function ignored(id) return db and type(db.itemBarIgnore) == "table" and db.itemBarIgnore[id] == true end
+local function alwaysIds()
+	local out = {}
+	for id in tostring(db and db.itemBarAlways or ""):gmatch("%d+") do out[#out + 1] = tonumber(id) end
+	return out
+end
 local bar, keyButton
 local buttons = {}
 local pending = false
@@ -67,7 +77,7 @@ local function questItems()
 		if ok and type(link) == "string" and not isSecret(link) then
 			local itemID = tonumber(link:match("item:(%d+)"))
 			local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(q.id)
-			if itemID and (not complete or showWhenComplete) then
+			if itemID and (not complete or showWhenComplete) and not ignored(itemID) then
 				list[#list + 1] = { quest = q.id, title = q.title, link = link, icon = icon, itemID = itemID,
 					first = q.id == focus, order = #list + 1 }
 			end
@@ -77,8 +87,20 @@ local function questItems()
 		if a.first ~= b.first then return a.first end
 		return a.order < b.order
 	end)
+	-- 3.2: the always-shown items you carry, after the quests' own
+	local have = {}
+	for _, e in ipairs(list) do have[e.itemID] = true end
+	for _, id in ipairs(alwaysIds()) do
+		local n = (C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id)) or (GetItemCount and GetItemCount(id)) or 0
+		if not have[id] and not ignored(id) and (tonumber(n) or 0) > 0 then
+			have[id] = true
+			local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)) or (GetItemIcon and GetItemIcon(id))
+			list[#list + 1] = { link = "item:" .. id, icon = icon, itemID = id, title = "Always shown (Helpers > On screen)" }
+		end
+	end
 	return list
 end
+api.itemBarList = questItems -- (tests)
 
 local function savePos()
 	if not bar then return end
@@ -98,6 +120,13 @@ local function makeButton(i)
 	b:RegisterForClicks("AnyUp", "AnyDown")
 	b:SetAttribute("type", "item")
 	b:SetAttribute("shift-type1", "rxpftnone") -- Shift+click: move the bar, do not use the item
+	b:SetAttribute("alt-type2", "rxpftnone") -- 3.2 Alt+right-click: hide this item from the bar
+	b:HookScript("PostClick", function(self, button)
+		if button ~= "RightButton" or not IsAltKeyDown() or not self.itemID then return end
+		db.itemBarIgnore = type(db.itemBarIgnore) == "table" and db.itemBarIgnore or {}
+		db.itemBarIgnore[self.itemID] = true
+		C_Timer.After(0, function() if api.refreshItemBar then api.refreshItemBar() end end)
+	end)
 	b.icon = b:CreateTexture(nil, "ARTWORK")
 	b.icon:SetAllPoints()
 	b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -120,6 +149,7 @@ local function makeButton(i)
 		GameTooltip:AddLine(" ")
 		GameTooltip:AddLine(self.title or "", 1, 0.82, 0)
 		GameTooltip:AddLine("Shift+drag: move the bar", 0.6, 0.6, 0.6)
+		GameTooltip:AddLine("Alt+right-click: never show this item", 0.6, 0.6, 0.6)
 		GameTooltip:Show()
 	end)
 	b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -169,9 +199,15 @@ local function refreshBar()
 	local list = opt("itemBar") and questItems() or {}
 	if #list == 0 and not bar then return end
 	buildBar()
-	local shown = 0
+	local shown, limit, cols = 0, maxShown(), perRow()
+	local layoutKey = cols .. "x" .. limit
+	if bar.layoutKey ~= layoutKey then
+		bar.layoutKey = layoutKey
+		for _, b in ipairs(buttons) do b.placed = nil end
+		bar.shownCount = nil
+	end
 	for i, b in ipairs(buttons) do
-		local e = list[i]
+		local e = i <= limit and list[i] or nil
 		if e then
 			-- 3.1.1 speed: a button whose item did not change is left as it is
 			if b.itemID ~= e.itemID or not b:IsShown() then
@@ -180,7 +216,7 @@ local function refreshBar()
 				if not b.placed then
 					b.placed = true
 					b:ClearAllPoints()
-					b:SetPoint("LEFT", bar, "LEFT", (i - 1) * (SIZE + 4), 0)
+					b:SetPoint("TOPLEFT", bar, "TOPLEFT", ((i - 1) % cols) * (SIZE + 4), -math.floor((i - 1) / cols) * (SIZE + 4))
 				end
 				b:Show()
 			end
@@ -196,7 +232,8 @@ local function refreshBar()
 	if keyButton.rxpftItem ~= first then keyButton.rxpftItem = first; keyButton:SetAttribute("item", first) end
 	if bar.shownCount ~= shown then
 		bar.shownCount = shown
-		bar:SetWidth(math.max(shown * (SIZE + 4) - 4, SIZE))
+		bar:SetWidth(math.max(math.min(shown, cols) * (SIZE + 4) - 4, SIZE))
+		bar:SetHeight(math.max(math.ceil(shown / cols), 1) * (SIZE + 4) - 4)
 		bar:SetShown(shown > 0)
 	end
 	updateCooldowns()
@@ -394,10 +431,23 @@ function api.declareScreenPage(k)
 	k.heading("Quest items")
 	k.check("Quest item bar", function() return db.itemBar ~= false end,
 		function(v) db.itemBar = v and true or false; refreshBar() end)
-	k.help("one button per usable quest item; Shift+drag to move. Set a key: Key Bindings > AddOns")
+	k.help("a button for each usable quest item; Shift+drag to move it. Key: Key Bindings > AddOns")
 	k.buttons("Reset the bar's position", {
 		{ "Reset the bar's position", function() api.resetItemBar() end, 200 },
 	})
+	-- 3.2
+	if k.slider then k.slider("Buttons per row", 1, 16, 1, "%d", function() return perRow() end,
+		function(v) db.itemBarPerRow = v; refreshBar() end, function() return db.itemBar ~= false end, 24)
+	k.slider("Rows", 1, 4, 1, "%d", function() return barRows() end,
+		function(v) db.itemBarRows = v; refreshBar() end, function() return db.itemBar ~= false end, 24) end
+	if k.input then k.input("Always show these items (item IDs, e.g. 6948, 5060)", function() return db.itemBarAlways or "" end,
+		function(v) db.itemBarAlways = v; refreshBar() end, 1, "item IDs, with commas") end
+	k.note("Alt+right-click a button on the bar: that item is never shown again.")
+	k.buttons("Show hidden items again", {
+		{ "Show hidden items again", function() db.itemBarIgnore = nil; refreshBar() end, 200 },
+	})
+	-- 3.2 (user): the big quest item button (QuestAction.lua)
+	if api.declareQuestActionSettings then api.declareQuestActionSettings(k) end
 	k.heading("Progress")
 	k.check("Big progress messages", function() return db.toasts ~= false end,
 		function(v) db.toasts = v and true or false; applyHideGame() end)
@@ -412,17 +462,17 @@ function api.declareScreenPage(k)
 	k.heading("World marker")
 	k.check("Marker in the world", function() return db.worldMarker ~= false end,
 		function(v) db.worldMarker = v and true or false; if api.refreshWorldMarker then api.refreshWorldMarker() end end)
-	k.help("over your tracked quest's spot in the world: its name, next step, distance and a light beam")
+	k.help("on your tracked quest's spot in the world: its name, next step, distance and a light beam")
 	k.check("Hide the marker in combat", function() return db.markerCombatHide ~= false end,
 		function(v) db.markerCombatHide = v and true or false; if api.refreshWorldMarker then api.refreshWorldMarker() end end)
 	k.help("keeps your screen clear while you fight")
 	k.check("Track the nearest quest by itself", function() return db.markerAuto == true end,
 		function(v) db.markerAuto = v and true or false end)
-	k.help("a quest you pick yourself, or a map waypoint, is kept until it is done")
+	k.help("a quest or map waypoint you picked yourself is kept until it is done")
 	k.heading("Party chat", true)
 	k.check("Say in party chat when a quest is done", function() return db.partyDone == true end,
 		function(v) db.partyDone = v and true or false end)
-	k.help("\"[RXPFT] <quest> is ready to turn in\", only in a party (not a raid)")
+	k.help("\"[RXPFT] <quest> is ready to turn in\", in a party only (not a raid)")
 	k.check("Say each quest step in party chat", function() return db.partyChatSteps == true end,
 		function(v) db.partyChatSteps = v and true or false end)
 	k.help("every objective step, like \"Wolves slain: 3/8\"; this can be a lot of chat")

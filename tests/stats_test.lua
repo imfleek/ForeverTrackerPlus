@@ -102,7 +102,7 @@ fire("PLAYER_LEVEL_UP", 11)
 flush()
 check("level 11's start", r.reached[11] == 8990)
 local line = chat[#chat] or ""
-check("level-up line: level and time taken", line:find("Level 11!", 1, true) ~= nil and line:find("Level 10 took 59:50", 1, true) ~= nil)
+check("level-up line: level and time taken", line:find("Level 11!", 1, true) ~= nil and line:find("Level 10 took 59m 50s", 1, true) ~= nil)
 check("level time from /played", api.statsLevelTime(r, 10) == 3590)
 
 -- compare and Discord
@@ -112,7 +112,22 @@ local opts = api.statsCompareOptions()
 check("compare options list the other run", opts[2] and opts[2][1] == "Alt-Realm")
 local text = api.statsDiscordText()
 check("discord text has the header", text:find("**Jugo**", 1, true) ~= nil)
-check("discord text compares level 10", text:find("Lv 10", 1, true) ~= nil and text:find("+11:", 1, true) ~= nil)
+check("discord text compares level 10", text:find("Lv 10", 1, true) ~= nil and text:find("+11m 30s", 1, true) ~= nil)
+
+-- 3.2: the Character dropdown: another character's record on the pages, recording stays ours
+local vopts = api.statsViewOptions()
+check("view options: this character first, then the alt", vopts[1][1] == "me" and vopts[1][2]:find("Jugo", 1, true) ~= nil
+	and vopts[2] and vopts[2][1] == "Alt-Realm" and vopts[2][2] == "Alt (level 11)")
+ns.db.statsView = "Alt-Realm"
+check("viewing the alt", api.statsViewKey() == "Alt-Realm" and api.statsViewed() == ns.db.statsRuns["Alt-Realm"])
+check("compare leaves out the viewed one", (function()
+	for _, o in ipairs(api.statsCompareOptions()) do if o[1] == "Alt-Realm" then return false end end
+	return true end)())
+check("recording still goes to this character", api.statsRun() ~= ns.db.statsRuns["Alt-Realm"])
+check("discord names the viewed character", api.statsDiscordText():find("**Alt**", 1, true) ~= nil)
+ns.db.statsView = "Gone-Realm"
+check("a missing record falls back to this character", api.statsViewKey() ~= "Gone-Realm")
+ns.db.statsView = nil
 
 -- a younger character under the same name
 played = { 50, 50 }

@@ -102,7 +102,6 @@ events:SetScript("OnEvent", function(self, _, isLogin, isReload)
 	if isLogin == false and isReload == false then return end -- a zone change, not a login or reload
 	self:UnregisterEvent("PLAYER_ENTERING_WORLD")
 	C_Timer.After(DELAY, function()
-		if root.disabledAll then return end -- the old AllTracker RXP is running: Bootstrap.lua already said so
 		if not ns.db then
 			_G.ForeverTrackerPlusDB = type(_G.ForeverTrackerPlusDB) == "table" and _G.ForeverTrackerPlusDB or {}
 			ns.db = _G.ForeverTrackerPlusDB

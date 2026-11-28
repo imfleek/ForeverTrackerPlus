@@ -208,8 +208,8 @@ now = now + 5
 choose(22, "both")
 check("switched off: nothing", #sent == n)
 
-local extras = io.open(dir .. "/Tracker/Extras.lua"):read("a")
-check("Extras: Ctrl+left-click calls it", extras:find('button == "LeftButton" and api.findGroupForQuest', 1, true) ~= nil)
+local clicks = io.open(dir .. "/Tracker/QuestClicks.lua"):read("a")
+check("QuestClicks: Ctrl+left-click calls it", clicks:find("if ctrl and api.findGroupForQuest", 1, true) ~= nil)
 check("in the toc", io.open(dir .. "/ForeverTrackerPlus.toc"):read("a"):find("Tracker/GroupFinder.lua", 1, true) ~= nil)
 check("its option", io.open(dir .. "/Tracker/Config.lua"):read("a"):find('"Ctrl+click a quest: find a group"', 1, true) ~= nil)
 check("on by default", io.open(dir .. "/Tracker/Core.lua"):read("a"):find("questGroupFinder = true", 1, true) ~= nil)

@@ -167,7 +167,7 @@ exportBox.refresh()
 check("Export puts a profile string in the box: " .. tostring(errE), okE and (exportBox.edit:GetText() or ""):sub(1, 7) == "RXPFT1:")
 -- general, RXP Tracker and Quest Tracker opacity
 do local i = 1 while true do local n = debug.getupvalue(t.api.setTrackerAlpha, i); if not n then break end; if n == "db" then debug.setupvalue(t.api.setTrackerAlpha, i, t.db) end; i = i + 1 end end
-for _, fn in ipairs({ t.api.trackerAlpha, t.api.guideTrackerAlpha, t.api.questTrackerAlpha }) do
+for _, fn in ipairs({ t.api.trackerAlpha, t.api.guideTrackerAlpha }) do
 	local i = 1 while true do local n = debug.getupvalue(fn, i); if not n then break end; if n == "db" then debug.setupvalue(fn, i, t.db) end; i = i + 1 end
 end
 rawset(t.db, "trackerAlpha", 1); rawset(t.db, "guideAlpha", 1); rawset(t.db, "questAlpha", 1)
@@ -176,7 +176,7 @@ check("general opacity applies: " .. tostring(errA), okA and t.db.trackerAlpha =
 pcall(t.api.setTrackerAlpha, 0.5, "guideAlpha")
 pcall(t.api.setTrackerAlpha, 0.8, "questAlpha")
 check("RXP Tracker opacity = general x its own", math.abs(t.api.guideTrackerAlpha() - 0.25) < 1e-9)
-check("Quest Tracker opacity = general x its own", math.abs(t.api.questTrackerAlpha() - 0.4) < 1e-9)
+check("Quest Tracker opacity saved (our tracker multiplies it in)", t.db.questAlpha == 0.8)
 pcall(t.api.setTrackerAlpha, 0.01, "trackerAlpha")
 check("never below 10 %", t.api.trackerAlpha() == 0.1)
 print(pass and "PASS" or "FAILED")

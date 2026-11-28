@@ -159,17 +159,17 @@ check("legacy: open criteria in the tooltip", rows[2] and tipText(rows[2].tip):f
 check("legacy: done and non-legacy left out", #rows == 2)
 ns.db.legacyShowDone = true
 ns.api.guideLegacyRows() -- cached for 10 s, the switch resets it in the page; here the cache still holds
-check("books: without Questie says so", api.guideBookRows()[1][2] == "Needs Questie.")
+check("books: without Questie the list still shows (3.2: a fixed list)", api.guideBookRows()[1][2] == "Library books")
 
 -- the pages
 local pages = {}
 local kit = { page = function(key) pages[#pages + 1] = key end, heading = function() end, check = function() end,
-	help = function() end, note = function() end, buttons = function() end, custom = function() end,
+	help = function() end, note = function() end, buttons = function() end, input = function() end, choice = function() end, custom = function() end,
 	pageByKey = setmetatable({}, { __index = function(t, k) local p = {}; rawset(t, k, p) return p end }), refresh = function() end }
 api.declareScreenPage(kit)
 api.declareGuidePages(kit)
 local all = table.concat(pages, ",")
-check("pages declared", all == "onscreen,legacy,books,bedroll,secrets")
+check("pages declared", all == "onscreen,legacy,books,secrets")
 
 -- Questie.lua: breadcrumbs
 local qfields = { [500] = { breadcrumbForQuestId = 900 }, [501] = { breadcrumbForQuestId = 901 }, [502] = {} }

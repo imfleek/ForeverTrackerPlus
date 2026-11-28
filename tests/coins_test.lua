@@ -82,10 +82,6 @@ db.goldCoins, db.wordWrap = true, false
 check("word wrap off: unchanged (cut off as before)", keep(fontString(210), title) == title)
 db.wordWrap = true
 
--- the moved amount still comes off with the rest of the decorations (baseTitle)
-local bt = src:match("(local REWARD_PATTERNS = {.-\nlocal function baseTitle%(text%).-\nend)")
-local baseTitle = load(bt .. "\nreturn baseTitle", "x", "t", setmetatable({}, { __index = _G }))()
-check("the decorations still come off cleanly", baseTitle(out) == "[60] Show Me the Money!")
 
 -- R106-47: coin icons on titles a little smaller than the text (85 % of the font size); elsewhere the text height
 local cb = src:match("(local COIN_SCALE = .-\napi%.coinPx = coinPx\n)")
@@ -97,5 +93,4 @@ if cb then
 	check("no size given: the text height (0)", e2.api.coinPx(nil) == 0)
 	check("the size goes into the icon", coin("UI-GoldIcon", 10):find(":10:10:0:0:16:16:2:14:2:14|t", 1, true) ~= nil)
 end
-check("titles pass their font size", src:find("api.rewardSuffix(id, select(2, fs:GetFont()))", 1, true) ~= nil)
 print(pass and "PASS" or "FAILED")

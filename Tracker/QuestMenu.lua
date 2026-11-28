@@ -3,7 +3,7 @@
 -- closes by itself (Escape or the X close it too).
 --
 -- The menu is Blizzard's (Menu.ModifyMenu with its tag MENU_QUEST_OBJECTIVE_TRACKER). The menu does not say which quest
--- it is for, so the quest is the block the mouse went down on (Extras.lua records it, api.lastQuestPressed), else the
+-- it is for, so the quest is the block the mouse went down on (Own/Rows.lua records it, api.lastQuestPressed), else the
 -- quest block under the mouse (a block knows its section, parentModule, and its quest, id).
 -- The link: WoW Forever's own pages on Wowhead, https://www.wowhead.com/forever/quest=<id>.
 -- The box is the addon's own frame, not a StaticPopup (an addon's StaticPopup can taint the game's popups).

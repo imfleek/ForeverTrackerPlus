@@ -83,7 +83,7 @@ StaticPopupDialogs["RXPFT_ADDON_CLASH"] = {
 		askNext()
 	end,
 	OnCancel = function(_, c, reason)
-		if reason == "clicked" and db then db[c.key] = false; say("kept " .. c.addon .. "'s version. Ours is off (/qt to turn it on again).") end
+		if reason == "clicked" and db then db[c.key] = false; say("kept " .. c.addon .. "'s version. Ours is off (/ftp to turn it on again).") end
 		askNext()
 	end,
 	timeout = 0, whileDead = 1, hideOnEscape = false, preferredIndex = 3,
@@ -249,7 +249,7 @@ local function isItemButton(f)
 	if kind == "ItemButton" then return true end
 	return (f.icon or f.Icon or f.IconBorder) ~= nil
 end
-local bagStats -- filled while /qt bags looks (nil otherwise)
+local bagStats -- filled while /ftp bags looks (nil otherwise)
 local hookedFrames = {}
 local function paintTree(frame, depth)
 	if not (frame and frame.GetChildren) then return end
@@ -585,7 +585,7 @@ local function nearbyTick()
 	card:SetWidth(math.max(300, math.min(460, (card.title:GetStringWidth() or 200) + 60)))
 	card:Show()
 	cardShownAt = GetTime()
-	if PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_OPEN then pcall(PlaySound, SOUNDKIT.IG_QUEST_LIST_OPEN) end
+	if PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_OPEN then (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_QUEST_LIST_OPEN) end
 end
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -644,7 +644,7 @@ local function breathCheck()
 		if not edge:IsShown() then
 			edge:Show()
 			edge.pulse:Play()
-			if PlaySound and SOUNDKIT and SOUNDKIT.RAID_WARNING then pcall(PlaySound, SOUNDKIT.RAID_WARNING) end
+			if PlaySound and SOUNDKIT and SOUNDKIT.RAID_WARNING then (root.playSound or pcall)(PlaySound, SOUNDKIT.RAID_WARNING) end
 		end
 	elseif edge and edge:IsShown() then
 		edge.pulse:Stop()
@@ -698,7 +698,11 @@ api.flightTime = known
 -- (db.flightPathSpeed) starts at PATH_SPEED and is corrected by every flight on such a route; the map estimate above is
 -- left for a route the data does not have (a path the game added after the data was made).
 local DEFAULT_SPEED = 28 -- yards per second along the straight lines between the stops
-local PATH_SPEED = 30.5 -- yards per second along the flown path
+-- 3.2: 30.3 fits 274 real single-hop flight times within about 3 s on average (checked with tests/flight_fit.lua)
+local PATH_SPEED = 30.3 -- yards per second along the flown path
+-- 3.2 (user: "fix Hyjal"): every path to or from Tainted Foothills (node 3242, Mount Hyjal) flies faster: 45 to 49
+-- yards per second against RestedXP's times for all 6 of them (Riverglades' new paths fly at the normal speed)
+local NODE_SPEED = { [3242] = 48 }
 local slotNodes, slotNodesAt = nil, -1
 local function nodeIdOf(slot)
 	if not (C_TaxiMap and C_TaxiMap.GetAllTaxiNodes and GetTaxiMapID) then return nil end
@@ -722,6 +726,9 @@ local function pathYards(index, hops)
 		local na, nb = okA and nodeIdOf(a), okB and nodeIdOf(b)
 		local len = na and nb and yards[na * 10000 + nb]
 		if not len then return nil end
+		-- a faster path counts as fewer yards at PATH_SPEED, so the time comes out right
+		local fast = NODE_SPEED[na] or NODE_SPEED[nb]
+		if fast then len = len * PATH_SPEED / fast end
 		total, wait = total + len, wait + (tonumber(waits[na * 10000 + nb]) or 0)
 	end
 	return total > 0 and total or nil, wait
@@ -755,19 +762,62 @@ local function routeYards(index)
 	end
 	return total > 0 and total or nil, false, 0
 end
-local function speedKey(exact) return exact and "flightPathSpeed" or "flightSpeed" end
-local function flightSpeed(exact)
-	local v = db and tonumber(db[speedKey(exact)])
-	return v and v > 5 and v < 100 and v or (exact and PATH_SPEED or DEFAULT_SPEED)
-end
--- seconds, and whether it is close (path data and a speed corrected by at least one flight) or "about"
+-- 3.2: the speed is fixed, not learned any more (a flight logged with time on the ground, 828 s for a 100 s route,
+-- had pulled the saved speed down to 24 and every estimate with it)
+local function flightSpeed(exact) return exact and PATH_SPEED or DEFAULT_SPEED end
+-- seconds, and whether it is close (the game's path data) or "about" (straight lines on the flight map)
 local function estimate(index)
 	local yards, exact, wait = routeYards(index)
 	if not yards then return nil end
-	local close = exact and db and tonumber(db.flightPathSpeed) ~= nil
-	return yards / flightSpeed(exact) + (wait or 0), close
+	return yards / flightSpeed(exact) + (wait or 0), exact and true or false
 end
 api.flightEstimate = estimate
+-- 3.2 (user: "The clockring is right. Our bar is way off ... Just always use restedxp's list"): the time shown is
+-- RestedXP's own flight time list (RXP.FPDB, the list its clock ring uses), looked up the way RestedXP does it
+-- (Timers.lua GetFlightTime): from here (flightInfo.currentFP) to the node (flightInfo.nodeHash[GetFlightHash]), or the
+-- other way, or the sum of the legs. Read only: nothing of RestedXP's is changed. No time there: nil.
+local function rxpFlightTime(index)
+	local rxp = rawget(_G, "RXP")
+	if type(rxp) ~= "table" then return nil end
+	local info = rxp.flightInfo
+	local faction = type(rxp.player) == "table" and rxp.player.faction
+	local list = type(rxp.FPDB) == "table" and faction and rxp.FPDB[faction]
+	if not (type(info) == "table" and type(list) == "table" and type(info.nodeHash) == "table"
+		and type(rxp.GetFlightHash) == "function") then return nil end
+	local function leg(a, b)
+		if not (a and b) then return nil end
+		return type(list[a]) == "table" and tonumber(list[a][b]) or type(list[b]) == "table" and tonumber(list[b][a]) or nil
+	end
+	local ok, hash = pcall(rxp.GetFlightHash, index)
+	local src = info.currentFP
+	local t = ok and leg(src, info.nodeHash[hash])
+	if t then return t end
+	if type(GetNumRoutes) ~= "function" then return nil end
+	local total = 0
+	for i = 1, GetNumRoutes(index) or 0 do
+		local okLeg, h = pcall(rxp.GetFlightHash, index, i)
+		local dest = okLeg and info.nodeHash[h]
+		local part = leg(src, dest)
+		if not part then return nil end
+		total, src = total + part, dest
+	end
+	return total > 0 and total or nil
+end
+api.rxpFlightTime = rxpFlightTime
+-- 3.2 (user: "If the user has enabled our flighttracker, disable the clockring"): the RXP Tracker's clock ring skips
+-- RestedXP's flight bar while ours is on (Objectives/rxp/Readers.lua activeTimer)
+function api.flightTrackerOn() return opt("flightTimes") end
+function api.flightNow() return flight end -- (tests)
+-- 3.2 (user: "should work even if the user doesn't have RXPGuides installed"): the time of the route to `index`:
+-- RestedXP's list when RXPGuides is loaded, else the time you flew it (db.flightLog), else the estimate from the
+-- game's path data. Returns seconds and whether it is close (false = "about").
+local function routeTime(index, from, to)
+	local t = rxpFlightTime(index)
+	if t then return t, true end
+	t = known(from, to)
+	if t then return t, true end
+	return estimate(index)
+end
 local function buildFlightBar()
 	if flightBar then return flightBar end
 	local kit = api.themeKit
@@ -786,12 +836,15 @@ local function buildFlightBar()
 		self.wait = 0
 		if not flight or not flight.started then self:Hide() return end
 		local gone = GetTime() - flight.started
-		local learned = known(flight.from, flight.to)
-		local total = learned or flight.estimate
+		-- 3.2: landed (PLAYER_CONTROL_GAINED can come while UnitOnTaxi is still true): close
+		if gone > 3 and UnitOnTaxi and not UnitOnTaxi("player") then api.flightLanded() return end
+		local clock = api.statsClock or function(s) return tostring(math.floor(s)) end
+		local total = flight.total
 		if total then
-			self.text:SetText(((learned or flight.close) and "Flight to %s: %s left" or "Flight to %s: about %s left"):format(flight.to, api.statsClock and api.statsClock(math.max(total - gone, 0)) or math.floor(total - gone)))
+			self.text:SetText((flight.close and "Flight to %s: %s left" or "Flight to %s: about %s left"):format(flight.to,
+				clock(math.max(total - gone, 0))))
 		else
-			self.text:SetText(("Flight to %s: learning this flight (%s)"):format(flight.to, api.statsClock and api.statsClock(gone) or math.floor(gone)))
+			self.text:SetText(("Flight to %s: %s"):format(flight.to, clock(gone)))
 		end
 		self:SetWidth(math.max(260, (self.text:GetStringWidth() or 200) + 30))
 	end)
@@ -802,13 +855,113 @@ local function onTakeNode(index)
 	if not opt("flightTimes") then return end
 	local to, from = nodeName(index), currentNode()
 	if to and from then
-		local yards, exact, wait = routeYards(index)
-		flight = { from = from, to = to, chosen = GetTime(), yards = yards, exact = exact, wait = wait or 0,
-			close = exact and tonumber(db.flightPathSpeed) ~= nil,
-			estimate = yards and (yards / flightSpeed(exact) + (wait or 0)) or nil }
+		local total, close = routeTime(index, from, to)
+		local okHops, hops = pcall(GetNumRoutes, index)
+		flight = { from = from, to = to, chosen = GetTime(), total = total, close = close, guess = estimate(index),
+			stops = okHops and type(hops) == "number" and math.max(hops - 1, 0) or nil, rxp = rxpFlightTime(index) }
 	end
 end
+-- 3.2 (user): the druid flights from Moonglade start from a chat option of their own NPC, not from the flight map
+-- (no TakeTaxiNode). The game's path data has them: TaxiPath 316 (node 63 > 22, Thunder Bluff) and 315 (62 > 27,
+-- Rut'theran Village). GOSSIP_SHOW remembers the NPC; the next taxi start within 60 s is that flight.
+local DRUID_FLIGHTS = {
+	{ id = 11798, name = "Bunthen Plainswind", from = "Nighthaven, Moonglade", to = "Thunder Bluff, Mulgore", a = 63, b = 22 },
+	{ id = 11800, name = "Silva Fil'naveth", from = "Nighthaven, Moonglade", to = "Rut'theran Village, Teldrassil", a = 62, b = 27 },
+}
+local lastGossip
+local function druidFlight(id, name)
+	for _, d in ipairs(DRUID_FLIGHTS) do
+		if (id and id == d.id) or (name and name == d.name) then return d end
+	end
+end
+local function onGossipShow()
+	local guid = UnitGUID and UnitGUID("npc")
+	local id = type(guid) == "string" and not isSecret(guid) and tonumber(guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)"))
+	local name = UnitName and UnitName("npc")
+	if isSecret(name) then name = nil end
+	local d = druidFlight(id, name)
+	lastGossip = d and { route = d, at = GetTime() } or nil
+end
+-- seconds of a druid flight: RestedXP's list (with RXPGuides), else the time you flew it, else the path data
+local function druidTime(d)
+	local rxp = rawget(_G, "RXP")
+	local faction = type(rxp) == "table" and type(rxp.player) == "table" and rxp.player.faction
+	local list = faction and type(rxp.FPDB) == "table" and rxp.FPDB[faction]
+	local t = type(list) == "table" and (type(list[d.a]) == "table" and tonumber(list[d.a][d.b])
+		or type(list[d.b]) == "table" and tonumber(list[d.b][d.a]))
+	local rxpT = t
+	local yards = type(rawget(ns, "flightPathYards")) == "table" and ns.flightPathYards[d.a * 10000 + d.b]
+	local waits = rawget(ns, "flightPathWaits") or {}
+	local guess = yards and yards / PATH_SPEED + (tonumber(waits[d.a * 10000 + d.b]) or 0)
+	if rxpT then return rxpT, true, guess, rxpT end
+	t = known(d.from, d.to)
+	if t then return t, true, guess end
+	return guess, guess ~= nil, guess
+end
+api.druidFlightTime = druidTime -- (tests)
+local function startDruidFlight()
+	if not (lastGossip and GetTime() - lastGossip.at < 60 and opt("flightTimes")) then return end
+	local d = lastGossip.route
+	lastGossip = nil
+	local total, close, guess, rxpT = druidTime(d)
+	flight = { from = d.from, to = d.to, chosen = GetTime(), total = total, close = close, guess = guess, stops = 0,
+		rxp = rxpT }
+end
+-- the flight is over: learn its time (only a sane one: 10 s to 30 min, and within 0.6 to 1.6 times the path data
+-- estimate when there is one), close the bar
+function api.flightLanded()
+	local f = flight
+	flight = nil
+	if flightBar then flightBar:Hide() end
+	if not (f and f.started and db) then return end
+	local took = (f.landed or GetTime()) - f.started
+	local sane = took > 10 and took < 1800 and not f.early
+	if sane and f.guess then sane = took > f.guess * 0.6 and took < f.guess * 1.6 end
+	api.logFlight(f, took, sane)
+	if not sane then return end
+	db.flightLog = type(db.flightLog) == "table" and db.flightLog or {}
+	local key = routeKey(f.from, f.to)
+	local e = db.flightLog[key]
+	local n = type(e) == "table" and tonumber(e.n) or 0
+	local t = type(e) == "table" and tonumber(e.t) or took
+	db.flightLog[key] = { t = (t * n + took) / (n + 1), n = math.min(n + 1, 5) }
+end
+-- 3.2 flight log (user: "Add it"): every flight you land, newest first, the last LOG_MAX: route, stops, our time from
+-- the game's path data (what we show without RXPGuides), RestedXP's time, and the real time. /qt flights shows it as
+-- text to copy, so wrong routes can be found and fixed. db.flightHistory (account-wide); off: db.flightHistoryOff.
+local LOG_MAX = 50
+function api.logFlight(f, took, learned)
+	if not db or db.flightHistoryOff then return end
+	db.flightHistory = type(db.flightHistory) == "table" and db.flightHistory or {}
+	local log = db.flightHistory
+	local function round(v) return v and math.floor(v + 0.5) or nil end
+	table.insert(log, 1, { from = f.from, to = f.to, stops = f.stops, ours = round(f.guess), rxp = round(f.rxp),
+		real = round(took), early = f.early or nil, learned = learned or nil, at = type(time) == "function" and time() or nil })
+	for i = #log, LOG_MAX + 1, -1 do log[i] = nil end
+end
+function api.flightLogLines()
+	local log = db and type(db.flightHistory) == "table" and db.flightHistory or {}
+	local lines = { "ForeverTrackerPlus flight log, newest first. Times in seconds.",
+		"ours = from the game's flight path data; rxp = RestedXP's list; real = how long you flew; diff = ours - real.", "" }
+	if #log == 0 then lines[#lines + 1] = "No flights yet. Take a flight and land." return lines end
+	for _, e in ipairs(log) do
+		local when = e.at and type(date) == "function" and date("%Y-%m-%d %H:%M", e.at) or "?"
+		local diff = e.ours and e.real and ("%+d"):format(e.ours - e.real) or "-"
+		lines[#lines + 1] = ("%s  %s > %s  stops %s  ours %s  rxp %s  real %s  diff %s%s"):format(when,
+			tostring(e.from), tostring(e.to), e.stops and tostring(e.stops) or "?", e.ours and tostring(e.ours) or "-",
+			e.rxp and tostring(e.rxp) or "-", tostring(e.real), diff, e.early and "  (landed early)" or "")
+	end
+	return lines
+end
+if api.addSlash then
+	api.addSlash("flights", "the flight log: your last flights with our time, RestedXP's time and the real time", function()
+		if api.showDebugWindow then api.showDebugWindow(api.flightLogLines(), "Flight log")
+		else for _, l in ipairs(api.flightLogLines()) do say(l) end end
+	end)
+end
 local function onFlightEvent(event)
+	if event == "GOSSIP_SHOW" then onGossipShow() return end
+	if event == "PLAYER_CONTROL_LOST" and not (flight and not flight.started) then startDruidFlight() end
 	if not flight then return end
 	if event == "PLAYER_CONTROL_LOST" then
 		C_Timer.After(0.5, function()
@@ -818,39 +971,23 @@ local function onFlightEvent(event)
 			end
 		end)
 	elseif event == "PLAYER_CONTROL_GAINED" then
-		if flight.started and not (UnitOnTaxi and UnitOnTaxi("player")) then
-			local took = GetTime() - flight.started
-			if took > 10 and took < 1800 and not flight.early then
-				db.flightLog = type(db.flightLog) == "table" and db.flightLog or {}
-				local key = routeKey(flight.from, flight.to)
-				local e = db.flightLog[key]
-				local n = type(e) == "table" and tonumber(e.n) or 0
-				local t = type(e) == "table" and tonumber(e.t) or took
-				db.flightLog[key] = { t = (t * n + took) / (n + 1), n = math.min(n + 1, 5) }
-				if flight.yards and took - flight.wait > 5 then
-					local measured = flight.yards / (took - flight.wait)
-					if measured > 5 and measured < 100 then
-						local k = speedKey(flight.exact)
-						local old = tonumber(db[k])
-						db[k] = old and (old * 0.7 + measured * 0.3) or measured
-					end
-				end
-			end
-			flight = nil
-			if flightBar then flightBar:Hide() end
+		-- 3.2 (user: "After landing, our flight bar did not close"): UnitOnTaxi can still be true at this event. The
+		-- landing time is this event's time; the flight closes once off the taxi (now, 1 s or 3 s later, or the bar's
+		-- OnUpdate). Before, the flight stayed open and the next control event logged the time on the ground too.
+		if not flight.started then return end
+		flight.landed = GetTime()
+		local function land()
+			if flight and flight.landed and not (UnitOnTaxi and UnitOnTaxi("player")) then api.flightLanded() end
 		end
+		land()
+		C_Timer.After(1, land)
+		C_Timer.After(3, land)
 	end
 end
 local function ourFlightText(button)
-	local t = known(currentNode(), nodeName(button:GetID()))
-	local about = false
-	if not t then
-		local close
-		t, close = estimate(button:GetID())
-		about = not close
-	end
+	local t, close = routeTime(button:GetID(), currentNode(), nodeName(button:GetID()))
 	if not t then return nil end
-	return (about and "Flight time: about %s" or "Flight time: %s"):format(api.statsClock and api.statsClock(t) or math.floor(t))
+	return (close and "Flight time: %s" or "Flight time: about %s"):format(api.statsClock and api.statsClock(t) or math.floor(t))
 end
 -- EllesmereUI's line in the shown tooltip: rewritten with ours. true when it was there.
 local tipButton, tipText
@@ -876,8 +1013,18 @@ end
 local tipHooked = false
 local function onNodeEnter(button)
 	if not (opt("flightTimes") and button and button.GetID and GameTooltip:IsShown()) then return end
-	local text = ourFlightText(button)
-	if not text then return end
+	-- 3.2 (user): flight map times only when RXPGuides is not installed (RestedXP shows its own there). With RestedXP's
+	-- flight timers on, EllesmereUI's line (it has no switch) is blanked, so one time shows (user: "two flight times")
+	local text
+	if loaded("RXPGuides") then
+		local rxp = rawget(_G, "RXP")
+		local profile = type(rxp) == "table" and type(rxp.settings) == "table" and rxp.settings.profile
+		if not (eluiMapTime() and type(profile) == "table" and profile.showFlightTimers) then return end
+		text = ""
+	else
+		text = ourFlightText(button)
+		if not text then return end
+	end
 	if not eluiMapTime() then
 		GameTooltip:AddLine(text, 0.6, 0.85, 1)
 		GameTooltip:Show()
@@ -895,6 +1042,7 @@ local function onNodeEnter(button)
 		if tipButton ~= button or not GameTooltip:IsShown() then return end
 		if not rewriteElui() then
 			tipButton = nil
+			if text == "" then return end -- blanking only: EllesmereUI has no line for this route
 			GameTooltip:AddLine(text, 0.6, 0.85, 1)
 			GameTooltip:Show()
 		end
@@ -908,6 +1056,10 @@ api.flightTipEnter = onNodeEnter -- (tests)
 local repaintQueued = false
 ns.onLogin[#ns.onLogin + 1] = function()
 	db = ns.db
+	-- 3.2: learned flights and speeds before this were wrong (time on the ground counted): cleared once
+	if db and not db.flightFix32 then
+		db.flightLog, db.flightSpeed, db.flightPathSpeed, db.flightFix32 = nil, nil, nil, true
+	end
 	if C_Timer and C_Timer.After then C_Timer.After(8, function() checkClashes() end) end
 	hookBags()
 	onEvents({ "QUEST_LOG_UPDATE", "BAG_UPDATE_DELAYED", "MERCHANT_SHOW", "MERCHANT_CLOSED", "BAG_OPEN" }, function(event)
@@ -932,7 +1084,7 @@ ns.onLogin[#ns.onLogin + 1] = function()
 		elseif event == "QUEST_COMPLETE" or pendingReward then scheduleReward() end
 	end)
 	onEvents({ "MIRROR_TIMER_START", "MIRROR_TIMER_PAUSE", "MIRROR_TIMER_STOP" }, onMirror)
-	onEvents({ "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED" }, onFlightEvent)
+	onEvents({ "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED", "GOSSIP_SHOW" }, onFlightEvent)
 	if hooksecurefunc then
 		if StaticPopup_Show then hooksecurefunc("StaticPopup_Show", function(which) pcall(onPopup, which) end) end
 		if type(rawget(_G, "QuestInfo_ShowRewards")) == "function" then hooksecurefunc("QuestInfo_ShowRewards", scheduleReward) end
@@ -955,20 +1107,20 @@ function api.declareHelperPages(k)
 	k.heading("Bags")
 	k.check("Mark quest items in your bags", function() return db.bagMarks ~= false end,
 		function(v) db.bagMarks = v and true or false; repaintBags() end)
-	k.help("a quest sign on items a quest in your log needs, until you turn it in; a warning if you sell or delete one")
+	k.help("a quest sign on items that a quest in your log needs; a warning if you sell or delete one")
 	k.heading("Rewards")
 	k.check("Mark the best reward to sell", function() return db.rewardHint ~= false end,
 		function(v) db.rewardHint = v and true or false; if v then checkClashes("rewardHint") end end)
-	k.help("on a quest's reward choice, a gold coin on the reward that sells for the most. If OneForAll's coin is on too, you are asked which one to keep")
+	k.help("a gold coin on the reward choice that sells for the most. If OneForAll's coin is also on, you are asked which to keep")
 	k.heading("Nearby quests")
 	k.check("Card for a quest close by", function() return db.nearbyCard ~= false end,
 		function(v) db.nearbyCard = v and true or false; if not v and card then card:Hide() end end,
 		function() return api.questieLoaded and api.questieLoaded() end)
-	k.help("needs Questie. A quest you can take within 70 yards: a card at the top of the screen; click it for a waypoint")
+	k.help("needs Questie. A card at the top of the screen for a quest you can take within 70 yards; click it for a waypoint")
 	k.check("Leave out breadcrumb quests you do not need", function() return db.breadcrumbHide ~= false end,
 		function(v) db.breadcrumbHide = v and true or false end,
 		function() return api.questieLoaded and api.questieLoaded() end)
-	k.help("a breadcrumb only sends you to another quest; hidden once you did that quest or have it")
+	k.help("a breadcrumb only leads to another quest; hidden once you have done or picked up that quest")
 	k.pageByKey.helpers.reset = k.reset
 
 	k.page("world", "quests", "World")
@@ -979,11 +1131,9 @@ function api.declareHelperPages(k)
 	k.heading("Flights")
 	k.check("Flight times", function() return db.flightTimes ~= false end,
 		function(v) db.flightTimes = v and true or false; if not v and flightBar then flightBar:Hide() end; if v then checkClashes("flightTimes") end end)
-	k.help("every route has a time from the start, from the game's own flight path data; \"about\" until your first flight sets the speed. A route you flew shows its measured time. Shows the time left while flying, and the time on the flight map. If EllesmereUI's Flight Timer is on too, you are asked which one to keep")
-	k.statusBox("Flights learned", function()
-		local n = 0
-		for _ in pairs(db and type(db.flightLog) == "table" and db.flightLog or {}) do n = n + 1 end
-		return { { "Learned", tostring(n) .. (n == 1 and " flight" or " flights") } }
-	end)
+	k.help("the time left while you fly, and on the flight map. Uses RXPGuides' flight times, else your own flights or the game's flight data. If EllesmereUI's Flight Timer is on, you are asked which to keep")
+	k.check("Keep a flight log", function() return not db.flightHistoryOff end,
+		function(v) db.flightHistoryOff = not v or nil end)
+	k.help("saves your last 50 flights with our time, RestedXP's time and the real time; /ftp flights shows them to copy")
 	k.pageByKey.world.reset = k.reset
 end

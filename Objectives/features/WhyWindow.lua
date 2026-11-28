@@ -205,7 +205,7 @@ local function build()
 	local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	hint:SetPoint("RIGHT", refreshButton, "LEFT", -10, 0)
 	hint:SetTextColor(C.subLabel[1], C.subLabel[2], C.subLabel[3])
-	hint:SetText("/qt why")
+	hint:SetText("/ftp why")
 
 	f:SetScript("OnShow", function() showList() end)
 	f:Hide() -- new frames start shown; the first Show below lays it out

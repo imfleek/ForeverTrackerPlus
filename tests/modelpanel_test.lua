@@ -55,6 +55,7 @@ local root = { tracker = ns, objectives = { npcIdFor = function(name) return nam
 	rxp = { guideTextColors = { RXP_ENEMY_ = "FFFF5722" } } } }
 assert(loadfile(dir .. "/Tracker/NpcPanel.lua", "t", env))("ForeverTrackerPlus", root)
 local api = ns.api
+api.ownTrackerFrame = function() return env.ObjectiveTrackerFrame end -- stands in for our own tracker's frame
 api.questieNpc = function(id)
 	return id == 3205 and { name = "Zalazane", minLevel = 10, maxLevel = 10, rank = 1 } or nil
 end
@@ -173,6 +174,70 @@ api.hideNpcPanel()
 api.showNpcPanel("Taillasher Eggs", { kind = "pick", owner = line })
 check("a model again: the icon hidden", panel.shown and model.shown and not iconTex.shown)
 api.hideNpcPanel()
+-- 3.2 (user: a lag spike on an item with no model): the answer is kept; the next hover does not search again
+env.GetTime = function() return 100 end -- a kept "none" lasts 60 s
+local maps = 0
+local realMaps = api.questieObjectMaps
+api.questieObjectMaps = function(id) maps = maps + 1 return realMaps and realMaps(id) or {} end
+env.C_Map = { GetBestMapForUnit = function() return 1411 end }
+api.showNpcPanel("Phial of Scrying", { kind = "pick", owner = line })
+check("item again: its icon from the kept answer", panel.shown and iconTex.shown and iconTex.tex == 134776)
+api.hideNpcPanel()
+api.showNpcPanel("Nothing At All Here", { kind = "pick", owner = line })
+local first = maps
+check("no model and no icon: no panel, and no retries", not panel.shown and ticks == nil)
+api.showNpcPanel("Nothing At All Here", { kind = "pick", owner = line })
+check("hovered again: no second search", not panel.shown and maps == first)
+api.hideNpcPanel()
+-- 3.2 (user: "Handful of Cattails" had no model): an object named inside the item's name
+local objIds = env.LibQuestieDB.Object.IdsByName
+env.LibQuestieDB.Object.IdsByName = function(n)
+	if n == "Cattail" then return { 661093 } end
+	if n == "Speargrass" then return { 661092 } end
+	return objIds(n)
+end
+ns.objectModels[661093], ns.objectModels[661092] = 189739, 201372
+check("name inside: Handful of Cattails -> Cattail", select(2, api.npcPanelNameInside("Handful of Cattails")) == "Cattail")
+check("name inside: Speargrass Cuttings -> Speargrass", api.npcPanelNameInside("Speargrass Cuttings") == 201372)
+check("name inside: nothing named inside", api.npcPanelNameInside("Phial of Scrying") == nil)
+api.showNpcPanel("Handful of Cattails", { kind = "pick", owner = line })
+v = visible()
+check("hover Handful of Cattails: the Cattail's model", panel.shown and model.calls.SetModel[1] == 189739
+	and v[1] == "Handful of Cattails" and v[2] == "<Cattail>")
+api.hideNpcPanel()
+env.LibQuestieDB.Object.IdsByName = objIds
+-- the step's quest: its object named inside the item's name, as a plural
+local realQO = api.questObjects
+api.questObjects = function(q) return q == 90 and { { objectId = 661093, name = "Cattail" }, { objectId = 500, name = "Battered Chest" } } or {} end
+api.showNpcPanel("Bundle of Cattails", { kind = "pick", owner = line, quests = { 90 } })
+v = visible()
+check("quest object inside the item's name: Bundle of Cattails -> Cattail", panel.shown
+	and model.calls.SetModel[1] == 189739 and v[2] == "<Cattail>")
+api.hideNpcPanel()
+api.questObjects = realQO
+-- learnt at the loot window: the item's object, exact
+env.GetNumLootItems = function() return 3 end
+env.GetLootSlotType = function(i) return i == 3 and 2 or 1 end
+env.GetLootSlotInfo = function(i) return 1, ({ "Glowing Reed", "Linen Cloth", "3 Copper" })[i] end
+env.GetLootSourceInfo = function(i)
+	return ({ "GameObject-0-1-2-3-661092-0000", "Creature-0-1-2-3-3205-0000", "GameObject-0-1-2-3-661092-0000" })[i], 1
+end
+api.questieObjectName = function(id) return id == 661092 and "Speargrass" or objectNames[id] end
+api.showNpcPanel("Glowing Reed", { kind = "pick", owner = line })
+check("not looted yet: no model", not panel.shown)
+api.hideNpcPanel()
+api.npcPanelLearnLoot()
+check("looted: item -> object kept; a creature's loot and money are not", ns.db.itemObjects["Glowing Reed"] == 661092
+	and ns.db.itemObjects["Linen Cloth"] == nil and ns.db.itemObjects["3 Copper"] == nil)
+api.showNpcPanel("Glowing Reed", { kind = "pick", owner = line })
+v = visible()
+check("looted: the object's model (the old 'none' answer dropped)", panel.shown and model.calls.SetModel[1] == 201372
+	and v[2] == "<Speargrass>")
+api.hideNpcPanel()
+local prof = io.open(dir .. "/Tracker/Profiles.lua"):read("a")
+check("itemObjects is not copied into profiles", prof:find("itemObjects = true", 1, true) ~= nil)
+api.questieObjectMaps = realMaps
+env.C_Map = nil
 env.C_Item = nil
 
 -- quest tracker: the objective line under the mouse
@@ -181,27 +246,8 @@ check("line match: an NPC", api.npcPanelLineMatch("|cffffffffZalazane slain: 0/1
 check("line match: an object", api.npcPanelLineMatch("Taillasher Egg: 3/8", npcs) == npcs[2])
 check("line match: nothing", api.npcPanelLineMatch("Explore the cave", npcs) == nil)
 api.questObjectiveNpcs = function() return npcs end
-local block = frame("Frame")
-local l1, l2 = frame("Frame"), frame("Frame")
-l1.Text, l2.Text = frame("FontString"), frame("FontString")
-l1.Text.text, l2.Text.text = "Zalazane slain: 0/1", "Taillasher Egg: 0/8"
-l1.over, l1.top, l2.over, l2.top = false, 520, true, 500
-block.usedLines = { a = l1, b = l2 }
-api.npcHoverStart(block, 826)
-check("hovering the egg line: the object's panel", panel.shown and model.calls.SetModel[1] == 200000)
-api.hideNpcPanel()
 -- R106-108: an item objective: matched by the item's name, the object's model shown
 npcs[#npcs + 1] = { objectId = 157936, name = "Un'Goro Dirt Pile", item = "Un'Goro Soil", text = "Un'Goro Soil" }
-l2.Text.text = "Un'Goro Soil: 0/25"
-api.npcHoverStart(block, 4141)
-v = visible()
-check("hovering an item objective: its object's model, the item's name over the object's",
-	panel.shown and model.calls.SetModel[1] == 201234 and v[1] == "Un'Goro Soil" and v[2] == "<Un'Goro Dirt Pile>")
--- R106-115: another quest hovered before this one's OnLeave: the panel goes
-api.questObjectiveNpcs = function(q) return q == 999 and {} or npcs end
-api.npcHoverStart(frame("Frame"), 999)
-check("another quest (no objectives to show) hovered: the old panel closes", not panel.shown)
-api.questObjectiveNpcs = function() return npcs end
 -- R106-127: a "More quests" line's hover button (MoreQuests.lua)
 local moreLine = frame("Button")
 moreLine.over, moreLine.top = true, 480
@@ -214,8 +260,6 @@ api.npcLineHover(moreLine, 4141, "Explore the cave")
 check("More quests line naming nothing: no panel", not panel.shown)
 ns.db.npcPanelQuests = false
 api.hideNpcPanel()
-api.npcHoverStart(block, 826)
-check("option off: no panel", not panel.shown)
 api.npcLineHover(moreLine, 4141, "Un'Goro Soil: 0/25")
 check("option off: no panel on a More quests line", not panel.shown)
 print(pass and "PASS" or "FAILED")

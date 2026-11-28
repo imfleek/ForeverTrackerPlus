@@ -150,6 +150,37 @@ local function finisherText(id)
 	if npc then return where("Npc", npc) end
 	if object then return where("Object", object) end
 end
+-- 3.2 (user idea 34): who takes the quest in and in which zone: kind ("Npc"/"Object"), id, name, zone name
+-- api.turnInBundles(groups): zone name -> number of finished quests taken in there (2 or more only)
+local finisherZone = {} -- quest id -> zone name
+function api.turnInBundles(groups)
+	local out = {}
+	local db = ns.db
+	if not db or db.turnInBundle == false or type(groups) ~= "table" then return out end
+	for _, g in ipairs(groups) do
+		for _, q in ipairs(type(g.quests) == "table" and g.quests or {}) do
+			if q.complete and q.id then
+				if not finisherZone[q.id] then
+					local ok, _, _, _, zone = pcall(api.questieFinisher, q.id)
+					if ok and zone then finisherZone[q.id] = zone end -- not kept when unknown: Questie may load later
+				end
+				local z = finisherZone[q.id]
+				if z then out[z] = (out[z] or 0) + 1 end
+			end
+		end
+	end
+	for z, n in pairs(out) do if n < 2 then out[z] = nil end end
+	return out
+end
+function api.questieFinisher(id)
+	local by = get("Quest", id, "finishedBy")
+	if type(by) ~= "table" then return nil end
+	local kind, who = "Npc", firstOf(by[1])
+	if not who then kind, who = "Object", firstOf(by[2]) end
+	if not who then return nil end
+	local zone = mainSpawn(get(kind, who, "spawns")) or get(kind, who, "zoneID")
+	return kind, who, get(kind, who, "name"), zoneName(zone)
+end
 
 -- Where each objective is found: creatures and objects by their spawn zones, items by what drops them.
 -- The entries of one kind of a quest's Questie objectives (1 creatures, 2 objects, 3 items, 5 kill credit): only
@@ -209,6 +240,12 @@ end
 
 local function questName(id)
 	return (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)) or get("Quest", id, "name") or ("#" .. id)
+end
+-- a quest's name from Questie (nil without it); the guide's later steps use it (Objectives/tracker/Rows.lua)
+function api.questieQuestTitle(id)
+	if not (id and api.questieOn and api.questieOn()) then return nil end
+	local n = get("Quest", id, "name")
+	return type(n) == "string" and n or nil
 end
 
 -- The whole chain in order: back through the prerequisites, this quest, forward through nextQuestInChain
@@ -883,19 +920,42 @@ function api.questieSpot(kind, id)
 	return map, x and x / 100, y and y / 100, zoneName(zone)
 end
 function api.questieGet(kind, id, field) return get(kind, id, field) end
--- 3.1.2 (Guides.lua books): Questie hides the quest (its blacklist: taken out, or not in the game yet)
-function api.questieHidden(id)
-	local corrections = module("QuestieCorrections")
-	local hidden = corrections and corrections.hiddenQuests
-	return type(hidden) == "table" and hidden[id] and true or false
+-- 3.2 (Chains.lua): every Questie quest that keep(questID, get) accepts, read a frame at a time like the guides' data;
+-- cached by name. nil while reading (onReady runs when done); a list of quest IDs after.
+local scans = {}
+function api.questieScan(name, keep, onReady)
+	local s = scans[name]
+	if s and s.done then return s.list end
+	if s then
+		if onReady then s.waiters[#s.waiters + 1] = onReady end
+		return nil
+	end
+	if not api.questieOn() then return nil end
+	local ids = allQuestIds()
+	if not ids or not (C_Timer and C_Timer.NewTicker) then return nil end
+	s = { list = {}, waiters = {}, done = false }
+	if onReady then s.waiters[1] = onReady end
+	scans[name] = s
+	local i = 1
+	local ticker
+	ticker = C_Timer.NewTicker(0, function()
+		local stop = math.min(i + QUESTS_PER_FRAME - 1, #ids)
+		for n = i, stop do
+			local q = ids[n]
+			local ok, yes = pcall(keep, q, get)
+			if ok and yes then s.list[#s.list + 1] = q end
+		end
+		i = stop + 1
+		if i > #ids then
+			ticker:Cancel()
+			s.done = true
+			for _, fn in ipairs(s.waiters) do pcall(fn) end
+			s.waiters = {}
+		end
+	end)
+	return nil
 end
--- the name of the NPC a quest is turned in at, or nil
-function api.questieLibrarian(id)
-	local fin = get("Quest", id, "finishedBy")
-	local npc = type(fin) == "table" and type(fin[1]) == "table" and fin[1][1]
-	local name = npc and get("Npc", npc, "name")
-	return type(name) == "string" and name or nil
-end
+api.questieForPlayerQuest = forPlayer
 
 -- 3.0 "a quest close by" (Helpers.lua): the nearest quest Questie lists as available (its AvailableQuests module's
 -- __availableQuests) whose giver NPC stands within maxYards; skip: quest IDs already shown. Grey quests are left out.
@@ -1319,7 +1379,7 @@ function api.applyQuestie()
 	if clearCaches then clearCaches() end
 	if api.applyExtras then api.applyExtras() end
 	if api.sortNow then api.sortNow() end
-	if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+	if api.refreshQuests then api.refreshQuests() end
 end
 
 clearCaches = function()

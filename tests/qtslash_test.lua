@@ -21,7 +21,7 @@ check("all sets every step", ns.runCommand("all") and db.followingSteps == 101)
 check("toggle flips", ns.runCommand("toggle") and db.enabled == false)
 check("unknown is left to /qt", ns.runCommand("height 300") == false and ns.runCommand("zone") == false)
 printed = {}
-check("help prints /qt lines", ns.runCommand("help") and table.concat(printed, "\n"):find("/qt ", 1, true) ~= nil
+check("help prints /ftp lines", ns.runCommand("help") and table.concat(printed, "\n"):find("/ftp ", 1, true) ~= nil
 	and not table.concat(printed, "\n"):find("/rt", 1, true))
 -- Core.lua's no-RestedXP branch: guide commands say why, others go to /qt's help
 local src = io.open(A .. "/Objectives/Core.lua"):read("*a")
@@ -29,12 +29,12 @@ check("Core.lua registers no /rt", not src:find('"/rt"', 1, true) and not src:fi
 local qt = io.open(A .. "/Tracker/Core.lua"):read("*a")
 check("/qt passes on unknown commands", qt:find("guide.runCommand(msg)", 1, true) ~= nil)
 for _, c in ipairs({ '"config"', '"guide"', '"quests"', '"orphan"', '"height <px>"', '"scale <0.5-1.5>"', '"step <px>"', '"zone"', '"sort"',
-	'"lock"', '"unlock"', '"reset"', '"on"', '"off"', '"help"' }) do
+	'"lock"', '"unlock"', '"help"' }) do
 	check("/qt help lists " .. c, qt:find("{ " .. c .. ",", 1, true) ~= nil)
 end
 check("/qt help is not taken by the guide's help", qt:find('cmd ~= "help"', 1, true) ~= nil)
 printed = {}
 ns.runCommand("help")
-check("guide help lists steps", table.concat(printed, "\n"):find("/qt steps", 1, true) ~= nil)
+check("guide help lists steps", table.concat(printed, "\n"):find("/ftp steps", 1, true) ~= nil)
 check("/qt orphan opens the Orphaned quests page", qt:find('cmd == "orphan" or cmd == "orphans"', 1, true) and qt:find('openConfigTab("orphans")', 1, true) ~= nil)
 print(pass and "ALL OK" or "SOME FAILED")

@@ -32,9 +32,6 @@ ns.db.condense = false
 print("star with Elite+ icons off:", tostring(api.attunementStar(98)))
 ns.db.condense = true
 local src = io.open(dir .. "/Tracker/Extras.lua"):read("a")
-local body = src:match("(local REWARD_PATTERNS = {.-\nlocal function baseTitle%(text%).-\nend)")
-local baseTitle = load(body .. "\nreturn baseTitle")()
 local star = api.attunementStar(98)
 local decorated = ("      [60] The Molten Core  |cffb087ff5400xp|r"):gsub("^(%s*)", function(i) return i .. star end, 1)
 print("decorated:", (decorated:gsub("|T[^|]*|t", "[star]"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
-print("cleaned twice-decorated:", baseTitle(decorated:gsub("^(%s*)", function(i) return i .. star end, 1)))

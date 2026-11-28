@@ -226,6 +226,14 @@ local function tick(_, elapsed)
 	if state.fadeT then fadeMoons() end
 	sinceTick = sinceTick + elapsed
 	local step, shown = arrowView()
+	-- 3.2 (user): the arrow has a new target (another waypoint): a gold ring pulses out from it once (Animations.lua)
+	local target = af.element
+	if target ~= state.pulseTarget then
+		local had = state.pulseTarget
+		state.pulseTarget = target
+		local tapi = root.tracker and root.tracker.api
+		if had ~= nil and target ~= nil and af:IsShown() and tapi and tapi.animArrowPulse then pcall(tapi.animArrowPulse, af) end
+	end
 	-- CONSTRAINT: RestedXP flips shown/step frame-to-frame near a route end (binary alpha on its arrow); a change must
 	-- hold for one tick before it syncs or every flip churns hide/show.
 	if step ~= state.step or shown ~= state.shown then

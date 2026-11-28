@@ -344,6 +344,12 @@ local function createCard()
 	body.eye:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	skull = body:CreateTexture(nil, "ARTWORK")
 	skull:SetTexture(SKULL)
+	-- 3.2 (user): the run light, left of the skull: a small red dot that pulses while the run goes on
+	body.runLight = body:CreateTexture(nil, "OVERLAY")
+	body.runLight:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Textures\\MarkerGlow")
+	body.runLight:SetVertexColor(1, 0.15, 0.1, 1)
+	body.runLight:SetSize(12, 12)
+	body.runLight:Hide()
 	deathText = body:CreateFontString(nil, "OVERLAY")
 	deathText:SetTextColor(1, 1, 1)
 	deathText:SetShadowOffset(1, -1)
@@ -600,7 +606,7 @@ local function hookFdj()
 	end)
 end
 
--- the card's place in the fixed strip (Core.lua refresh, before the tracked reputation): returns its room
+-- the card's texts and fonts
 local function fill(kind, name)
 	local hFile, hSize, hFlags = fontOf("ObjectiveTrackerHeaderFont", 14)
 	local lFile, lSize, lFlags = fontOf("ObjectiveTrackerLineFont", 12)
@@ -613,7 +619,16 @@ local function fill(kind, name)
 	bannerText:SetFont(hFile, hSize + 1, "OUTLINE")
 	bannerText:SetText(tostring(math.max(players, 1)))
 	deathText:SetFont(lFile, lSize + 1, lFlags)
-	deathText:SetText(tostring(api.dungeonDeaths()))
+	local deaths = api.dungeonDeaths()
+	deathText:SetText(tostring(deaths))
+	-- 3.2 (user): more deaths: the number shakes red; another number of players: it bumps (Animations.lua)
+	if type(deaths) == "number" and type(body.qtsDeaths) == "number" and deaths > body.qtsDeaths and api.animDeath then
+		api.animDeath(deathText)
+	end
+	body.qtsDeaths = deaths
+	local count = math.max(players, 1)
+	if type(body.qtsPlayers) == "number" and body.qtsPlayers ~= count and api.animPartyBump then api.animPartyBump(bannerText) end
+	body.qtsPlayers = count
 	return hSize, lSize
 end
 
@@ -625,11 +640,14 @@ function api.layoutDungeonCard(anchor, base, alpha)
 		release()
 		wokeFor = nil
 		if card then card:Hide() end
+		if body then body.qtsFdjWas = nil end
 		return 0
 	end
 	if not card then createCard() end
 	hookFdj()
-	local module = _G.QuestObjectiveTracker
+	-- our tracker's top slot (Own/Frame.lua api.ownCardHost) and its Quests header: width, scale, left edge and header
+	-- height come from them
+	local module = anchor
 	local ui = UIParent:GetEffectiveScale()
 	local s = (module and module.GetEffectiveScale and module:GetEffectiveScale() or anchor:GetEffectiveScale()) / ui
 	local width = module and module.GetWidth and module:GetWidth() or 260
@@ -642,7 +660,7 @@ function api.layoutDungeonCard(anchor, base, alpha)
 	card:ClearAllPoints()
 	card:SetPoint("TOPLEFT", anchor, "TOPLEFT", dx / s, -base / s)
 	-- R106-97: the Quests header's width, left edge, height and art (the line under it), so both lines match
-	local questsHeader = _G.QuestObjectiveTracker and _G.QuestObjectiveTracker.Header
+	local questsHeader = api.ownQuestsHeaderFrame and api.ownQuestsHeaderFrame()
 	local qw = questsHeader and questsHeader.GetWidth and questsHeader:GetWidth()
 	local qLeft = questsHeader and questsHeader.GetLeft and questsHeader:GetLeft()
 	header:ClearAllPoints()
@@ -671,6 +689,8 @@ function api.layoutDungeonCard(anchor, base, alpha)
 	if fdj() and not wokeFor then wokeFor = true; wakeFdj(); t = fdjWindow() end
 	if t and fdj() then adopt(t) end
 	if collapsed then
+		if api.hideDungeonExtras then api.hideDungeonExtras() end
+		body.qtsFdjWas = nil
 		body:Hide()
 		-- its click-to-target areas follow the portraits' places (DungeonJournal puts them there every second): the
 		-- portraits off the screen, so no unseen click area stays where the card's body was
@@ -685,6 +705,12 @@ function api.layoutDungeonCard(anchor, base, alpha)
 		-- R106-100: the instance line under the name (InstanceCap.lua), when on
 		local capOn = api.instanceCapOn and api.instanceCapOn() and api.instanceCapText
 		local capH = capOn and (lSize + 4) or 0
+		-- 3.2 (DungeonPlus.lua): splits, the party's quests here, share, boss abilities; lines under the instance line
+		if api.layoutDungeonExtras then
+			local okX, extraH = pcall(api.layoutDungeonExtras, body, PAD, PAD + nameH + capH + 2,
+				width - 2 * PAD - BANNER_W - 6, lSize, name)
+			if okX and type(extraH) == "number" then capH = capH + extraH end
+		end
 		local contentTop = math.max(PAD + nameH + capH + ROW_GAP, BANNER_H + 2)
 		local cardH = math.max(PAD + nameH + capH + PAD, BANNER_H + 4)
 		if capOn then
@@ -693,6 +719,11 @@ function api.layoutDungeonCard(anchor, base, alpha)
 			capText:SetText(api.instanceCapText(name))
 			capText:ClearAllPoints()
 			capText:SetPoint("TOPLEFT", body, "TOPLEFT", PAD, -(PAD + nameH + 2))
+			-- 3.2 (user): the hourly limit just reached: the line shakes (Animations.lua animCapShake)
+			local okC, count, limit = pcall(api.instanceCap)
+			local full = okC and type(count) == "number" and type(limit) == "number" and count >= limit or false
+			if full and body.qtsCapFull == false and api.animCapShake then api.animCapShake(capText) end
+			body.qtsCapFull = full
 			capText:SetWidth(width - 2 * PAD - BANNER_W - 6)
 			capText:Show()
 			body.capHit:Show()
@@ -724,6 +755,11 @@ function api.layoutDungeonCard(anchor, base, alpha)
 		skull:SetSize(skullSize, skullSize)
 		skull:ClearAllPoints()
 		skull:SetPoint("RIGHT", deathText, "LEFT", -3, 0)
+		body.runLight:ClearAllPoints()
+		body.runLight:SetPoint("RIGHT", skull, "LEFT", -3, 0)
+		if api.animRunLight then
+			api.animRunLight(body.runLight, api.dungeonRunActive and api.dungeonRunActive() or false)
+		end
 		body.skullHit:ClearAllPoints()
 		body.skullHit:SetPoint("TOPLEFT", skull, "TOPLEFT")
 		body.skullHit:SetPoint("BOTTOMRIGHT", deathText, "BOTTOMRIGHT")
@@ -753,12 +789,49 @@ function api.layoutDungeonCard(anchor, base, alpha)
 			end
 		end
 		body.eye.icon:SetTexture(fdjHidden() and EYE_CLOSED or EYE_OPEN)
+		-- 3.2 (user): the bosses' portraits drop in when they come into view (the card opens, the eye opens)
+		local fdjOn = adopted ~= nil and t:IsShown() and true or false
+		if fdjOn and not body.qtsFdjWas and api.animDropIn and type(t.portraits) == "table" then
+			local list = {}
+			for _, f in ipairs(t.portraits) do if f.IsShown and f:IsShown() then list[#list + 1] = f end end
+			pcall(table.sort, list, function(a, b)
+				local _, _, _, ax, ay = a:GetPoint(1)
+				local _, _, _, bx, by = b:GetPoint(1)
+				ax, ay, bx, by = tonumber(ax) or 0, tonumber(ay) or 0, tonumber(bx) or 0, tonumber(by) or 0
+				if ay ~= by then return ay > by end
+				return ax < bx
+			end)
+			pcall(api.animDropIn, list)
+		end
+		body.qtsFdjWas = fdjOn
 		body:Show()
 		height = height + cardH + 8
 	end
 	card:SetSize(width, height)
 	card:Show()
 	return height * s
+end
+
+-- 3.2 (user): a boss died faster than your best (DungeonPlus.lua): "NEW BEST" on the card
+function api.dungeonCardNewBest(text)
+	if body and body:IsShown() and api.animNewBest then api.animNewBest(body, text) end
+end
+
+-- 3.2 (user): a boss was killed (DungeonPlus.lua): its portrait turns over and shows a check (Animations.lua
+-- animBossKill); the last boss (cleared): the card flashes and says CLEARED (animCleared)
+function api.dungeonCardKill(bossName, cleared)
+	local t = adopted
+	if t and type(t.portraits) == "table" and api.animBossKill then
+		for _, f in ipairs(t.portraits) do
+			local b, grp = f.boss, type(f.group) == "table" and f.group
+			local match = type(b) == "table" and b.name == bossName
+			if not match and grp and type(grp.members) == "table" then
+				for _, m in ipairs(grp.members) do if type(m) == "table" and m.name == bossName then match = true end end
+			end
+			if match and f.IsShown and f:IsShown() then api.animBossKill(f) break end
+		end
+	end
+	if cleared and body and body:IsShown() and api.animCleared then api.animCleared(body) end
 end
 
 function api.setDungeonCard(on)

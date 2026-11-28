@@ -2,9 +2,8 @@
 -- it is shown there (user). Quest list > "Tracked reputation at the top" (db.repTrack, on by default).
 --
 -- The row: the faction's name and its standing, and under them a progress bar (the objectives' bar, Extras.lua) with
--- the points in this standing. It joins the fixed strip at the top (Core.lua refresh: after the RXP guide, before the
--- "Quests" header when that is kept at the top), so the quests scroll under it. Clicking it opens the reputation
--- window.
+-- the points in this standing. It sits in our tracker's top slot (Own/Frame.lua, under its "Reputation" header).
+-- Clicking it opens the reputation window.
 --
 -- CONSTRAINT: the game's bar is only made see-through and deaf to the mouse (alpha 0, EnableMouse false), never hidden
 -- or moved: the status bars sit in Blizzard's own layout (StatusTrackingBarManager in Retail-style clients,
@@ -63,7 +62,8 @@ local function watched()
 	end
 	local have, need = 0, 0
 	if low and high and value then have, need = value - low, high - low end
-	return { name = name, label = label or "", reaction = reaction or 4, have = have, need = need, paragon = paragon }
+	return { name = name, label = label or "", reaction = reaction or 4, have = have, need = need, paragon = paragon,
+		value = value }
 end
 api.watchedReputation = watched
 
@@ -178,6 +178,7 @@ local function rowHeight()
 end
 
 -- the texts and the bar from the watched faction (no layout: also safe in combat)
+local lastRep -- 3.2: the faction and points shown last (the gain float)
 local function fill(w)
 	if not row or not w then return end
 	local hFile, hSize, hFlags = fontOf("ObjectiveTrackerHeaderFont", 14)
@@ -200,13 +201,20 @@ local function fill(w)
 		api.drawProgressBar(bar, nameText, 0, lFile, lSize, lFlags, have, need, "BOTTOMLEFT", width, barH, -GAP, "TOPLEFT",
 			file)
 		bar.text:SetText(w.need > 0 and ("%d / %d"):format(w.have, w.need) or w.label)
+		-- 3.2 (user): points gained on the same faction: "+250" rises from the bar (Animations.lua animFloat)
+		local last = lastRep
+		if last and last.name == w.name and type(w.value) == "number" and type(last.value) == "number"
+			and w.value > last.value and api.animFloat then
+			api.animFloat(row, bar.text, ("+%d"):format(w.value - last.value))
+		end
+		lastRep = { name = w.name, value = w.value }
 	end
 end
 
 local shownFor -- the faction the row was laid out for (a change of shown / not shown lays the tracker out again)
 
--- Core.lua refresh: the row's place in the fixed strip. anchor: the frame the strip hangs from (the ghost), base: the
--- strip's height above it (UIParent units), alpha: the quest list's opacity. Returns the room it takes (UIParent units).
+-- Own/Frame.lua: the row's place in our top slot. anchor: the slot, base: the room above it in the slot (UIParent units),
+-- alpha: the opacity. Returns the room it takes (UIParent units).
 function api.layoutTrackedReputation(anchor, base, alpha)
 	local w = enabled() and watched() or nil
 	hideGameBar(w ~= nil)
@@ -216,7 +224,8 @@ function api.layoutTrackedReputation(anchor, base, alpha)
 		return 0
 	end
 	if not row then createRow() end
-	local module = _G.QuestObjectiveTracker
+	-- our tracker's top slot (Own/Frame.lua api.ownCardHost)
+	local module = anchor
 	local ui = UIParent:GetEffectiveScale()
 	local s = (module and module.GetEffectiveScale and module:GetEffectiveScale() or anchor:GetEffectiveScale()) / ui
 	local width = module and module.GetWidth and module:GetWidth() or (anchor:GetWidth() * anchor:GetEffectiveScale() / ui / s)
@@ -241,6 +250,9 @@ function api.layoutTrackedReputation(anchor, base, alpha)
 	fill(w)
 	return h * s
 end
+
+-- our own tracker: whether the row would show (its "Reputation" header shows with it, also while folded away)
+function api.trackedReputationShown() return enabled() and watched() ~= nil end
 
 function api.setRepTrack(on)
 	db.repTrack = on and true or false

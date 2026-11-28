@@ -23,6 +23,8 @@ frameMT.__index = function(t, k)
 	if k == "HookScript" or k == "SetScript" then return function(self, name, fn) rawset(self, "_s_" .. name, fn) end end
 	if k:match("^Create") then return function() return setmetatable({}, frameMT) end end
 	if k == "ScrollBar" or k == "Instructions" or k == "qtsHint" or k == "qtsOwn" then return nil end
+	-- child frames, not methods (our own tracker reads Blizzard's Header, Text and buttons at login)
+	if k == "Header" or k == "Text" or k == "MinimizeButton" or k == "FilterButton" or k == "NineSlice" then return nil end
 	return function() return nil end
 end
 _G.CreateFrame = function() return setmetatable({}, frameMT) end

@@ -162,6 +162,32 @@ local function lookupItemSource(name)
 	return nil
 end
 
+-- 3.2 (user: "Handful of Cattails" showed no model; it is new in Forever, picked from a "Cattail"): an object whose
+-- name is a part of the item's name ("Cattail" in "Handful of Cattails", "Speargrass" in "Speargrass Cuttings"),
+-- longest part first, also without a plural s; for items Questie does not link to their object
+local SMALL = { ["of"] = true, ["the"] = true, ["a"] = true, ["an"] = true, ["and"] = true }
+local function lookupNameInside(name)
+	if type(name) ~= "string" or not next(ns.objectModels) then return nil end
+	local w = {}
+	for word in name:gmatch("%S+") do w[#w + 1] = word end
+	for len = #w - 1, 1, -1 do
+		for i = 1, #w - len + 1 do
+			local first, last = w[i], w[i + len - 1]
+			if not SMALL[first:lower()] and not SMALL[last:lower()] then
+				local part = table.concat(w, " ", i, i + len - 1)
+				for _, try in ipairs({ part, (part:gsub("es$", "")), (part:gsub("s$", "")) }) do
+					if #try >= 4 then
+						local file = lookupObjectModel(try)
+						if file then return file, try end
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+api.npcPanelNameInside = lookupNameInside -- (tests)
+
 -- R106-111: a name the guide spells wrong ("Loost Dirt", "Clliffspring Chest"): the object names a letter or two off
 -- (Levenshtein distance, cut short past the limit); nil when farther
 local function distance(a, b, max)
@@ -236,11 +262,27 @@ local function lookupQuestObject(names, quests)
 		end
 		if hit and not many then return hit end
 	end
+	-- 3.2 (user: "make it easier for item names to match with their object names"): the other way round, the
+	-- quest's object named inside the item's name, also as a plural ("Cattail" in "Handful of Cattails")
+	for _, n in ipairs(names) do
+		local word = words(n)
+		local hit, many
+		for _, c in ipairs(list) do
+			local core = words(c.name):sub(1, -2)
+			if #core > 3 and (word:find(core .. " ", 1, true) or word:find(core .. "s ", 1, true) or word:find(core .. "es ", 1, true)) then
+				if hit and hit.file ~= c.file then many = true end
+				hit = hit or c
+			end
+		end
+		if hit and not many then return hit end
+	end
 	return closest(names, list)
 end
 
--- every object with a model, by name (built a slice per frame on first need)
-local modeled, modeledBuilding
+-- every object with a model, by name (built a slice per frame on first need); modeledByLen: the same, by name length,
+-- so a near-spelling search reads only the names a letter or two longer or shorter (3.2, user: a lag spike on an item
+-- with no model: the search read all ~10,000 names, twice a second)
+local modeled, modeledBuilding, modeledByLen
 local MODELED_SLICE = 1000
 local function buildModeled()
 	if modeled or modeledBuilding or not api.questieObjectName then return end
@@ -258,7 +300,14 @@ local function buildModeled()
 			end
 		end
 		at = stop
-		if at < #ids and C_Timer and C_Timer.After then C_Timer.After(0, step) else modeled, modeledBuilding = list, nil end
+		if at < #ids and C_Timer and C_Timer.After then C_Timer.After(0, step) return end
+		local byLen = {}
+		for _, c in ipairs(list) do
+			local b = byLen[#c.low]
+			if not b then b = {}; byLen[#c.low] = b end
+			b[#b + 1] = c
+		end
+		modeled, modeledByLen, modeledBuilding = list, byLen, nil
 	end
 	step()
 end
@@ -269,7 +318,21 @@ local function lookupTypoHere(names)
 	if not modeled then return nil end
 	local here = playerMaps()
 	if not (here and api.questieObjectMaps) then return nil end
-	return closest(names, modeled, function(c)
+	local near, seen = {}, {}
+	for _, n in ipairs(names) do
+		local len = #n
+		if len >= MIN_TYPO_LEN then
+			local max = maxTypos(n:lower())
+			for l = len - max, len + max do
+				if not seen[l] then
+					seen[l] = true
+					for _, c in ipairs(modeledByLen[l] or {}) do near[#near + 1] = c end
+				end
+			end
+		end
+	end
+	if #near == 0 then return nil end
+	return closest(names, near, function(c)
 		for map in pairs(api.questieObjectMaps(c.id)) do if here[map] then return true end end
 		return false
 	end)
@@ -624,7 +687,8 @@ local function place(owner, beside)
 			return
 		end
 	end
-	local tracker = _G.ObjectiveTrackerFrame
+	-- beside our tracker's frame
+	local tracker = api.ownTrackerFrame and api.ownTrackerFrame()
 	local s = panel:GetEffectiveScale() or 1
 	local top = owner and owner.GetTop and owner:GetTop()
 	local left = tracker and tracker.GetLeft and tracker:GetLeft()
@@ -725,7 +789,87 @@ local function stopRetry()
 	retryTicker = nil
 end
 
+-- 3.2 (user: a lag spike on an item with no model): what a name came to, once every name list was ready, so the next
+-- hover (and the retries) do not search again. [key] = { modelFile, source } or { icon } or { none = <time> } (a miss is kept 60 s: Questie may still be loading)
+local answers = {}
+local NONE_KEEP = 60
+local function answerKey(cur, names)
+	local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+	local q = type(cur.quests) == "table" and table.concat(cur.quests, ",") or ""
+	return table.concat(names, "|") .. "#" .. q .. "#" .. tostring(map)
+end
+api.npcPanelAnswers = answers -- (tests)
+
 -- the model for the hovered name (or one of its other spellings); true when found
+-- 3.2 (user: "make it easier for item names to match with their object names"): what you looted from an object, learnt
+-- at the loot window: db.itemObjects[item name] = object id (any character; not in profiles). Exact, so it is tried first.
+local function objectIdOf(guid)
+	if type(guid) ~= "string" or isSecret(guid) then return nil end
+	local kind, _, _, _, _, id = strsplit("-", guid)
+	if kind ~= "GameObject" then return nil end
+	return tonumber(id)
+end
+local function lookupLooted(name)
+	local learned = db and type(db.itemObjects) == "table" and db.itemObjects[name]
+	local file = learned and ns.objectModels[learned]
+	if not file then return nil end
+	local from = api.questieObjectName and api.questieObjectName(learned)
+	return file, type(from) == "string" and not isSecret(from) and from or nil
+end
+function api.npcPanelLearnLoot()
+	if not db or type(GetNumLootItems) ~= "function" or type(GetLootSourceInfo) ~= "function"
+		or type(GetLootSlotInfo) ~= "function" then return end
+	local okN, count = pcall(GetNumLootItems)
+	local learned = false
+	for i = 1, okN and tonumber(count) or 0 do
+		local itemSlot = true
+		if type(GetLootSlotType) == "function" then
+			local okT, slotType = pcall(GetLootSlotType, i)
+			local ITEM = Enum and Enum.LootSlotType and Enum.LootSlotType.Item or 1
+			itemSlot = okT and slotType == ITEM
+		end
+		local okI, _, name = pcall(GetLootSlotInfo, i)
+		local okS, guid = pcall(GetLootSourceInfo, i)
+		local id = okS and objectIdOf(guid)
+		if itemSlot and okI and id and type(name) == "string" and name ~= "" and not isSecret(name) then
+			if type(db.itemObjects) ~= "table" then db.itemObjects = {} end
+			if db.itemObjects[name] ~= id then db.itemObjects[name], learned = id, true end
+		end
+	end
+	if learned then for k in pairs(answers) do answers[k] = nil end end -- the kept answers may be out of date now
+end
+
+local function resolveObject(cur, names)
+	for _, n in ipairs(names) do
+		local file, from = lookupLooted(n)
+		if file then cur.modelFile, cur.source = file, from or cur.source return true end
+	end
+	for _, n in ipairs(names) do
+		local file = lookupObjectModel(n)
+		if file then cur.modelFile = file return true end
+	end
+	for _, n in ipairs(names) do
+		local file, from = lookupItemSource(n)
+		if file then cur.modelFile, cur.source = file, from return true end
+	end
+	-- R106-111: a vague or misspelt name: the step's quest's object, else one a letter or two off here
+	local hit = lookupQuestObject(names, cur.quests)
+	if hit then cur.modelFile, cur.source = hit.file, hit.name return true end
+	if not stillLooking() then
+		for _, n in ipairs(names) do
+			local file, from = lookupNameInside(n)
+			if file then cur.modelFile, cur.source = file, from return true end
+		end
+	end
+	-- the near-spelling search waits until every name list is ready: it runs once, not on each retry
+	if not modeled then buildModeled() end
+	if stillLooking() then return false end
+	hit = lookupTypoHere(names)
+	if hit then cur.modelFile, cur.source = hit.file, hit.name return true end
+	-- an item that does not come from an object: its icon instead of a model
+	cur.icon = lookupItemIcon(names)
+	return cur.icon ~= nil
+end
 local function resolve(cur)
 	if isObject(cur.kind) then
 		if cur.modelFile or cur.icon then return true end
@@ -733,22 +877,25 @@ local function resolve(cur)
 			cur.modelFile = ns.objectModels[cur.objectId]
 			return true
 		end
-		for _, n in ipairs({ cur.name, unpack(cur.forms or {}) }) do
-			local file = lookupObjectModel(n)
-			if file then cur.modelFile = file return true end
-		end
+		if cur.none then return false end
 		local names = { cur.name, unpack(cur.forms or {}) }
-		for _, n in ipairs(names) do
-			local file, from = lookupItemSource(n)
-			if file then cur.modelFile, cur.source = file, from return true end
+		local key = answerKey(cur, names)
+		local a = answers[key]
+		if a and a.none and not (GetTime and GetTime() - a.none < NONE_KEEP) then a, answers[key] = nil, nil end
+		if a then
+			if a.none then cur.none = true return false end
+			cur.modelFile, cur.icon = a.modelFile, a.icon
+			cur.source = a.source or cur.source
+			return true
 		end
-		-- R106-111: a vague or misspelt name: the step's quest's object, else one a letter or two off here
-		local hit = lookupQuestObject(names, cur.quests) or lookupTypoHere(names)
-		if hit then cur.modelFile, cur.source = hit.file, hit.name return true end
-		if stillLooking() then return false end
-		-- an item that does not come from an object: its icon instead of a model
-		cur.icon = lookupItemIcon(names)
-		return cur.icon ~= nil
+		local found = resolveObject(cur, names)
+		if found then
+			answers[key] = { modelFile = cur.modelFile, source = cur.source, icon = cur.icon }
+		elseif not stillLooking() then
+			answers[key] = { none = GetTime and GetTime() or 0 }
+			cur.none = true
+		end
+		return found
 	end
 	if cur.id then return true end
 	for _, n in ipairs({ cur.name, unpack(cur.forms or {}) }) do
@@ -770,12 +917,13 @@ function api.showNpcPanel(name, opts)
 		owner = opts.owner, beside = opts.beside, keepWhile = opts.keepWhile, forms = opts.forms, quests = opts.quests, source = type(opts.source) == "string" and opts.source or nil }
 	if resolve(shown) and render() then return end
 	panel:Hide()
+	if shown.none then return end -- nothing to show, and nothing still loading: no retries
 	if C_Timer and C_Timer.NewTicker then
 		local tries = 0
 		retryTicker = C_Timer.NewTicker(0.5, function()
 			tries = tries + 1
 			local cur = shown
-			if not cur or tries > RETRIES then stopRetry() return end
+			if not cur or tries > RETRIES or cur.none then stopRetry() return end
 			if not stillHovered(cur.keepWhile or cur.owner) then api.hideNpcPanel() return end
 			if resolve(cur) then
 				stopRetry()
@@ -814,18 +962,6 @@ local function npcOnLine(text, npcs)
 end
 api.npcPanelLineMatch = npcOnLine
 
-local function questLines(block)
-	local out = {}
-	for _, key in ipairs({ "usedLines", "lines" }) do
-		if type(block[key]) == "table" then
-			for _, line in pairs(block[key]) do
-				if type(line) == "table" and line.Text and line.IsShown and line:IsShown() then out[#out + 1] = line end
-			end
-		end
-	end
-	return out
-end
-
 -- the panel for an objective's NPC or object (from questObjectiveNpcs), beside the hovered line
 local function showFound(found, owner)
 	if found.objectId then
@@ -833,34 +969,6 @@ local function showFound(found, owner)
 			source = found.item and found.name or nil })
 	else
 		api.showNpcPanel(found.name or found.text, { id = found.id, kind = "enemy", owner = owner })
-	end
-end
-
-local hover -- { block, questId, npcs, line }
-local watcher, elapsed = nil, 0
-local function check()
-	local h = hover
-	if not h then return end
-	-- R106-115: the quest hidden or moved away from under the mouse without an OnLeave: stop watching it
-	if not stillHovered(h.block) then
-		if h.line then api.hideNpcPanel(h.line) end
-		hover = nil
-		if watcher then watcher:Hide() end
-		return
-	end
-	local over
-	for _, line in ipairs(questLines(h.block)) do
-		if line.IsMouseOver and line:IsMouseOver() and (not line.IsVisible or line:IsVisible()) then over = line break end
-	end
-	if over == h.line then return end
-	if h.line then api.hideNpcPanel(h.line) end
-	h.line = nil
-	if not over then return end
-	local ok, text = pcall(over.Text.GetText, over.Text)
-	local found = ok and npcOnLine(text, h.npcs)
-	if found then
-		h.line = over
-		showFound(found, over)
 	end
 end
 
@@ -873,40 +981,6 @@ function api.npcLineHover(owner, questId, text)
 	if not (enabled() and type(owner) == "table" and questId) then return end
 	local found = npcOnLine(text, api.questObjectiveNpcs and api.questObjectiveNpcs(questId) or {})
 	if found then showFound(found, owner) end
-end
-
-function api.npcHoverStart(block, questId)
-	if not (enabled() and type(block) == "table" and questId) then return end
-	-- R106-115: a new quest hovered before the last one's OnLeave (seen in the user's video): the last one's panel goes
-	if hover and hover.block ~= block then
-		if hover.line then api.hideNpcPanel(hover.line) end
-		hover = nil
-	end
-	local npcs = api.questObjectiveNpcs and api.questObjectiveNpcs(questId) or {}
-	if #npcs == 0 then return end
-	if not watcher then
-		watcher = CreateFrame("Frame")
-		watcher:SetScript("OnUpdate", function(_, dt)
-			elapsed = elapsed + (dt or 0)
-			if elapsed < 0.05 then return end
-			elapsed = 0
-			check()
-		end)
-	end
-	hover = { block = block, questId = questId, npcs = npcs }
-	elapsed = 0
-	watcher:Show()
-	check()
-end
-
-function api.npcHoverStop(block)
-	local h = hover
-	if not h or (block and h.block ~= block) then return end
-	-- the block's own OnLeave also fires when the mouse moves onto one of its children: still over it, keep watching
-	if block and block.IsMouseOver and block:IsMouseOver() then return end
-	if h.line then api.hideNpcPanel(h.line) end
-	hover = nil
-	if watcher then watcher:Hide() end
 end
 
 -- the creature type of each unit seen (target, mouseover), by npc id
@@ -1055,7 +1129,9 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	local f = CreateFrame("Frame")
 	f:RegisterEvent("PLAYER_TARGET_CHANGED")
 	f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+	f:RegisterEvent("LOOT_OPENED")
 	f:SetScript("OnEvent", function(_, event)
+		if event == "LOOT_OPENED" then pcall(api.npcPanelLearnLoot) return end
 		seen(event == "PLAYER_TARGET_CHANGED" and "target" or "mouseover")
 	end)
 end

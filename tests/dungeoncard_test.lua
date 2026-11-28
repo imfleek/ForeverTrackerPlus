@@ -219,17 +219,9 @@ api.setDungeonCard(false)
 check("switched off: no room, the window its own", api.layoutDungeonCard(ghost, 0, 1) == 0 and fdjWin.parent == "UIParent"
 	and fdjWin.bg[4] == 0.88)
 local core = io.open(dir .. "/Tracker/Core.lua"):read("a")
-check("Core: the card first in the fixed strip, then the reputation",
-	(core:find("ns.api.layoutDungeonCard, ghost, base", 1, true) or 1e9) < (core:find("ns.api.layoutTrackedReputation, ghost, pinned", 1, true) or 0))
--- R106-92: above a pinned RXP guide: the card at the top (base 0), the guide moved down by its room, not the sections
-check("Core: the card above a pinned guide, the guide moved down by its room",
-	core:find("local base = cardOverGuide and 0 or measurePinned()", 1, true) ~= nil
-	and core:find("if module == guide and pinGuide then px = px - guideShift end", 1, true) ~= nil
-	and core:find("if not cardOverGuide then pinned = pinned + cardRoom; drop = drop + cardRoom end", 1, true) ~= nil
-	and (core:find("guideShift = shift", 1, true) or 1e9) < (core:find("\tpinned = measurePinned()\n\tif not cardOverGuide", 1, true) or 0))
--- R106-102: the guide moved down only by the room it does not already have below the strip's top (no empty space)
-check("the guide's own offset taken off its shift", core:find("own = math.max(top - toScreen(guide, gTop) - guideShift, 0)", 1, true)
-	~= nil and core:find("shift = math.max(cardRoom - own, 0)", 1, true) ~= nil)
+local own = io.open(dir .. "/Tracker/Own/Frame.lua"):read("a")
+check("our tracker: the card first in the top strip, then the reputation",
+	own:find('{ "layoutDungeonCard", "layoutTrackedReputation", "layoutReminders" }', 1, true) ~= nil)
 check("on by default", core:find("dungeonCard = true", 1, true) ~= nil)
 check("in the toc", io.open(dir .. "/ForeverTrackerPlus.toc"):read("a"):find("Tracker/Dungeon.lua", 1, true) ~= nil)
 check("its option", io.open(dir .. "/Tracker/Config.lua"):read("a"):find('"Dungeon card at the top"', 1, true) ~= nil)

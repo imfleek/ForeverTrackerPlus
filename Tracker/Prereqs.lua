@@ -2,7 +2,7 @@
 -- cannot be accepted yet because a prerequisite quest is not done, and step by step how to do those prerequisites.
 -- Data from Questie (Questie.lua api.prereqPlan); the look is the /qt window's (Config.lua api.themeKit).
 local _, root = ...; local ns = root.tracker
-if not ns or root.disabledAll then return end
+if not ns then return end
 local api = ns.api
 
 -- R106-96: wider, for the list of quests on the left and the chosen quest's page on the right
@@ -36,7 +36,7 @@ local function kit() return api.themeKit end
 -- the /qt window's text size and font (Settings Window > Text and font) apply here too
 local function textScale()
 	local k = (ns.db and tonumber(ns.db.configTextSize)) or 1
-	return math.min(math.max(k, 0.8), 1.25) -- as the /qt slider (80-125 %)
+	return math.min(math.max(k, 0.8), 1.25) -- as the /ftp slider (80-125 %)
 end
 local function chosenFont() return api.fontPath and api.fontPath() or nil end
 -- a font string at its font object's size times the text size, in the chosen font
@@ -653,6 +653,10 @@ local function listWidth()
 	return math.floor(math.min(math.max(w * 0.36, 220), 340))
 end
 local function difficultyColor(level)
+	if api.questDifficultyRGB then
+		local r, g, b = api.questDifficultyRGB(level)
+		if r then return r, g, b end
+	end
 	if level and GetQuestDifficultyColor then
 		local ok, c = pcall(GetQuestDifficultyColor, level)
 		if ok and type(c) == "table" and c.r then return c.r, c.g, c.b end

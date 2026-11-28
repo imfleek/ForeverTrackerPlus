@@ -152,7 +152,7 @@ end
 -- Forever Style ------------------------------------------------------------------------------------------------------
 -- The game's own section header (the module template's Text, background and collapse button) with the guide name, and
 -- four small buttons in the game's art: ! browse guides, ? help and settings, < back a step, > next step.
-local FOREVER_HELP = "Left-click: RXP Tracker settings (/qt).\nRight-click: RestedXP's own settings.\n"
+local FOREVER_HELP = "Left-click: RXP Tracker settings (/ftp).\nRight-click: RestedXP's own settings.\n"
 	.. "Right-click the steps: change guide.\n"
 	.. "Click the i beside an upcoming step: its quest in the log, or a waypoint."
 
@@ -319,14 +319,22 @@ local function iconButton(parent, onClick, onEnter)
 	return button
 end
 
+-- The header the guide's buttons sit on: our tracker's main header (Tracker/Own/Frame.lua api.ownMainHeader): frame,
+-- its text and its collapse button.
+local function containerHeader()
+	local api = root.tracker and root.tracker.api
+	local own = api and api.ownMainHeader and api.ownMainHeader()
+	if own then return own.frame, own.Text, own.MinimizeButton end
+end
+
 local function headerButton(labelKey, onClick)
-	return iconButton(ObjectiveTrackerFrame.Header, onClick, function(self) showTooltip(self, L(labelKey)) end)
+	return iconButton((containerHeader()), onClick, function(self) showTooltip(self, L(labelKey)) end)
 end
 
 local function buildContainerWidgets()
 	settingsButton = headerButton("Open Settings", openSettings)
 	guidesButton = headerButton("Browse Guides", openGuides)
-	counter = scaledText(ObjectiveTrackerFrame.Header, 12, "ObjectiveTrackerHeaderFont")
+	counter = scaledText((containerHeader()), 12, "ObjectiveTrackerHeaderFont")
 	counter:SetJustifyH("CENTER")
 end
 
@@ -366,12 +374,12 @@ local function setButtonIcon(button, icon, enabled)
 end
 
 local function updateContainerWidgets(snapshot)
-	local header, enabled = ObjectiveTrackerFrame.Header, db.enabled
-	settingsButton:SetPoint("RIGHT", header.MinimizeButton, "LEFT", -BUTTON_GAP, 0)
+	local _, headerText, minimize = containerHeader()
+	local enabled = db.enabled
+	settingsButton:SetPoint("RIGHT", minimize, "LEFT", -BUTTON_GAP, 0)
 	guidesButton:SetPoint("RIGHT", settingsButton, "LEFT", -BUTTON_GAP, 0)
 	-- CONSTRAINT: the counter starts at the ink edge of the header text, not the edge of its box
-	-- (Blizzard_ObjectiveTrackerContainer.xml); anchors only, no position read off Blizzard's frames.
-	counter:SetPoint("LEFT", header.Text, "LEFT", header.Text:GetStringWidth() + BUTTON_GAP, 0)
+	counter:SetPoint("LEFT", headerText, "LEFT", headerText:GetStringWidth() + BUTTON_GAP, 0)
 	counter:SetPoint("RIGHT", guidesButton, "LEFT", -BUTTON_GAP, 0)
 	-- Forever Style: these two live on the guide's own header as ? and !
 	local shown = enabled and not ns.forever()
@@ -384,8 +392,6 @@ end
 function ns.buildHeaders(module)
 	buildModuleHeader(module)
 	buildContainerWidgets()
-	-- CONSTRAINT: the counter's anchor holds the header text's width, which a new text size changes with no new snapshot.
-	hooksecurefunc(ObjectiveTrackerManager, "SetTextSize", ns.relayout)
 end
 
 function ns.updateHeaders(snapshot)
@@ -404,12 +410,14 @@ end
 local function buildIndicator()
 	local button = iconButton(UIParent, clickIndicator, showIndicatorTooltip)
 	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	button:SetPoint("CENTER", ObjectiveTrackerFrame.Header.MinimizeButton)
+	local _, _, minimize = containerHeader()
+	button:SetPoint("CENTER", minimize)
 	return button
 end
 
 function ns.updateIndicator(paused)
-	local shown = paused and db.enabled
+	local _, _, minimize = containerHeader()
+	local shown = paused and db.enabled and minimize ~= nil -- (on our main header's collapse button)
 	if not (shown or indicator) then return end
 	indicator = indicator or buildIndicator()
 	setButtonIcon(indicator, LOGO_ICON, shown)

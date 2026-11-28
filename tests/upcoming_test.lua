@@ -218,7 +218,12 @@ print("     after wheel down: " .. shownSteps())
 check("wheel down shows 75 and 76", view.rows[2].header == "Step 75" and view.rows[3].header == "Step 76")
 for _ = 1, 10 do view.rows[2]._OnMouseWheel(view.rows[2], -1) end
 check("stops at the last two (79, 80)", view.rows[2].header == "Step 79" and view.rows[3].header == "Step 80")
-check("at the end the wheel scrolls the tracker", #trackerWheels > 0 and trackerWheels[1] == -1)
+check("at the end the wheel is taken but nothing moves (no tracker or camera scroll)", #trackerWheels == 0
+	and view.rows[2].header == "Step 79")
+check("the wheel anywhere over the guide scrolls its steps (user: the camera zoomed between rows)",
+	ns.guideWheel ~= nil and io.open(arg[1] .. "/Objectives/tracker/Tracker.lua"):read("a"):find("module:EnableMouseWheel(true)", 1, true) ~= nil)
+ns.guideWheel(nil, 1)
+check("the guide's wheel up moves the steps back", view.rows[2].header == "Step 78")
 local function upv(fn, want) local i = 1 while true do local n, v = debug.getupvalue(fn, i); if not n then return end; if n == want then return v end; i = i + 1 end end
 local up = upv(upv(module.LayoutContents, "placeUpBar"), "upBar")
 check("scrollbar shown while there is more to scroll", up and up._shown)
@@ -467,9 +472,33 @@ do
 		title = "Tenaron's Summons", step = { elements = { { tag = "collect", id = 5310 } } } }, {})
 	check("a quest is linked beside an item link too", withItem:find("|Hitem:5310|h", 1, true) ~= nil
 		and withItem:find("|Hquest:920|h", 1, true) ~= nil)
+	-- 3.2 (user: "A lot of quest names in the rxptracker is missing tooltips"): RestedXP leaves the title empty on later
+	-- steps; the game's title is used instead, also in other capitals
+	_G.C_QuestLog = _G.C_QuestLog or {}
+	local keepTitle = _G.C_QuestLog.GetTitleForQuestID
+	_G.C_QuestLog.GetTitleForQuestID = function(id) return id == 930 and "The Missing Diplomat" or nil end
+	local later = decorate("Accept the Missing Diplomat", { step = { elements = { { tag = "accept", questId = 930, title = "" } } },
+		upcoming = true }, {})
+	check("a later step with no title: linked by the game's title, its own capitals kept",
+		later == "Accept |Hquest:930|hthe Missing Diplomat|h")
+	local noName = decorate("Accept Something", { step = { elements = { { tag = "accept", questId = 931, title = "" } } },
+		upcoming = true }, {})
+	check("no title anywhere: no link, no error", noName == "Accept Something")
+	-- a new Forever quest nobody knows (user: "Favorite Food doesnt have a tooltip"): the step's own words
+	local ff = decorate("Turn in Meal Appeal\nAccept Favorite Food", { step = { elements = {
+		{ tag = "turnin", questId = 940, title = "Meal Appeal", text = "Turn in Meal Appeal" },
+		{ tag = "accept", questId = 941, title = "", text = "Accept Favorite Food" } } }, upcoming = true }, {})
+	check("an unknown quest: linked by the step's own words", ff:find("|Hquest:941|hFavorite Food|h", 1, true) ~= nil
+		and ff:find("|Hquest:940|hMeal Appeal|h", 1, true) ~= nil)
+	_G.RXPData = { questNames = { [942] = "Saved Name" } }
+	local saved = decorate("Accept Saved Name now", { step = { elements = { { tag = "accept", questId = 942, title = "",
+		text = "Accept *quest*" } } }, upcoming = true }, {})
+	check("RestedXP's saved quest name is used", saved:find("|Hquest:942|hSaved Name|h", 1, true) ~= nil)
+	_G.RXPData = nil
+	_G.C_QuestLog.GetTitleForQuestID = keepTitle
 	local inserted
-	_G.GetQuestLink = function(id) return "|cffffff00|Hquest:" .. id .. ":20|h[Q]|h|r" end
-	_G.ChatEdit_InsertLink = function(l) inserted = l return true end
+	_G.GetQuestLink =function(id) return "|cffffff00|Hquest:" .. id .. ":20|h[Q]|h|r" end
+	root.chatInsert = function(l) inserted = l return true end -- Bootstrap.lua: only into an open chat box
 	_G.IsShiftKeyDown = function() return true end
 	linkClickFn({}, "quest:920", "|Hquest:920|hTenaron's Summons|h", "RightButton")
 	check("Shift+right-click on a quest name leaves it to the step (no chat link)", inserted == nil)

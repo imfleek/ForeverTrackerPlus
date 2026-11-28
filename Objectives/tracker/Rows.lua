@@ -44,6 +44,39 @@ local module, entriesOf, measure, separator, rowPool, linePool, upcoming
 local wantBack
 
 local nameForms, insideLink -- below
+
+-- 3.2 (user: "A lot of quest names in the rxptracker is missing tooltips"): RestedXP fills in an accept / turn-in
+-- step's quest title only for the current step and the one after it; later steps (Upcoming Steps) have none. Then
+-- the title from the game, else from Questie.
+local function questTitleOf(e, qid)
+	if type(e.title) == "string" and e.title ~= "" then return e.title end
+	local t = C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid)
+	if type(t) == "string" and t ~= "" and not (issecretvalue and issecretvalue(t)) then return t end
+	local trackerApi = root.tracker and root.tracker.api
+	t = trackerApi and trackerApi.questieQuestTitle and trackerApi.questieQuestTitle(qid)
+	if type(t) == "string" and t ~= "" then return t end
+	-- RestedXP's own saved quest names (read only)
+	for _, store in ipairs({ { "RXPData", "questNames" }, { "RXPCData", "questNameCache" } }) do
+		local saved = rawget(_G, store[1])
+		t = type(saved) == "table" and type(saved[store[2]]) == "table" and saved[store[2]][qid]
+		if type(t) == "string" and t ~= "" then return t end
+	end
+	-- a new Forever quest nobody knows yet (user: "Favorite Food doesnt have a tooltip"): the step's own words after
+	-- "Accept" / "Turn in" ("Accept Favorite Food")
+	local text = type(e.text) == "string" and e.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+	if not text or text:find("*quest*", 1, true) then return nil end
+	for _, verb in ipairs({ rawget(_G, "ACCEPT") or "Accept", rawget(_G, "TURN_IN_QUEST") or "Turn in", "Accept", "Turn in" }) do
+		if type(verb) == "string" and verb ~= "" then
+			local low, v = text:lower(), verb:lower()
+			local at = low:match("^%s*()" .. v:gsub("%p", "%%%0") .. "%s")
+			if at then
+				local rest = text:sub(at + #verb):match("^%s*(.-)[%s%.!]*$")
+				if rest and rest ~= "" and not rest:find("\n", 1, true) then return rest end
+			end
+		end
+	end
+	return nil
+end
 local decorate, linkEnter, linkLeave, linkClick -- below, with the step-line helpers they use
 
 -- "Click here to copy the link" steps (RestedXP's .link element, which carries a url): clicking the line opens a box
@@ -588,11 +621,14 @@ local function linkText(text, element)
 			and type(element.step.elements) == "table" and element.step.elements or { element }
 		for _, e in ipairs(quests) do
 			local qid = type(e) == "table" and tonumber(e.questId)
-			local title = type(e) == "table" and type(e.title) == "string" and e.title ~= "" and e.title
+			local title = qid and questTitleOf(e, qid)
 			if qid and title and (e.tag == "accept" or e.tag == "turnin") then
-				local at, to = out:find(title, 1, true)
-				while at and insideLink(out, at) do at, to = out:find(title, to + 1, true) end
-				if at then out = out:sub(1, at - 1) .. ("|Hquest:%d|h%s|h"):format(qid, title) .. out:sub(to + 1) end
+				-- the title as written; else in other capitals ("Accept the Missing Diplomat")
+				local hay, needle = out, title
+				local at, to = hay:find(needle, 1, true)
+				if not at then hay, needle = out:lower(), title:lower(); at, to = hay:find(needle, 1, true) end
+				while at and insideLink(out, at) do at, to = hay:find(needle, to + 1, true) end
+				if at then out = out:sub(1, at - 1) .. ("|Hquest:%d|h%s|h"):format(qid, out:sub(at, to)) .. out:sub(to + 1) end
 			end
 		end
 	end
@@ -650,8 +686,12 @@ linkEnter = function(line, link, text, ...)
 	-- not handed to RestedXP's own row: its window is usually hidden, and a tooltip owned by a hidden frame does
 	-- not show
 	GameTooltip:SetOwner(line, "ANCHOR_CURSOR_RIGHT", 12, 0)
-	if not pcall(GameTooltip.SetHyperlink, GameTooltip, link) then
-		GameTooltip:SetText(text or link)
+	if not pcall(GameTooltip.SetHyperlink, GameTooltip, link) or (GameTooltip.NumLines and GameTooltip:NumLines() == 0) then
+		-- 3.2: a quest the game has no data for yet shows an empty tooltip: its name instead, and ask the server
+		local qid = type(link) == "string" and tonumber(link:match("^quest:(%d+)"))
+		if qid and C_QuestLog and C_QuestLog.RequestLoadQuestByID then pcall(C_QuestLog.RequestLoadQuestByID, qid) end
+		local name = type(text) == "string" and text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+		GameTooltip:SetText(name and name ~= "" and name or link, 1, 0.82, 0)
 	end
 	addNotes(line)
 	GameTooltip:Show()
@@ -684,9 +724,8 @@ linkClick = function(line, link, text, button)
 				or (type(text) == "string" and text:match("|h%[?([^|%]]+)%]?|h")) or ("Quest " .. questID)
 			chatLink = ("|cffffff00|Hquest:%d:-1|h[%s]|h|r"):format(questID, title)
 		end
-		local insert = (ChatFrameUtil and ChatFrameUtil.InsertLink) or ChatEdit_InsertLink
-		local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
-		if not (insert and insert(chatLink)) and open then open(chatLink) end
+		-- only into a chat box you opened: opening it from here tainted it and blocked your Enter (Bootstrap.lua)
+		if root.chatInsert then root.chatInsert(chatLink) end
 		return
 	end
 	if SetItemRef then SetItemRef(link, text, button) end
@@ -1098,7 +1137,7 @@ local function newDoneButton(row)
 end
 -- marks the whole step done, as ticking every one of its objectives' boxes would (RestedXP's ActiveStepElementPostClick:
 -- OnComplete, then the objective skipped; RestedXP's next step check finishes the step and moves on)
-function ns.markStepDone(number)
+local function markNow(number)
 	local RXP, step = ns.rxp, stepOf(number)
 	if type(step) ~= "table" then return false end
 	local any = false
@@ -1132,8 +1171,22 @@ function ns.markStepDone(number)
 	if ns.invalidate then ns.invalidate() end
 	return true
 end
+-- 3.2 (user): the step's row moves right and fades first (Animations.lua animSwipe), then the step is marked done
+function ns.markStepDone(number)
+	if type(stepOf(number)) ~= "table" then return false end
+	local tapi = root.tracker and root.tracker.api
+	local row
+	for _, r in pairs(view.rows or {}) do
+		if type(r) == "table" and r.qtsStepNumber == number then row = r end
+	end
+	if row and tapi and tapi.animSwipe then
+		tapi.animSwipe(row, function() markNow(number) end)
+		return true
+	end
+	return markNow(number)
+end
 local function doneClick(button)
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	ns.markStepDone(button.step)
 end
 local function doneTooltip(button)
@@ -1365,17 +1418,16 @@ end
 
 local function upcomingWheel(_, delta)
 	local new = math.min(math.max(upOffset - delta, 0), math.max(upTotal - upShown, 0))
-	if new == upOffset then
-		-- at the top or bottom of the upcoming steps: handed to the tracker, which scrolls the quests only when the
-		-- cursor is nearer them than this guide (so in practice it stays put)
-		local trackerApi = root.tracker and root.tracker.api
-		if trackerApi and trackerApi.trackerWheel then trackerApi.trackerWheel(delta) end
-		return
-	end
+	-- at the top or bottom of the upcoming steps: nothing moves (the wheel is still taken, so the camera stays put)
+	if new == upOffset then return end
 	upOffset = new
 	lastActive = GetTime() -- scrolling shows the bar (Only on mouseover)
 	ns.relayout()
 end
+-- user (3.2): "The RxpTracker scrolling is choppy and starts to zoom in/out the camera": only the upcoming rows took
+-- the wheel, so over the rest of the guide and the gaps between rows it went to the camera. The whole guide takes it
+-- now (Tracker.lua createModule); the rows still take it first.
+ns.guideWheel = upcomingWheel
 
 local function wheelOn(frame, on)
 	if not (frame and frame.EnableMouseWheel) then return end
@@ -1431,23 +1483,9 @@ local function placeUpBar()
 	local bar = upBar or buildUpBar()
 	bar:ClearAllPoints()
 	local width = math.min(math.max(tonumber(ns.db.upcomingScrollbarWidth) or 3, 1), 12)
-	-- in the quest list scrollbar's column (centred on it), so it never runs over the steps' text and lines up with
-	-- it; at the steps' right edge in the RXP Tracker's own window or before the quest list has its scrollbar
-	local trackerApi = root.tracker and root.tracker.api
-	local qLeft, qRight
-	if not (ns.detached and ns.detached()) and trackerApi and trackerApi.questBarColumn then
-		qLeft, qRight = trackerApi.questBarColumn()
-	end
-	local firstRight, lastRight = first:GetRight(), last:GetRight()
-	if qLeft and firstRight and lastRight then
-		local ce = bar:GetParent():GetEffectiveScale()
-		local leftPx = (qLeft + qRight) / 2 - width * ce / 2
-		bar:SetPoint("TOPLEFT", first, "TOPRIGHT", (leftPx - firstRight * first:GetEffectiveScale()) / ce, 0)
-		bar:SetPoint("BOTTOMLEFT", last, "BOTTOMRIGHT", (leftPx - lastRight * last:GetEffectiveScale()) / ce, 0)
-	else
-		bar:SetPoint("TOPRIGHT", first, "TOPRIGHT", 0, 0)
-		bar:SetPoint("BOTTOMRIGHT", last, "BOTTOMRIGHT", 0, 0)
-	end
+	-- at the steps' right edge
+	bar:SetPoint("TOPRIGHT", first, "TOPRIGHT", 0, 0)
+	bar:SetPoint("BOTTOMRIGHT", last, "BOTTOMRIGHT", 0, 0)
 	bar:SetWidth(width)
 	bar.thumb:SetWidth(width)
 	local height = (first.height or 0) * (first:GetScale() or 1)
@@ -1467,6 +1505,7 @@ local function placeUpBar()
 	bar:Show()
 end
 
+local lastFirst -- 3.2: the first current step's number at the last layout (the step animation)
 local function layoutContents(self)
 	local entries = upcomingWindow(entriesOf())
 	wipe(upRows)
@@ -1530,11 +1569,28 @@ local function layoutContents(self)
 		if previous and not useHeader then placeSeparator(previous.usedLines[#entries[index - 1].lines], row) end
 		shown = index
 		view.rows[index] = row
+		row.qtsStepNumber = entry.number
 		-- the wheel over an upcoming step scrolls the upcoming steps; current steps leave it to the tracker
 		wheelOn(row, not entry.active)
 		if not entry.active then upRows[#upRows + 1] = row end
 	end
 	view.shown = shown
+	-- 3.2 (user): a step done: the list moves up into place and the new current step fades in (Animations.lua)
+	local first = entries[1] and entries[1].active and tonumber(entries[1].number) or nil
+	if first and lastFirst and first > lastFirst then
+		local tapi = root.tracker and root.tracker.api
+		if tapi and tapi.animStepRows then
+			local list = {}
+			for i = 1, shown do
+				local row = view.rows[i]
+				if row then list[#list + 1] = { row, entries[i] and entries[i].active } end
+			end
+			pcall(tapi.animStepRows, list, 18)
+		end
+		-- 3.2 (user): a gold light goes down the new current step once
+		if tapi and tapi.animSweep and view.rows[1] then pcall(tapi.animSweep, view.rows[1]) end
+	end
+	lastFirst = first or lastFirst
 	if upcoming then wheelOn(upcoming, upTotal > 0) end
 	placeUpBar()
 	-- the back-one-step box is RXP Style only: Forever Style hides one left from before the switch (its < > header

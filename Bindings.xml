@@ -1,4 +1,6 @@
 <Bindings>
 	<Binding name="CLICK RXPFTQuestItemKey:LeftButton" header="RXPFTRACKER" category="ADDONS">
 	</Binding>
+	<Binding name="CLICK ForeverTrackerPlusQuestAction:LeftButton" category="ADDONS">
+	</Binding>
 </Bindings>

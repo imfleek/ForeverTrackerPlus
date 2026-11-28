@@ -49,7 +49,7 @@ local function onLeave(box)
 end
 
 local function onPostClick(box)
-	PlaySound(box:GetChecked() and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+	local _ = (root.playSound or pcall)(PlaySound, box:GetChecked() and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
 	RXP.ActiveStepElementPostClick(box)
 	local element = box:GetParent().element
 	box:SetChecked(not not (element.completed or element.skip))
@@ -199,7 +199,7 @@ end
 local function goBack(button)
 	local target = previousStep()
 	if not target then return end
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	local okProgress, origin = pcall(RXP.GetGuideProgress)
 	stepBackFrom(okProgress and type(origin) == "number" and origin or target + 1, target)
 	updateBack(button)
@@ -280,7 +280,7 @@ end
 -- previous guide").
 local function loadGuideAtStart(guide, said)
 	if type(guide) ~= "table" then return false end
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	if type(RXP.SaveGuideProgress) == "function" then pcall(RXP.SaveGuideProgress, guide, 1) end
 	local left = RXP.currentGuide
 	local ok, err = pcall(RXP.LoadGuide, RXP, guide)
@@ -344,7 +344,7 @@ function ns.stepBack()
 		ns.backToPreviousGuide()
 		return
 	end
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	local okProgress, origin = pcall(RXP.GetGuideProgress)
 	stepBackFrom(okProgress and type(origin) == "number" and origin or target + 1, target)
 end
@@ -486,7 +486,7 @@ function ns.restartToggle()
 	local guide = RXP.currentGuide
 	if type(guide) ~= "table" or guide.empty then return end
 	local back = restartState()
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	if back then
 		returnTo = nil
 		local ok, err = pcall(RXP.SetStep, back.step)
@@ -528,7 +528,7 @@ function ns.goToStep(index)
 	local progress, total = guideSteps()
 	index = tonumber(index)
 	if not (progress and index) or index < 1 or index > total or index == progress then return end
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	local ok, err = pcall(RXP.SetStep, index)
 	if not ok then ns.say("Could not change step: " .. tostring(err)) end
 end
@@ -548,7 +548,7 @@ function ns.stepForward()
 	-- no steps left: RestedXP loads its next guide (functions.next with no arguments, as its own "next guide" does)
 	local name = ns.nextGuideName()
 	if not name then return end
-	PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local _ = (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
 	local ok, err = pcall(RXP.functions.next)
 	if ok then ns.say("Starting the next guide: " .. name .. ".") else ns.say("Could not start the next guide: " .. tostring(err)) end
 end
@@ -690,8 +690,8 @@ local function noteSkips(guide)
 		local hint = hintFor(reason)
 		if not seen[hint] then seen[hint] = true; hints[#hints + 1] = hint end
 	end
-	ns.say(("RestedXP passed %d steps of %s by itself (%s). To follow them: %s, then restart the guide (/qt, Themes & "
-		.. "guide). /qt why lists what moved the guide."):format(total, tostring(guide.displayname or guide.name),
+	ns.say(("RestedXP passed %d steps of %s by itself (%s). To follow them: %s, then restart the guide (/ftp, Themes & "
+		.. "guide). /ftp why lists what moved the guide."):format(total, tostring(guide.displayname or guide.name),
 		table.concat(parts, ", "), table.concat(hints, "; ")))
 end
 

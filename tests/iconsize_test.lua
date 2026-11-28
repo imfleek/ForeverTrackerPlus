@@ -31,4 +31,20 @@ check("dungeon and raid carry the scale", src:find('dungeon = { atlas = "Dungeon
 	and src:find('raid = { atlas = "Raid", file = "Interface\\\\Minimap\\\\Raid", scale = 1.32 }', 1, true) ~= nil)
 place(fs, { { file = "Skull", scale = 0.85 } })
 check("the skull 15 % smaller (12)", fs.qtsIcons[1].w == 12)
+-- user: a Dungeon icon drawn cut and stretched (/qt icons: the PvP badge's crop 0.62 kept on a reused texture). A
+-- client whose SetAtlas leaves the crop alone (an atlas that is a whole file): the crop is reset before it
+do
+	local applySrc = src:match("(local function applyIcon%(tex, desc%).-\nend)")
+	check("applyIcon found", applySrc ~= nil)
+	local aenv = setmetatable({ C_Texture = { GetAtlasInfo = function() return {} end } }, { __index = _G })
+	local applyIcon = load(applySrc .. "\nreturn applyIcon", "a", "t", aenv)()
+	local t = { coords = { 0, 1, 0, 1 } }
+	function t:SetTexCoord(...) self.coords = { ... } end
+	function t:SetAtlas(a) self.atlas = a end -- keeps the crop, as the game does for a whole-file atlas
+	function t:SetTexture(f) self.file = f end
+	applyIcon(t, { file = "UI-PVP-Horde", coords = { 0, 40 / 64, 0, 40 / 64 } })
+	check("the PvP badge is cropped", t.coords[2] == 40 / 64)
+	applyIcon(t, { atlas = "Dungeon", file = "Dungeon", scale = 1.32 })
+	check("the next icon on that texture (an atlas) is not cropped", t.atlas == "Dungeon" and t.coords[2] == 1 and t.coords[4] == 1)
+end
 print(pass and "PASS" or "FAILED")

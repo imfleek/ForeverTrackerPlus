@@ -154,7 +154,8 @@ local function trackerFrame(anchor)
 	if anchor and anchor.GetLeft and anchor:GetLeft() then return anchor end
 	local module = ns.view and ns.view.module
 	if module and module:IsVisible() and module:GetLeft() then return module end
-	return ObjectiveTrackerFrame
+	local api = root.tracker and root.tracker.api
+	return api and api.ownTrackerFrame and api.ownTrackerFrame() or nil
 end
 
 function ns.showGuideMenu(anchor)

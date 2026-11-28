@@ -73,7 +73,8 @@ local env = setmetatable({
 env._G = env
 assert(loadfile(dir .. "/Tracker/Dungeon.lua", "t", env))("ForeverTrackerPlus", { tracker = ns })
 ns.onLogin[1]()
-local anchor = frame("ghost")
+ns.api.ownQuestsHeaderFrame = function() return quests end -- our tracker's Quests header
+local anchor = module -- our tracker's top slot
 api = ns.api
 api.layoutDungeonCard(anchor, 0, 1)
 local card = env.ForeverTrackerPlusDungeonCard

@@ -81,12 +81,10 @@ ns.db.repTrack = false
 check("option off: no room, the game's bar shown", api.layoutTrackedReputation(ghost, 40, 1) == 0 and repBar.alpha == 1)
 
 local core = io.open(dir .. "/Tracker/Core.lua"):read("a")
-check("Core: the row joins the fixed strip before the Quests header",
-	(core:find("ns.api.layoutTrackedReputation, ghost, pinned", 1, true) or 1e9)
-		< (core:find("pinned = pinned + pinQuestsHeader(pickFollower(), pinned)", 1, true) or 0))
+local own = io.open(dir .. "/Tracker/Own/Frame.lua"):read("a")
+check("our tracker: the row in the top strip, after the card",
+	own:find('{ "layoutDungeonCard", "layoutTrackedReputation", "layoutReminders" }', 1, true) ~= nil)
 check("on by default", core:find("repTrack = true", 1, true) ~= nil)
-check("the scrolling sections move down by its room (R106-77: the top quest was cut off)",
-	core:find("pinned = pinned + room; drop = drop + room", 1, true) ~= nil)
 local toc = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", toc:find("Tracker/Reputation.lua", 1, true) ~= nil)
 local cfg = io.open(dir .. "/Tracker/Config.lua"):read("a")
@@ -110,9 +108,7 @@ end
 check("reward lines use the item's quality", ex:find("itemLine(name, texture, count, itemQuality(id, link, quality), value)", 1, true) ~= nil)
 -- R106-73: Ctrl + right-click
 check("Ctrl + right-click on a quest puts its reward links in chat",
-	ex:find('frame:HookScript("OnMouseUp", function(_, button) onQuestMouseUp(block, button) end)', 1, true) ~= nil
-	and ex:find('if not (IsControlKeyDown and IsControlKeyDown()) then return end', 1, true) ~= nil
-	and ex:find('if button ~= "RightButton" then return end', 1, true) ~= nil)
+	io.open(dir .. "/Tracker/QuestClicks.lua"):read("a"):find("if api.linkQuestRewards then pcall(api.linkQuestRewards, id) end", 1, true) ~= nil)
 
 -- R106-72: surnames in the party lines
 local party = io.open(dir .. "/Tracker/Party.lua"):read("a")

@@ -93,4 +93,24 @@ ns.db.zoneOrder = "alpha"
 local alpha = order()
 print("alphabetical: " .. table.concat(alpha, ","))
 check("alphabetical: Badlands first, not the dungeon", alpha[1] == 4)
+-- user (in Warsong Gulch): "The Warsong Gulch quests I have should appear at the top". A battleground counts as the
+-- place you are in: a quest named after it first, then the log's other "Battlegrounds" quests
+ns.db.zoneOrder = "closest"
+quests[9] = { zone = "Battlegrounds" }
+quests[10] = { zone = "Battlegrounds" }
+local titles = { [9] = "Warsong Gulch Victory", [10] = "Arathi Basin Victory" }
+_G.C_QuestLog.GetTitleForQuestID = function(id) return titles[id] or ("Quest " .. id) end
+_G.BATTLEGROUNDS = "Battlegrounds"
+_G.IsInInstance = function() return true, "pvp" end
+_G.GetInstanceInfo = function() return "Warsong Gulch" end
+_G.GetRealZoneText = function() return "Warsong Gulch" end
+now = now + 5
+local list = {}
+for i, id in ipairs({ 1, 2, 3, 4, 5, 10, 7, 8, 9 }) do list[i] = { id = id, zone = quests[id].zone, index = i } end
+local bg = {}
+for i, q in ipairs(api.orderQuests(list)) do bg[i] = q.id end
+print("in Warsong Gulch: " .. table.concat(bg, ","))
+check("in a battleground: its own quest first, then the other battleground quests", bg[1] == 9 and bg[2] == 10)
+_G.C_Map.GetBestMapForUnit = function() return 71 end
+check("in a battleground: the distance arrows still have a position", api.playerWorldPos() ~= nil)
 print(pass and "PASS" or "FAILED")

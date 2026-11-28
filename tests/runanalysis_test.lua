@@ -22,7 +22,7 @@ local st = { speed = 0, fall = false, level = 20, cast = nil, buffs = {}, inst =
 local senv
 senv = setmetatable({
 	CreateFrame = function(kind) local f = frame(kind); if kind == "Button" then buttons[#buttons + 1] = f end return f end,
-	GetTime = function() return now end, time = function() return wall end,
+	GetTime = function() return now end, time = function() return wall end, date = os.date,
 	C_Timer = { NewTicker = function(_, fn) tickers[#tickers + 1] = fn return { Cancel = function() end } end, After = function() end },
 	UnitName = function() return "Jugo" end, GetRealmName = function() return "Realm" end,
 	UnitClass = function() return "Warlock", "WARLOCK" end,
@@ -85,7 +85,15 @@ check("dungeon time on top of the state", s(rec.dungeon) == 5 and s(t.idle) >= 5
 
 local bars = sapi.statsTimeBars()
 local names, npcRow = {}, nil
-for i, b in ipairs(bars) do names[i] = b[1]; if b.key == "npc" then npcRow = b end end
+-- 3.2: groups, each with its states (kids); NPCs one level deeper
+local function walk(list)
+	for _, b in ipairs(list) do
+		names[#names + 1] = b[1]
+		if b.key == "npc" then npcRow = b end
+		if b.kids and b.key ~= "npc" then walk(b.kids) end
+	end
+end
+walk(bars)
 local joined = table.concat(names, ",")
 for _, want in ipairs({ "Eating/drinking", "Looting", "Casting", "Falling", "Map/quest log", "Loading screens" }) do
 	check("bar: " .. want, joined:find(want, 1, true) ~= nil)
@@ -93,12 +101,18 @@ end
 check("NPCs row has a dropdown of windows", npcRow and #npcRow.kids == 3 and npcRow.kids[1][1] == "Vendors"
 	and npcRow.kids[1][3] > 0.5 and npcRow.kids[1][3] < 0.6)
 local run = sapi.statsRunTiles()
-check("an In dungeons tile", run[#run][3] == "In dungeons" and run[#run][2] == "0:05")
-check("discord text: dungeon time", sapi.statsDiscordText():find("0:05 in dungeons", 1, true) ~= nil)
+local dungeonTile
+for _, x in ipairs(run) do if x[3] == "In dungeons" then dungeonTile = x end end
+check("an In dungeons tile", dungeonTile ~= nil and dungeonTile[2] == "5s")
+check("raid and battleground tiles (3.2)", run[#run - 1][3] == "In raids" and run[#run][3] == "In battlegrounds")
+check("discord text: dungeon time", sapi.statsDiscordText():find("5s in dungeons", 1, true) ~= nil)
 
--- older NPC time with no split
+-- older NPC time with no split (all-time: old data is only in the levels)
+sns.db.statsPeriodRun = "all"
 sapi.statsRun().levels[19] = { t = { npc = 60 } }
-for _, b in ipairs(sapi.statsTimeBars()) do if b.key == "npc" then npcRow = b end end
+for _, g in ipairs(sapi.statsTimeBars()) do
+	for _, b in ipairs(g.kids or {}) do if b.key == "npc" then npcRow = b end end
+end
 check("old NPC time shows as not split", npcRow.kids[#npcRow.kids][1]:find("Not split", 1, true) ~= nil)
 
 -- the widget: the dropdown is closed until its row is clicked
@@ -119,14 +133,21 @@ local themeKit = { C = C, ts = function() return 1 end, text = function() return
 	hGradient = function() end, arrow = function() return frame() end, refreshFonts = function() end }
 buttons = {}
 local w = make(frame(), themeKit)
-local closedH = w.draw(400)
-check("one toggle button for NPCs", #buttons == 1)
-buttons[1].onOnClick()
-check("a click lays the page out again", refreshed == 1)
+-- 3.2: a toggle for each group (open at first) and one for NPCs (closed at first)
 local openH = w.draw(400)
-check("open: the window rows add height", openH > closedH)
-buttons[1].onOnClick()
-check("a second click closes it", w.draw(400) == closedH)
+local groups = #sapi.statsTimeBars()
+check("a toggle for each group and one for NPCs", #buttons == groups + 1)
+local npcButton
+for _, b in ipairs(buttons) do if b.d and b.d.key == "npc" then npcButton = b end end
+npcButton.onOnClick(npcButton)
+check("a click lays the page out again", refreshed == 1)
+check("NPCs open: the window rows add height", w.draw(400) > openH)
+npcButton.onOnClick(npcButton)
+check("a second click closes it", w.draw(400) == openH)
+buttons[1].onOnClick(buttons[1])
+check("a group closes: less height", w.draw(400) < openH)
+buttons[1].onOnClick(buttons[1])
+check("no move buttons while Change the order is off", #buttons == groups + 1)
 
 -- Level splits: tiles and bars
 local r = sapi.statsRun()
@@ -138,16 +159,42 @@ local st2 = sapi.statsSplitTiles()
 local function tileBy(label) for _, x in ipairs(st2) do if x[3]:find(label, 1, true) then return x end end end
 check("splits: Played tile", tileBy("Played") ~= nil)
 check("splits: fastest and slowest level", tileBy("Fastest: level 18") and tileBy("Slowest: level 19") and true or false)
-check("splits: average level", tileBy("Average level")[2] == "10:00")
-check("splits: behind the compared run, in red", tileBy("Behind") and tileBy("Behind")[2]:find("+5:00", 1, true) ~= nil)
+check("splits: average level", tileBy("Average level")[2] == "10m 0s")
+check("splits: behind the compared run, in red", tileBy("Behind") and tileBy("Behind")[2]:find("+5m 0s", 1, true) ~= nil)
 local rows = sapi.statsSplitRows()
 check("splits: newest level first, marked now", rows[1][1]:find("Level 20", 1, true) and rows[1][1]:find("now", 1, true) and rows[1][6] == true)
 local r19
 for _, x in ipairs(rows) do if x[1] == "Level 19" then r19 = x end end
-check("splits: the slowest level fills its bar, red with a diff", r19 and r19[3] == 1 and r19[5] ~= nil and r19[2]:find("+6:40", 1, true) ~= nil)
+check("splits: the slowest level fills its bar, red with a diff", r19 and r19[3] == 1 and r19[5] ~= nil and r19[2]:find("+6m 40s", 1, true) ~= nil)
 check("splits: the compared run as a second bar", r19 and r19[4] and r19[4] > 0.5 and r19[4] < 0.6)
 local splitMake
 for _, d in ipairs(declared) do if d[1] == "Level splits" then splitMake = d[2] end end
 check("splits widget draws", splitMake and splitMake(frame(), themeKit).draw(400) > 40)
 
+-- 3.2 (user): At a campfire is a real Downtime state (in the total, each second once); Well Rested is the last line of
+-- Downtime, not in the total; always counted, no switch
+do
+	local rec20 = sapi.statsRun().levels[20]
+	local idle0, camp0, rested0 = rec20.t.idle or 0, rec20.t.camp or 0, rec20.rested or 0
+	st.buffs = { "Campfire Nearby", "Well Rested" }; tick(4)
+	st.speed = 7; tick(2); st.speed = 0 -- running past a campfire is running
+	st.buffs = {}
+	local function s(v) return math.floor((v or 0) + 0.5) end
+	check("campfire: standing there is At a campfire, not Standing", s(rec20.t.camp - camp0) == 4 and s((rec20.t.idle or 0) - idle0) == 0)
+	check("campfire: running past it is still Running", s(rec20.t.camp - camp0) == 4)
+	check("Well Rested: counted apart while standing and running", s(rec20.rested - rested0) == 6)
+	local bars = sapi.statsTimeBars()
+	local down, campGroup
+	for _, b in ipairs(bars) do
+		if b[1] == "Downtime" then down = b end
+		if b[1] == "Camp and rest" then campGroup = b end
+	end
+	local campLine
+	for _, k in ipairs(down and down.kids or {}) do if k[1] == "At a campfire" then campLine = k end end
+	local n = down and #down.kids or 0
+	check("time bars: At a campfire is a normal Downtime line (it can be moved)", campGroup == nil and campLine ~= nil and campLine.move ~= nil)
+	check("time bars: Well Rested is Downtime's last line, not moved", n > 0 and down.kids[n][1] == "Well Rested" and down.kids[n].move == nil)
+	local src = io.open(arg[1] .. "/Tracker/Stats.lua"):read("a")
+	check("camp time: no switch any more", not src:find("campTime", 1, true) and not src:find('heading("Camp and rest")', 1, true))
+end
 print(pass and "ALL OK" or "SOME FAILED")

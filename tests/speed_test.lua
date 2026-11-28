@@ -77,12 +77,4 @@ nav = fakeFrame(); mns.api.refreshWorldMarker()
 check("marker: a navigation frame, the clock runs", mns.api.worldMarkerRunning())
 mns.db.worldMarker = false; mns.api.refreshWorldMarker()
 check("marker: switched off, the clock is stopped", not mns.api.worldMarkerRunning())
-
--- 3.1.2: after a quest is accepted the tracker draws many times; our text hooks do not repeat their own work
-do
-	local ex = io.open(dir .. "/Tracker/Extras.lua"):read("a")
-	check("line limit set only when it is not 0 already", ex:find("not (fs.GetMaxLines and fs:GetMaxLines() == 0)", 1, true) ~= nil)
-	local _, guarded = ex:gsub("applying = true%s+pcall%(prepareText", "")
-	check("both SetText hooks run prepareText guarded (no second pass from our own calls)", guarded >= 2)
-end
 print(pass and "ALL OK" or "SOME FAILED")

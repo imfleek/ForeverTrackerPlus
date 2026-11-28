@@ -17,6 +17,8 @@ local api = ns.api
 local frame, panel, scroll, content, scrollbar, searchBox, pageTitle, defaultsButton
 local items = {}
 local loading = false
+local sweepReset = false -- 3.2: "Defaults" was pressed: sliders slide back (buildSlider)
+local glowList, lastGlowQuery = {}, "" -- 3.2: the search's matching names, and the search they last flashed for
 local activePage = "questlist"
 local declaringPage = "questlist"
 local MIN_W, MIN_H, MAX_W, MAX_H = 720, 480, 1400, 1100
@@ -30,7 +32,8 @@ local C = {
 	headTop = { 0.2, 0.169, 0.129 }, headBottom = { 0.106, 0.086, 0.071 }, headEdge = { 0.31, 0.259, 0.196 },
 	headText = { 0.949, 0.902, 0.784 },
 	panel = { 0.059, 0.047, 0.039 }, panelEdge = { 0.231, 0.192, 0.157 },
-	label = { 0.69, 0.663, 0.612 }, subLabel = { 0.6, 0.573, 0.522 }, pageTitle = { 0.941, 0.902, 0.824 },
+	-- 3.2 (user: the grey text "is hard to see and read"; the hint lines may stay grey): names brighter
+	label = { 0.86, 0.83, 0.77 }, subLabel = { 0.6, 0.573, 0.522 }, rowLabel = { 0.95, 0.92, 0.85 }, pageTitle = { 0.941, 0.902, 0.824 },
 	value = { 0.847, 0.812, 0.749 },
 	ctrlTop = { 0.173, 0.149, 0.125 }, ctrlBottom = { 0.082, 0.067, 0.055 }, ctrlEdge = { 0.353, 0.298, 0.227 },
 	arrow = { 0.784, 0.69, 0.478 },
@@ -142,7 +145,7 @@ end
 local function sound(on)
 	if not (PlaySound and SOUNDKIT) then return end
 	local id = on and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF
-	if id then pcall(PlaySound, id) end
+	if id then (root.playSound or pcall)(PlaySound, id) end
 end
 
 -- Settings text size: every label registers with its own base font; the size option scales them all and the rows
@@ -229,8 +232,9 @@ local function makeSwitch(parent, h, get, set)
 		placePill(fill, 1, on and C.on or C.off)
 		local ks = h - 6
 		knob:SetSize(ks, ks)
-		knob:ClearAllPoints()
-		if on then knob:SetPoint("RIGHT", -3, 0) else knob:SetPoint("LEFT", 3, 0) end
+		local kx = on and ((sw:GetWidth() or 40) - 3 - ks) or 3
+		if api.animKnob then api.animKnob(knob, sw, kx)
+		else knob:ClearAllPoints(); knob:SetPoint("LEFT", sw, "LEFT", kx, 0) end
 		local kc = on and C.onKnob or C.offKnob
 		if sw.qtsHover and not on then kc = C.value end
 		paint(knob, kc)
@@ -238,7 +242,7 @@ local function makeSwitch(parent, h, get, set)
 	sw:SetScript("OnClick", function()
 		local v = not (get() and true or false)
 		if PlaySound and SOUNDKIT then
-			pcall(PlaySound, v and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+			local _ = (root.playSound or pcall)(PlaySound, v and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
 		end
 		set(v)
 		sw.redraw()
@@ -291,29 +295,57 @@ end
 local GROUPS = {
 	{ key = "general", title = "GENERAL" },
 	{ key = "quests", title = "QUESTS" },
+	-- 3.2 (user): groups of their own for what is not about the quest list: instances (dungeons, battlegrounds) and
+	-- collections (checklists to read and track)
+	{ key = "instances", title = "INSTANCES" },
+	{ key = "collections", title = "COLLECTIONS" },
 	{ key = "guide", title = "RESTEDXP" },
 	{ key = "stats", title = "STATISTICS" },
 	{ key = "addon", title = "ADDON" },
 }
+-- 3.2 (user): RESTEDXP goes above QUESTS while RestedXP Guides is loaded, else above ADDON
+local function groupOrder()
+	local rxp = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides")
+	local out, guide = {}, nil
+	for _, g in ipairs(GROUPS) do if g.key == "guide" then guide = g end end
+	for _, g in ipairs(GROUPS) do
+		if g ~= guide then
+			if guide and g.key == (rxp and "quests" or "addon") then out[#out + 1] = guide end
+			out[#out + 1] = g
+		end
+	end
+	return out
+end
 local SECTIONS = {
 	{ key = "basics", group = "general", title = "Basics", sub = "Lock, minimap, setup", icon = "Interface\\Icons\\Trade_Engineering" },
 	{ key = "look", group = "general", title = "Look", sub = "Text, size, background", icon = "Interface\\Icons\\INV_Misc_Gem_Pearl_04" },
+	-- 3.2 (user): every animation, each with its own switch
+	{ key = "animations", group = "general", title = "Animations", sub = "Every effect, on or off", icon = "Interface\\Icons\\Spell_Arcane_Blink" },
 	{ key = "questlist", group = "quests", title = "Quest list", sub = "Scroll, count, headers", icon = "Interface\\Icons\\INV_Misc_Note_01" },
 	{ key = "questlines", group = "quests", title = "Quest lines", sub = "Distance, rewards, icons", icon = "Interface\\Icons\\INV_Scroll_03" },
 	{ key = "tracking", group = "quests", title = "Tracking", sub = "What shows, and in which order", icon = "Interface\\Icons\\INV_Misc_Map_01" },
 	{ key = "helpers", group = "quests", title = "Helpers", sub = "Bags, items, NPCs, flights", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
-	{ key = "guides", group = "quests", title = "Guides", sub = "Legacy, books, secrets", icon = "Interface\\Icons\\INV_Misc_Book_07" },
+	-- 3.2 (user): the old Guides section is the COLLECTIONS group: challenges, and quest chains with their lists
+	{ key = "challenges", group = "collections", title = "Challenges", sub = "Legacy Challenges", icon = "Interface\\Icons\\INV_Misc_Book_07" },
+	{ key = "chains", group = "collections", title = "Quest chains", sub = "Attunements, class, books, secrets", icon = "Interface\\Icons\\INV_Misc_Note_02" },
+	-- 3.2 (user): INSTANCES: dungeons (out of Helpers) and the Battleground section of our own tracker
+	{ key = "dungeons", group = "instances", title = "Dungeons", sub = "Cards, bosses, loot", icon = "Interface\\Icons\\INV_Misc_Key_03" },
+	{ key = "battleground", group = "instances", title = "Battleground", sub = "Timers, queues, flags", icon = "Interface\\Icons\\INV_BannerPVP_02" },
 	-- 3.1.2: Tracker has RestedXP's logo (the book while RestedXP is not loaded), Orphaned quests is a section of its
 	-- own with the book, and the arrow is drawn as RestedXP's arrow (our slate body and gold edge, Objectives/arrow)
 	{ key = "guidesteps", group = "guide", title = "Tracker", sub = "RestedXP steps", icon = "Interface\\Icons\\INV_Misc_Book_09",
 		rxpIcon = "Interface\\AddOns\\RXPGuides\\Textures\\rxp_logo-64" },
-	{ key = "orphans", group = "guide", title = "Orphaned quests", sub = "Quests the guide left behind", icon = "Interface\\Icons\\INV_Misc_Book_09" },
-	{ key = "arrow", group = "guide", title = "Arrow", sub = "Waypoint arrow", icon = "Interface\\Icons\\Ability_Hunter_Pathfinding",
-		layers = { { "Interface\\AddOns\\" .. ADDON .. "\\Textures\\arrow_body", { 0.18, 0.21, 0.38 } },
-			{ "Interface\\AddOns\\" .. ADDON .. "\\Textures\\arrow_gold" } } },
+	-- 3.2 (user): the arrow is RestedXP's purple and blue arrow (Textures/RxpArrow, tests/make_rxparrow.py); Orphaned
+	-- quests comes after it, with the Prerequisite Journal's book (Forever's Adventure Guide button; the icon without it)
+	{ key = "arrow", group = "guide", title = "Arrow", sub = "Waypoint arrow", icon = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\RxpArrow",
+		whole = true },
+	{ key = "orphans", group = "guide", title = "Orphaned quests", sub = "Quests the guide left behind", icon = "Interface\\Icons\\INV_Misc_Book_09",
+		atlas = "UI-HUD-MicroMenu-AdventureGuide-Up" },
 	{ key = "overview", group = "stats", title = "Overview", sub = "Your quests in numbers", icon = "Interface\\Icons\\INV_Misc_Coin_02" },
 	{ key = "run", group = "stats", title = "Run analysis", sub = "Where the time went", icon = "Interface\\Icons\\INV_Misc_PocketWatch_01" },
 	{ key = "splits", group = "stats", title = "Level splits", sub = "Time per level", icon = "Interface\\Icons\\Spell_Holy_BorrowedTime" },
+	-- 3.2 (user): run history (DungeonRuns.lua)
+	{ key = "dungeonruns", group = "stats", title = "Dungeon runs", sub = "Best times, last runs", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
 	{ key = "profiles", group = "addon", title = "Profiles", sub = "Save, share, import", icon = "Interface\\Icons\\INV_Misc_Book_11" },
 }
 local sectionByKey = {}
@@ -321,18 +353,25 @@ for _, s in ipairs(SECTIONS) do sectionByKey[s.key] = s end
 -- which section each page is a tab of
 local PAGE_SECTION = {
 	main = "basics",
+	animations = "animations", -- 3.2 (user)
 	text = "look", sizing = "look", background = "look",
 	questlist = "questlist", zoneheaders = "questlist",
-	titles = "questlines", tooltips = "questlines",
+	titles = "questlines", tooltips = "questlines", questlogtags = "questlines", -- 3.2
 	tracking = "tracking",
 	helpers = "helpers", onscreen = "helpers", automation = "helpers", world = "helpers",
-	legacy = "guides", books = "guides", bedroll = "guides", secrets = "guides",
+	reminders = "helpers", rewards = "helpers", itembar = "helpers", -- 3.2
+	corpserun = "helpers", -- 3.2 (user idea 31)
+	dungeonextras = "dungeons", -- 3.2 (user): INSTANCES
+	legacy = "challenges", -- 3.2 (user): COLLECTIONS (Unexplored areas removed, user)
+	attunements = "chains", classquests = "chains", profquests = "chains", books = "chains", secrets = "chains", -- 3.2 (user): Sleeping bag is in Secrets
 	guidetracker = "guidesteps", guide = "guidesteps", orphans = "orphans",
 	arrow = "arrow",
 	statsoverview = "overview", statsoptions = "overview",
 	statsrun = "run",
 	statssplits = "splits",
+	statsdungeons = "dungeonruns", -- 3.2 (user)
 	profiles = "profiles",
+	battleground = "battleground",
 }
 local pages, pageByKey = {}, {}
 -- group: the older group name ("quests", "guide", "window", "stats"), still what db.configTab holds
@@ -389,7 +428,7 @@ end
 local function indentOf(item) return item.indent and math.floor(math.min(item.indent, 48) * 0.75 + 0.5) or 0 end
 
 local function rowLabel(item, parent)
-	local fs = text(parent, "GameFontHighlight", 1.15, item.indent and C.subLabel or C.label)
+	local fs = text(parent, "GameFontHighlight", 1.15, item.indent and C.label or C.rowLabel)
 	fs:SetJustifyH("LEFT")
 	fs:SetJustifyV("TOP")
 	fs:SetWordWrap(true)
@@ -406,11 +445,47 @@ local function rowLabel(item, parent)
 	return fs
 end
 
+-- 3.2 (user: "no tooltips on anything in /qt"): hover a setting's label: a tooltip with its name and its help line.
+-- One hover area a row, over the label; layout hides them all first, placeRow shows the ones it places.
+local rowHovers = {}
+local function rowHover(item, parent)
+	if item.hover then return item.hover end
+	local h = CreateFrame("Frame", nil, parent)
+	h:EnableMouse(true)
+	-- 3.2 (user): a soft light behind the whole row while the mouse is on it (Animations.lua animRowLight)
+	item.light = parent:CreateTexture(nil, "BACKGROUND", nil, -3)
+	item.light:SetColorTexture(1, 0.9, 0.6, 0.06)
+	item.light:Hide()
+	h:HookScript("OnEnter", function() if api.animRowLight then api.animRowLight(item.light, true) end end)
+	h:HookScript("OnLeave", function() if api.animRowLight then api.animRowLight(item.light, false) end end)
+	h:SetScript("OnEnter", function(self)
+		if not (GameTooltip and item.text and item.text:IsVisible()) then return end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:ClearLines()
+		GameTooltip:AddLine(tostring(item.label or ""), 1, 0.82, 0, true)
+		if type(item.sub) == "string" and item.sub ~= "" then GameTooltip:AddLine(item.sub, 1, 1, 1, true) end
+		if item.enabled and not item.enabled() then
+			GameTooltip:AddLine("Off for now: a setting above turns it on.", 0.6, 0.6, 0.6, true)
+		end
+		GameTooltip:Show()
+	end)
+	h:SetScript("OnLeave", function(self)
+		if GameTooltip and GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+		if api.animRowLight then api.animRowLight(item.light, false) end
+	end)
+	h:Hide()
+	item.hover = h
+	rowHovers[#rowHovers + 1] = h
+	return h
+end
+
 -- Places the label and the control (ctrl, ctrlW x ctrlH) of a row at (x, y) in a page of width w; sets item.height.
 local function placeRow(item, parent, x, y, w, ctrl, ctrlW, ctrlH)
 	local k = ts()
 	local indent = indentOf(item)
 	local labelW = math.max(math.min(math.floor(w * 0.42), 300 * k), 140)
+	-- 3.2: a switch sharing its line with another (layout's pairs) takes its half: the label, then the switch at the end
+	if item.packed and item.kind == "check" then labelW = math.max(w - ctrlW - 12, 100) end
 	local fs, sub = item.text, item.subText
 	fs:SetWidth(labelW - indent)
 	fs:SetHeight(0)
@@ -429,6 +504,22 @@ local function placeRow(item, parent, x, y, w, ctrl, ctrlW, ctrlH)
 	end
 	ctrl:ClearAllPoints()
 	ctrl:SetPoint("TOPLEFT", parent, "TOPLEFT", x + labelW + 12, -y - math.floor((h - ctrlH) / 2))
+	local hover = rowHover(item, parent)
+	hover:ClearAllPoints()
+	hover:SetPoint("TOPLEFT", parent, "TOPLEFT", x + indent, -y)
+	hover:SetSize(math.max(labelW - indent, 1), h)
+	hover:Show()
+	if item.light then
+		item.light:ClearAllPoints()
+		item.light:SetPoint("TOPLEFT", parent, "TOPLEFT", x - 6, -y + 3 * k)
+		item.light:SetSize(w + 12, h + 6 * k)
+	end
+	-- the control lights the row too
+	if ctrl.HookScript and not ctrl.qtsLightHook and item.light then
+		ctrl.qtsLightHook = true
+		pcall(ctrl.HookScript, ctrl, "OnEnter", function() if api.animRowLight then api.animRowLight(item.light, true) end end)
+		pcall(ctrl.HookScript, ctrl, "OnLeave", function() if api.animRowLight then api.animRowLight(item.light, false) end end)
+	end
 	item.height = h + 8 * k
 	item.ctrlMaxW = w - labelW - 12
 end
@@ -476,8 +567,10 @@ local function buildCheck(item, parent)
 		placePill(fill, w, h, 1, state and C.on or C.off)
 		local ks = h - 6
 		knob:SetSize(ks, ks)
-		knob:ClearAllPoints()
-		if state then knob:SetPoint("RIGHT", -3, 0) else knob:SetPoint("LEFT", 3, 0) end
+		-- 3.2 (user): the knob slides across (Animations.lua animKnob)
+		local kx = state and (w - 3 - ks) or 3
+		if api.animKnob then api.animKnob(knob, sw, kx)
+		else knob:ClearAllPoints(); knob:SetPoint("LEFT", sw, "LEFT", kx, 0) end
 		local kc = state and C.onKnob or C.offKnob
 		if sw.qtsHover and not state then kc = C.value end
 		paint(knob, kc)
@@ -496,6 +589,7 @@ local function buildCheck(item, parent)
 		sound(v)
 		item.set(v)
 		api.refreshConfig()
+		if api.animSaved then api.animSaved(sw) end -- 3.2 (user)
 	end
 	sw:SetScript("OnClick", toggle)
 	sw:SetScript("OnEnter", function(self) self.qtsHover = true; draw() end)
@@ -576,7 +670,10 @@ local function buildSlider(item, parent)
 		local number = tonumber((t:gsub(",", ".")):match("[-+]?%d*%.?%d+"))
 		if t:lower():find("auto", 1, true) then number = 0 end
 		self:ClearFocus()
-		if number then s:SetValue(snap(number)) end
+		if number then
+			s:SetValue(snap(number))
+			if api.animSaved then api.animSaved(holder) end
+		end
 		show(s:GetValue())
 	end
 	value:SetScript("OnEditFocusGained", function(self)
@@ -603,10 +700,26 @@ local function buildSlider(item, parent)
 		pending = nil
 		item.set(v)
 	end
+	-- 3.2 (user): when the mouse lets go of a dragged slider, its value glows and bounces (Animations.lua)
+	local releaseWatch
+	local function watchRelease()
+		if not (api.animSliderDone and IsMouseButtonDown and IsMouseButtonDown("LeftButton")) then return end
+		if not releaseWatch then
+			releaseWatch = CreateFrame("Frame", nil, s)
+			releaseWatch:SetScript("OnUpdate", function(self)
+				if IsMouseButtonDown("LeftButton") then return end
+				self:Hide()
+				api.animSliderDone(value)
+				if api.animSaved then api.animSaved(holder) end
+			end)
+		end
+		releaseWatch:Show()
+	end
 	s:SetScript("OnValueChanged", function(_, v)
 		v = snap(v)
 		show(v)
 		if loading then return end
+		watchRelease()
 		if item.applyOnRelease and IsMouseButtonDown("LeftButton") then
 			pending = v
 			if not watcher then
@@ -637,6 +750,16 @@ local function buildSlider(item, parent)
 	item.frame = holder
 	item.refresh = function()
 		local v = item.get()
+		-- 3.2 (user): after "Defaults" the thumb slides back to the default (Animations.lua animResetSweep)
+		if sweepReset and api.animResetSweep and type(v) == "number" and s:GetValue() ~= v then
+			api.animResetSweep(s, s:GetValue(), v, function(x)
+				local was = loading
+				loading = true
+				s:SetValue(x)
+				loading = was
+			end)
+			return
+		end
 		s:SetValue(v)
 		show(v)
 	end
@@ -742,7 +865,7 @@ local function buildColor(item, parent)
 	custom.plus:SetText("+")
 
 	-- Opacity, under the swatches: a short slider (5-100 %) and its value
-	local opacityLabel = text(holder, "GameFontHighlightSmall", 1.1, C.subLabel)
+	local opacityLabel = text(holder, "GameFontHighlightSmall", 1.1, C.label)
 	opacityLabel:SetText("Opacity")
 	local opacity = CreateFrame("Slider", nil, holder)
 	opacity:SetOrientation("HORIZONTAL")
@@ -886,6 +1009,7 @@ local function buildChoice(item, parent)
 		sound(true)
 		item.set(value)
 		api.refreshConfig()
+		if api.animSaved then api.animSaved(holder) end -- 3.2 (user)
 	end
 	local function step(delta)
 		local options = item.options()
@@ -1100,12 +1224,14 @@ local function buildChoice(item, parent)
 		local scale = box:GetEffectiveScale() / UIParent:GetEffectiveScale()
 		local below = (box:GetBottom() or 0) * scale
 		local above = screenH - (box:GetTop() or 0) * scale
-		if below < popup:GetHeight() + 8 and above > below then
+		local up = below < popup:GetHeight() + 8 and above > below
+		if up then
 			popup:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 0, 2)
 		else
 			popup:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -2)
 		end
 		popup:Show()
+		if api.animUnfold then api.animUnfold(popup, up) end -- 3.2 (user)
 		if typeAhead() then popup.typed:SetFocus() end
 		openPopup = popup
 	end
@@ -1221,7 +1347,7 @@ local function buildStatus(item, parent)
 	local rows, count = {}, 0
 	local function row(i)
 		if not rows[i] then
-			local l = text(holder, "GameFontHighlight", 1.05, C.subLabel)
+			local l = text(holder, "GameFontHighlight", 1.05, C.label)
 			local v = text(holder, "GameFontHighlight", 1.05)
 			l:SetJustifyH("LEFT")
 			v:SetJustifyH("LEFT")
@@ -1378,7 +1504,12 @@ local function buildButtons(item, parent)
 		item.height = 38 + (rows - 1) * 32
 	end
 	item.setShown = function(on) for _, b in ipairs(list) do b:SetShown(on) end end
-	item.refresh = function() end
+	-- 3.2 (user): a button with glow() glows while it returns true (the What's new button; Animations.lua)
+	item.refresh = function()
+		for i, def in ipairs(item.list) do
+			if def.glow and api.animNewsGlow then api.animNewsGlow(list[i], def.glow() and true or false) end
+		end
+	end
 	item.setEnabled = function(on)
 		for _, b in ipairs(list) do
 			if b.SetEnabled then b:SetEnabled(on) end
@@ -1397,6 +1528,10 @@ local DIFFICULTY = { red = { 1, 0.1, 0.1 }, orange = { 1, 0.5, 0.25 }, yellow = 
 	grey = { 0.5, 0.5, 0.5 } }
 local function questDifficultyColor(level)
 	if type(level) ~= "number" or level <= 0 then return C.value end
+	if api.questDifficultyRGB then
+		local r, g, b = api.questDifficultyRGB(level)
+		if r then return { r, g, b } end
+	end
 	if GetQuestDifficultyColor then
 		local ok, c = pcall(GetQuestDifficultyColor, level)
 		if ok and type(c) == "table" and type(c.r) == "number" then return { c.r, c.g, c.b } end
@@ -1416,7 +1551,7 @@ local function buildOrphans(item, parent)
 	bg:SetAllPoints()
 	gradient(bg, C.ctrlTop, C.ctrlBottom)
 	border(holder, C.ctrlEdge)
-	local summary = text(holder, "GameFontHighlight", 1.05, C.subLabel)
+	local summary = text(holder, "GameFontHighlight", 1.05, C.label)
 	summary:SetJustifyH("LEFT")
 	summary:SetWordWrap(true)
 	local rows, list, signature, busy = {}, {}, nil, false
@@ -1464,7 +1599,7 @@ local function buildOrphans(item, parent)
 		r.hl = solid(r, "BACKGROUND", C.thumb, 0.14)
 		r.hl:SetAllPoints()
 		r.hl:Hide()
-		r.zone = text(r, "GameFontHighlight", 1.05, C.subLabel)
+		r.zone = text(r, "GameFontHighlight", 1.05, C.label)
 		r.zone:SetJustifyH("LEFT")
 		r.zone:SetWordWrap(false)
 		r.label = text(r, "GameFontHighlight", 1.05, C.value)
@@ -1616,6 +1751,7 @@ end
 -- the header is a transparent button that folds the card. Folded state: db.configFolded["page:heading"].
 local CARD_PAD, CARD_GAP = 12, 10
 local cardPool, cardsUsed = {}, 0
+local unfolding -- 3.2: the card just unfolded by a click (its rows fade in)
 local function foldKey(pageKey, label) return tostring(pageKey) .. ":" .. tostring(label) end
 local function isFolded(pageKey, label, default)
 	local saved = ns.db and type(ns.db.configFolded) == "table" and ns.db.configFolded[foldKey(pageKey, label)]
@@ -1651,6 +1787,8 @@ local function getCard(i)
 		if not self.pageKey then return end
 		local folded = not isFolded(self.pageKey, self.label, self.default)
 		setFolded(self.pageKey, self.label, folded)
+		-- 3.2: the rows of a card that opens fade in (layout collects them)
+		if not folded then unfolding = { page = self.pageKey, label = self.label } end
 		sound(not folded)
 		layout()
 	end)
@@ -1677,7 +1815,8 @@ local function openCard(i, pageKey, label, default, y, w)
 	c.title:SetPoint("RIGHT", content, "TOPLEFT", w - 30, -y - hh / 2)
 	c.chevron:ClearAllPoints()
 	c.chevron:SetPoint("CENTER", content, "TOPLEFT", w - 16, -y - hh / 2)
-	if c.chevron.SetRotation then pcall(c.chevron.SetRotation, c.chevron, folded and 0 or -math.pi / 2) end
+	if api.animRotate then api.animRotate(c.chevron, folded and 0 or -math.pi / 2)
+	elseif c.chevron.SetRotation then pcall(c.chevron.SetRotation, c.chevron, folded and 0 or -math.pi / 2) end
 	c.button:ClearAllPoints()
 	c.button:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
 	c.button:SetSize(w, hh)
@@ -1710,6 +1849,7 @@ end
 
 layout = function()
 	if not frame or not content then return end
+	for _, h in ipairs(rowHovers) do h:Hide() end
 	local q = query()
 	local width = math.max((scroll:GetWidth() or 400) - 6, 200)
 	local y = 0
@@ -1742,7 +1882,9 @@ layout = function()
 		-- every row sits in a card: the page's first card is named after the page, each heading starts another
 		local inner = width - 2 * CARD_PAD
 		local folded = false
+		local fadeIn, inOpened = {}, false
 		local function startCard(label, default)
+			inOpened = unfolding ~= nil and unfolding.page == activePage and unfolding.label == label
 			if cardsShown > 0 then
 				local pad = folded and 0 or CARD_PAD / 2
 				closeCard(cardsShown, y + pad)
@@ -1753,20 +1895,50 @@ layout = function()
 			hh, folded = openCard(cardsShown, activePage, label, default, y, width)
 			y = y + hh + (folded and 0 or 6)
 		end
-		for _, item in ipairs(items) do
-			if visible[item] then
-				if item.kind == "heading" then
+		-- 3.2 (user: "use space better ... these options could go right beside each other"): two switches (or two
+		-- sliders on a wide page) one after the other, at the same indent, share a line, half the width each. Not when
+		-- the second has its own sub-options under it (they belong right under it), nor across a heading.
+		local k = ts()
+		local PAIR_MIN = { check = 600 * k, slider = 820 * k }
+		local GAP = math.floor(24 * k + 0.5)
+		local function canPair(a, b, c)
+			local min = PAIR_MIN[a.kind]
+			if not (min and b and b.kind == a.kind and inner >= min) then return false end
+			local ia, ib = a.indent or 0, b.indent or 0
+			if ia ~= ib then return false end
+			return not (c and c.kind ~= "heading" and (c.indent or 0) > ib)
+		end
+		local list = {}
+		for _, item in ipairs(items) do if visible[item] then list[#list + 1] = item end end
+		local i = 1
+		while i <= #list do
+			local item = list[i]
+			if item.kind == "heading" then
+				item.setShown(false)
+				startCard(item.label, item.foldDefault)
+				i = i + 1
+			else
+				if cardsShown == 0 then startCard(p and (p.cardTitle or p.title) or "") end
+				local nextItem = list[i + 1]
+				if folded then
 					item.setShown(false)
-					startCard(item.label, item.foldDefault)
+					i = i + 1
+				elseif canPair(item, nextItem, list[i + 2]) then
+					local colW = math.floor((inner - GAP) / 2)
+					item.packed, nextItem.packed = true, true
+					item.setShown(true); nextItem.setShown(true)
+					if inOpened then fadeIn[#fadeIn + 1] = item.frame; fadeIn[#fadeIn + 1] = nextItem.frame end
+					item.place(CARD_PAD, y, colW)
+					nextItem.place(CARD_PAD + colW + GAP, y, colW)
+					y = y + math.max(item.height, nextItem.height)
+					i = i + 2
 				else
-					if cardsShown == 0 then startCard(p and (p.cardTitle or p.title) or "") end
-					if folded then
-						item.setShown(false)
-					else
-						item.setShown(true)
-						item.place(CARD_PAD, y, inner)
-						y = y + item.height
-					end
+					item.packed = false
+					item.setShown(true)
+					if inOpened then fadeIn[#fadeIn + 1] = item.frame end
+					item.place(CARD_PAD, y, inner)
+					y = y + item.height
+					i = i + 1
 				end
 			end
 		end
@@ -1774,7 +1946,14 @@ layout = function()
 			closeCard(cardsShown, y + (folded and 0 or CARD_PAD / 2))
 			y = y + (folded and 0 or CARD_PAD / 2)
 		end
+		if unfolding then
+			unfolding = nil
+			local list = {}
+			for _, f in pairs(fadeIn) do if type(f) == "table" and f.SetAlpha then list[#list + 1] = f end end
+			if api.animFadeIn then api.animFadeIn("cardfade", list) end
+		end
 	else
+		glowList = {}
 		pageTitle:SetText("Search results")
 		if frame.qtsPageSub then frame.qtsPageSub:SetText("Every setting whose name matches") end
 		for _, p in ipairs(pages) do
@@ -1788,13 +1967,20 @@ layout = function()
 				head.place(0, y, width)
 				y = y + head.height
 				for _, item in ipairs(list) do
+					item.packed = false
 					item.setShown(true)
 					item.place(0, y, width)
 					y = y + item.height
+					if item.text then glowList[#glowList + 1] = item.text end
 				end
 			end
 		end
 		if y == 0 then pageTitle:SetText("No settings match") end
+		-- 3.2 (user): the matches flash once for each new search (Animations.lua animSearchGlow)
+		if q ~= lastGlowQuery and api.animSearchGlow then
+			for _, fs in ipairs(glowList) do api.animSearchGlow(fs) end
+		end
+		lastGlowQuery = q
 	end
 	hideCards(cardsShown + 1)
 	if frame.qtsArrangeTabs then frame.qtsArrangeTabs(q == "") end
@@ -1812,6 +1998,7 @@ layout = function()
 	-- "Defaults" resets the settings the open page shows (pageKeys)
 	local p = pageByKey[activePage]
 	if defaultsButton then defaultsButton:SetShown(q == "" and p ~= nil and p.reset ~= nil) end
+	if q == "" then lastGlowQuery = "" end
 end
 
 local layoutPending
@@ -1894,17 +2081,63 @@ local function declareItems(db)
 	-- Basics --------------------------------------------------------------------------------------------------------
 	page("main", "window", "Main")
 	check("Lock tracker position", function() return db.locked end, function(v) api.setLocked(v) end,
-		nil, nil, "unlocked: drag the tracker like a frame in Edit Mode")
+		nil, nil, "unlocked: drag the tracker like an Edit Mode frame")
 	check("Show minimap button", function() return not db.minimap.hide end,
 		function(v) if api.setMinimapShown then api.setMinimapShown(v) end end)
-	help("left-click opens this window")
+	help("left-click it to open this window")
+	-- 3.2 (user): one switch for every sound of the addon (Bootstrap.lua root.playSound)
+	check("Sounds", function() return db.sounds ~= false end, function(v) db.sounds = v and true or false end)
+	help("off: the addon plays no sound at all - alerts (rares, battleground bases, low breath, LayerSwap ready, quest items, secrets) and clicks")
 	heading("Setup and help")
 	buttons("Run the setup again", {
 		{ "Run the setup again", function() if api.showSetup then api.showSetup(true) end end, 180 },
 	})
-	note("The setup walks through every feature and lets you turn each on or off. Type |cffffd100/qt setup|r to open it from chat, |cffffd100/qt help|r for every command.")
+	-- 3.2: the What's new window after an update (Tracker/WhatsNew.lua)
+	check("Show what's new after an update", function() return not db.whatsNewOff end,
+		function(v) db.whatsNewOff = not v or nil end)
+	help("shows the changes once after each update; /ftp news opens it")
+	buttons("What's new", {
+		{ "What's new", function() if api.showWhatsNew then api.showWhatsNew(true) end end, 140,
+			glow = function() return api.whatsNewUnread and api.whatsNewUnread() end },
+	})
+	-- 3.2 (user idea 24): all a bug report needs, in a box to copy (Tracker/BugReport.lua)
+	buttons("Make a bug report", {
+		{ "Make a bug report", function() if api.showBugReport then api.showBugReport() end end, 170 },
+	})
+	help("the version, your addons, our last errors (needs BugSack) and changed settings, to paste on CurseForge or Discord; /ftp bug")
+	note("The setup walks through every feature and lets you turn each on or off. Type |cffffd100/ftp setup|r to open it from chat, |cffffd100/ftp help|r for every command.")
 	pageByKey.main.reset = resetQuests
 	pageByKey.main.cardTitle = "Main settings"
+
+	-- Animations (3.2, user: "an on/off dial for every animation we've added, and will add"): drawn from
+	-- api.animKinds (Animations.lua), so a new animation shows here by itself
+	page("animations", "window", "Animations")
+	check("All animations", function() return db.animations ~= false end, function(v) db.animations = v and true or false end)
+	help("short effects, less than a second; never in combat. Off: none of the ones below")
+	local animsOn = function() return db.animations ~= false end
+	for _, k in ipairs(api.animKinds or {}) do
+		if k.area then
+			heading(k.area)
+		else
+			local kind = k.key
+			check(k.label, function() return not (type(db.animOff) == "table" and db.animOff[kind]) end, function(v)
+				if type(db.animOff) ~= "table" then db.animOff = {} end
+				db.animOff[kind] = (not v) or nil
+				if not next(db.animOff) then db.animOff = nil end
+			end, animsOn, 16, k.sub)
+		end
+		if k.area == "Statistics" then
+			-- the banner has its own setting (also on Statistics > Options); it is not cut by the switch above
+			check("Level-up banner", function() return db.levelBanner ~= false end,
+				function(v) db.levelBanner = v and true or false end, nil, 16,
+				"a gold banner at the top of the screen on a new level (/ftp levelup: a test)")
+		end
+	end
+	pageByKey.animations.reset = function()
+		db.animations, db.animOff, db.levelBanner = nil, nil, nil
+		if api.refreshConfig then api.refreshConfig() end
+	end
+	pageByKey.animations.cardTitle = "Animations"
 
 	-- Quest Tracker ------------------------------------------------------------------------------------------------
 	page("questlist", "quests", "List")
@@ -1918,17 +2151,17 @@ local function declareItems(db)
 	slider("Scrollbar width", 2, 30, 1, "%d px", function() return db.scrollbarWidth or 10 end,
 		function(v) if api.setScrollbarWidth then api.setScrollbarWidth(v) end end, function() return db.scrollbar end, 24)
 	check("Usable quest items on the left", function() return db.itemsLeft ~= false end, function(v) api.setItemsLeft(v) end)
-	help("the quest's item button sits left of its title; off: at the right")
+	help("the quest's item button goes left of its title; off: on the right")
 	heading("Quest count")
-	-- the "31/40" quest count on the "Quests" header (MoreQuests.lua updateQuestCount)
-	local function countChanged() if api.updateQuestCount then pcall(api.updateQuestCount) end end
+	-- the "31/40" quest count on the "Quests" header (Own/Frame.lua)
+	local function countChanged() if api.refreshQuests then api.refreshQuests() end end
 	local function countOn() return db.questCount ~= false end
 	check("Quest count on the header (N/40)", countOn, function(v) db.questCount = v and true or false; countChanged() end)
 	slider("Quest count size", 0, 24, 1, function(v) return v == 0 and "Header's" or ("%d px"):format(v) end,
 		function() return db.questCountSize or 0 end, function(v) db.questCountSize = v; countChanged() end, countOn, 24)
 	check("Custom quest count colour", function() return db.questCountCustom end,
 		function(v) db.questCountCustom = v and true or false; countChanged() end, countOn, 24,
-		"replaces the green / yellow / orange / red warning of how full your quest log is")
+		"replaces the green, yellow, orange and red colours that show how full your quest log is")
 	-- its opacity always applies; its colour only with the custom colour on
 	color("Quest count colour and opacity", function() return db.questCountColor or { 1, 1, 1, 1 } end,
 		function(v) db.questCountColor = v; countChanged() end, countOn, 24, 1)
@@ -1940,6 +2173,18 @@ local function declareItems(db)
 		end
 	end
 	heading("\"Quests\" header", true)
+	-- 3.2 (user): LayerSwap's Swap layer on the header (LayerSwapButton.lua)
+	if api.layerSwapLoaded and api.layerSwapLoaded() then
+		check("LayerSwap button", function() return db.layerSwapButton ~= false end,
+			function(v) db.layerSwapButton = v and true or false; if api.applyLayerSwapButton then api.applyLayerSwapButton() end end)
+		help("LayerSwap's logo right of \"Quests\": a click presses LayerSwap's Swap layer button")
+		check("LayerSwap text", function() return db.layerSwapText ~= false end,
+			function(v) db.layerSwapText = v and true or false; if api.applyLayerSwapButton then api.applyLayerSwapButton() end end)
+		help("LayerSwap's mini bar text right of its logo, for example \"Layer C   Next swap 4:10\"")
+		check("Hide LayerSwap's mini bar", function() return db.layerSwapHideMini ~= false end,
+			function(v) db.layerSwapHideMini = v and true or false; if api.applyLayerSwapButton then api.applyLayerSwapButton() end end)
+		help("LayerSwap fills its mini bar's text only while the bar is on: we turn it on for you, make it invisible and show its text here")
+	end
 	color("\"Quests\" header and collapse button", function()
 		return type(db.questsHeaderColor) == "table" and db.questsHeaderColor or { 1, 0.82, 0, 1 }
 	end, function(v) db.questsHeaderColor = v; headerLook() end, nil, nil, 1)
@@ -1951,25 +2196,8 @@ local function declareItems(db)
 	})
 	slider("\"Quests\" header padding", -50, 40, 1, "%+d px", function() return db.questsPadY or 0 end,
 		function(v) db.questsPadY = v; if api.applyQuestsPad then api.applyQuestsPad() end end)
-	-- R106-49: off: the header scrolls away with the quests (as before)
-	check("Keep the \"Quests\" header at the top", function() return db.pinQuestsHeader end,
-		function(v) api.setPinQuestsHeader(v) end, nil, nil, "off: it scrolls with the quests")
-	-- R106-57: Blizzard's Professions section in its own box above the quest tracker, 2 recipes tall, then it scrolls
-	heading("Professions", true)
-	check("Professions beside the quest tracker", function() return db.profAbove ~= false end,
-		function(v) api.setProfessionsAbove(v) end, nil, nil, "tracked recipes in their own box left of the Quests header; 2 show, more scroll")
-	local profOn = function() return db.profAbove ~= false end
-	-- R106-64: where the box sits (left of the Quests header by default)
-	slider("Professions horizontal position", -400, 400, 1, "%+d px", function() return db.profX or 0 end,
-		function(v) api.setProfessionsPosition(v, nil) end, profOn, 24)
-	slider("Professions vertical position", -400, 400, 1, "%+d px", function() return db.profY or 0 end,
-		function(v) api.setProfessionsPosition(nil, v) end, profOn, 24)
-	check("Professions scrollbar", function() return db.profScrollbar ~= false end,
-		function(v) api.setProfScrollbarShown(v) end, profOn, 24)
-	check("Only on mouseover", function() return db.profScrollbarMouseover end,
-		function(v) api.setProfScrollbarMouseover(v) end, function() return profOn() and db.profScrollbar ~= false end, 48)
-	slider("Professions scrollbar width", 2, 30, 1, "%d px", function() return db.profScrollbarWidth or 10 end,
-		function(v) api.setProfScrollbarWidth(v) end, function() return profOn() and db.profScrollbar ~= false end, 24)
+	-- 3.2 (user: only our own tracker): the classic tracker's "Keep the Quests header at the top" and Professions box
+	-- settings were removed (ours keeps its header at the top and has its own Professions section)
 	heading("Position")
 	slider("Scroll speed", 10, 200, 1, "%d px", function() return db.step end, function(v) db.step = v end)
 	help("how far one turn of the mouse wheel scrolls")
@@ -1996,6 +2224,14 @@ local function declareItems(db)
 	-- moves the header text only; "Space above zone headers" makes room for it
 	slider("Zone header vertical position", -20, 40, 1, "%+d px", function() return db.zoneHeaderY or 0 end,
 		function(v) db.zoneHeaderY = v; if api.applyZoneHeaders then api.applyZoneHeaders() end end, sortOn)
+	-- 3.2: "Explored 7/12" after your zone's name (Chains.lua; was on the Unexplored areas page, removed: user)
+	check("Explored count on the zone's header", function() return db.zoneExplored ~= false end,
+		function(v) db.zoneExplored = v and true or false; if api.refreshExploredTag then api.refreshExploredTag() end end)
+	help("\"Explored 7/12\" after your zone's name in the tracker")
+	-- 3.2 (user idea 34)
+	check("Turn-ins on the zone's header", function() return db.turnInBundle ~= false end,
+		function(v) db.turnInBundle = v and true or false; if api.applyLayout then api.applyLayout() end end)
+	help("\"(3 turn-ins)\" when two or more of your finished quests are taken in in that zone (needs Questie)")
 	pageByKey.zoneheaders.reset = resetQuests
 
 	page("titles", "quests", "Lines")
@@ -2012,106 +2248,127 @@ local function declareItems(db)
 	heading("Distance")
 	check("Distance and direction after quest titles", function() return db.questDistance ~= false end,
 		function(v) db.questDistance = v; if api.applyQuestDistance then api.applyQuestDistance() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil,
-		"how far away the quest is, with an arrow that points at it (outside instances)")
+			if api.refreshQuests then api.refreshQuests() end end, nil, nil,
+		"how far away the quest is, with an arrow pointing at it (not in instances)")
 	local distanceOn = function() return db.questDistance ~= false end
 	local function applyDistance()
 		if api.applyQuestDistance then api.applyQuestDistance() end
-		if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+		if api.refreshQuests then api.refreshQuests() end
 	end
 	-- R106-63: the yards and the arrow each on or off
 	check("Show distance", function() return db.distanceText ~= false end,
-		function(v) db.distanceText = v and true or false; applyDistance() end, distanceOn, 24, "how far away, as \"120 yds\"")
+		function(v) db.distanceText = v and true or false; applyDistance() end, distanceOn, 24, "how far away, like \"120 yds\"")
 	check("Show arrow", function() return db.distanceArrow ~= false end,
-		function(v) db.distanceArrow = v and true or false; applyDistance() end, distanceOn, 24, "points at the quest")
+		function(v) db.distanceArrow = v and true or false; applyDistance() end, distanceOn, 24, "points to the quest")
 	percent("Arrow size", 50, 200, function() return db.distArrowScale or 1 end,
 		function(v) db.distArrowScale = v; applyDistance() end, distanceOn, 24)
 	percent("Arrow opacity", 10, 100, function() return db.distArrowAlpha or 1 end,
 		function(v) db.distArrowAlpha = v; applyDistance() end, distanceOn, 24)
+	-- 3.2: only the closest quests get the yards and the arrow
+	slider("Closest quests with distance", 0, 10, 1, function(v) return v == 0 and "All" or tostring(v) end,
+		function() local n = tonumber(db.distanceClosest); if n == nil then return 3 end return n end,
+		function(v) db.distanceClosest = v; applyDistance() end, distanceOn, 24)
+	help("only this many of the closest quests show yards and an arrow; 0: all")
+	check("Time to arrive", function() return db.distanceEta == true end,
+		function(v) db.distanceEta = v and true or false; applyDistance() end, distanceOn, 24,
+		"after the yards: how long it takes to get there at your speed, like \"1:20\"")
 	-- R106-84: the dungeon card at the top (Dungeon.lua), with DungeonJournal's run tracker inside it
 	heading("Dungeon and reputation")
 	check("Dungeon card at the top", function() return db.dungeonCard ~= false end,
 		function(v) if api.setDungeonCard then api.setDungeonCard(v) end end, nil, nil,
-		"in a dungeon or raid: its name, the group's size and deaths, and DungeonJournal's tracker inside it")
+		"in a dungeon or raid: its name, group size, deaths and DungeonJournal's tracker")
 	-- R106-116: the card's "Dungeon" / "Raid" header and the line under it
 	check("Dungeon header and its line", function() return db.dungeonHeader ~= false end,
 		function(v) db.dungeonHeader = v and true or false; api.applyLayout() end,
 		function() return db.dungeonCard ~= false end, 16,
-		"the \"Dungeon\" or \"Raid\" header over the card, with its line and collapse button; off: hidden, the card stays where it is, always open")
+		"the \"Dungeon\" or \"Raid\" header with its line and collapse button; off: hidden, and the card stays open")
 	-- R106-100: the card's instance line (InstanceCap.lua)
 	check("Instances this hour and saved lockout", function() return db.instanceCap ~= false end,
 		function(v) db.instanceCap = v and true or false; api.applyLayout() end,
 		function() return db.dungeonCard ~= false end, 16,
-		"on the dungeon card: instances entered this hour of the limit of 10, and this dungeon's lockout")
+		"on the dungeon card: instances entered this hour (limit 5) and this dungeon's lockout")
 	-- R106-74: the watched reputation at the top of the quest list (Reputation.lua), the game's bar hidden meanwhile
 	check("Tracked reputation at the top", function() return db.repTrack ~= false end,
 		function(v) if api.setRepTrack then api.setRepTrack(v) end end, nil, nil,
-		"the faction you watch, with its bar, above the quests; the game's reputation bar is hidden while it shows")
+		"the faction you watch, with its bar, above the quests; the game's reputation bar hides while it shows")
 	heading("Progress bars")
+	-- 3.2
+	check("Hide done objectives", function() return db.hideDoneObjectives == true end,
+		function(v) db.hideDoneObjectives = v and true or false; if api.applyProgressBars then api.applyProgressBars() end end,
+		nil, nil, "a finished objective (\"8/8\") is removed; the quest's other lines stay")
 	check("Progress bars on objectives", function() return db.progressBars ~= false end,
 		function(v) db.progressBars = v; if api.applyProgressBars then api.applyProgressBars() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil,
-		"a small bar with the count at the right of each objective, as \"Khaz Modan Iron [26/30]\"")
+			if api.refreshQuests then api.refreshQuests() end end, nil, nil,
+		"a small bar with the count right of each objective, like \"Khaz Modan Iron [26/30]\"")
 	check("Blue bars", function() return db.progressBarBlue end,
 		function(v) db.progressBarBlue = v; if api.applyProgressBars then api.applyProgressBars() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+			if api.refreshQuests then api.refreshQuests() end end,
 		function() return db.progressBars ~= false end, 24,
 		"always blue; off: red, orange, yellow, then green when done")
 	check("Under the objective", function() return db.progressBarUnder end,
 		function(v) db.progressBarUnder = v; if api.applyProgressBars then api.applyProgressBars() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
-		function() return db.progressBars ~= false end, 24, "on a line of its own under the text, not at its right")
+			if api.refreshQuests then api.refreshQuests() end end,
+		function() return db.progressBars ~= false end, 24, "on its own line under the text, not to its right")
 	heading("Rewards")
 	check("Experience reward after titles", function() return db.showXP end, function(v) api.setReward("xp", v) end)
-	help("the experience the quest gives, after its title")
+	help("the quest's experience, after its title")
 	color("Experience colour", function() return db.xpColor or { 0.69, 0.53, 1 } end,
 		function(v) db.xpColor = v; if api.applyExtras then api.applyExtras() end end, function() return db.showXP end, 24)
 	check("Show xp orb", function() return db.xpOrb end,
 		function(v) db.xpOrb = v; if api.applyExtras then api.applyExtras() end end, function() return db.showXP end, 24)
 	check("Gold reward after titles", function() return db.showGold end, function(v) api.setReward("gold", v) end)
-	help("the money the quest gives, after its title")
+	help("the quest's money, after its title")
 	check("Show coins instead", function() return db.goldCoins end,
 		function(v) db.goldCoins = v; if api.applyExtras then api.applyExtras() end end, function() return db.showGold end, 24)
+	-- 3.2 (user): the coins' size on quest titles
+	percent("Coin size", 50, 200, function() return db.coinScale or 1 end,
+		function(v) db.coinScale = v; if api.applyExtras then api.applyExtras() end
+			if api.refreshQuests then api.refreshQuests() end end, function() return db.showGold and db.goldCoins end, 24)
 	-- the green check left of a finished quest's title (Extras.lua placeCheck)
 	local function checksOn() return db.completeCheck ~= false end
 	heading("Finished quests")
 	check("Checks on finished quests", checksOn,
 		function(v) db.completeCheck = v; if api.applyExtras then api.applyExtras() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, nil, nil, "a green tick left of the title")
+			if api.refreshQuests then api.refreshQuests() end end, nil, nil, "a green tick left of the title")
 	percent("Check scale", 50, 250, function() return db.completeCheckScale or 1 end,
 		function(v) db.completeCheckScale = v; if api.applyExtras then api.applyExtras() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end, checksOn, 24)
+			if api.refreshQuests then api.refreshQuests() end end, checksOn, 24)
 	local function applyChecks()
 		if api.applyExtras then api.applyExtras() end
-		if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+		if api.refreshQuests then api.refreshQuests() end
 	end
 	color("Check colour and opacity", function()
 		if api.checkColor then local r, g, b, a = api.checkColor(); return { r, g, b, a } end
 		return { 0.27, 0.87, 0.47, 1 }
 	end, function(v) db.completeCheckColor = v; applyChecks() end, checksOn, 24, 1)
 	check("Outline the check", function() return db.completeCheckOutline end,
-		function(v) db.completeCheckOutline = v; applyChecks() end, checksOn, 24, "a thin dark edge, as the zone header outline")
+		function(v) db.completeCheckOutline = v; applyChecks() end, checksOn, 24, "a thin dark edge, like the zone header outline")
 	heading("Icons")
 	check("Icon Classifications", function() return db.condense end,
 		function(v) db.condense = v; if api.applyExtras then api.applyExtras() end end, nil, nil,
-		"elite, group, dungeon, raid, PvP, added in WoW Forever")
+		"elite, group, dungeon, raid, PvP and new in WoW Forever")
 	-- R106-68: the Forever "W" on quests new to WoW Forever, on or off
 	check("Icon on quests new to Forever", function() return db.foreverIcon ~= false end,
 		function(v) db.foreverIcon = v and true or false; if api.applyExtras then api.applyExtras() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+			if api.refreshQuests then api.refreshQuests() end end,
 		function() return db.condense end, 24, "the Forever \"W\"")
 	if api.questieLoaded and api.questieLoaded() then -- raid attunement quests, from Questie's quest chains
 		check("Star on raid attunement quests", function() return db.attunementStar ~= false end,
 			function(v) db.attunementStar = v; if api.applyExtras then api.applyExtras() end
-				if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+				if api.refreshQuests then api.refreshQuests() end end,
 			function() return db.condense and db.questie ~= false end, 24, "from Questie")
+		-- 3.2 (user idea 35; DeadEnd.lua)
+		check("Dead-end alert", function() return db.deadEnd ~= false end,
+			function(v) db.deadEnd = v and true or false; if api.refreshQuests then api.refreshQuests() end end,
+			function() return db.condense and db.questie ~= false end, 24,
+			"a cross on grey quests that lead nowhere and give no item or reputation; a chat line when you accept one")
 	end
 	percent("Icon size", 50, 250, function() return db.iconScale or 1 end,
 		function(v) db.iconScale = v; if api.applyExtras then api.applyExtras() end end,
 		function() return db.condense end, 24)
 	percent("Icon opacity", 10, 100, function() return db.iconAlpha or 1 end,
 		function(v) db.iconAlpha = v; if api.applyExtras then api.applyExtras() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
+			if api.refreshQuests then api.refreshQuests() end end,
 		function() return db.condense end, 24)
 	heading("Fine-tune", true)
 	slider("Spacing between quests", -10, 30, 1, "%+d px", function() return db.spacing end,
@@ -2119,11 +2376,15 @@ local function declareItems(db)
 	slider("Quest titles horizontal position", -20, 150, 1, "%+d px", function() return db.questTitleX or 0 end,
 		function(v) db.questTitleX = v; if api.applyExtras then api.applyExtras() end
 			if api.applyZoneHeaders then api.applyZoneHeaders() end end)
+	-- 3.2 (user): the objective lines on their own, from the title's left edge (our own tracker: the classic tracker's
+	-- lines are Blizzard's, moving them would taint)
+	slider("Objectives horizontal position", -10, 60, 1, "%+d px", function() return db.objectiveX or 0 end,
+		function(v) db.objectiveX = v; if api.applyExtras then api.applyExtras() end end)
 	pageByKey.titles.reset = resetQuests
 
 	page("tooltips", "quests", "Tooltips")
 	check("Tooltips on quests", function() return db.tooltips end, function(v) db.tooltips = v end, nil, nil,
-		"overview, gold, rewards")
+		"overview, gold and rewards")
 	check("Show party progress", function() return db.partyProgress ~= false end, function(v) db.partyProgress = v end,
 		function() return db.tooltips end, 24)
 	check("Coin icons instead of g, s, c", function() return db.tooltipCoins end, function(v) db.tooltipCoins = v end,
@@ -2146,6 +2407,27 @@ local function declareItems(db)
 	end
 	pageByKey.tooltips.reset = resetQuests
 
+	-- 3.2 (user): the Battleground section's own settings (Tracker/Own/Battleground.lua)
+	page("battleground", "quests", "Battleground")
+	local function bgShown() return db.ownBg ~= false end
+	local function bgSet(key) return function(v) db[key] = v and true or false; if api.ownBgChanged then api.ownBgChanged() end end end
+	local function bgGet(key) return function() return db[key] ~= false end end
+	heading("Section")
+	check("Show the Battleground section", bgGet("ownBg"), bgSet("ownBg"), nil, nil,
+		"in a battleground and while you are queued")
+	heading("Timer bars")
+	check("Battle begins", bgGet("bgStart"), bgSet("bgStart"), bgShown, 24, "the countdown before the gates open")
+	check("Node captures", bgGet("bgNodes"), bgSet("bgNodes"), bgShown, 24, "a base, graveyard or tower being taken, until it is captured")
+	check("Flag respawns", bgGet("bgFlag"), bgSet("bgFlag"), bgShown, 24, "in Warsong Gulch, Eye of the Storm and Darkspear Islands")
+	check("Who wins", bgGet("bgScore"), bgSet("bgScore"), bgShown, 24, "the final score and when it is reached, based on the bases held")
+	check("Time left", bgGet("bgTime"), bgSet("bgTime"), bgShown, 24, "when the game shows a match timer")
+	check("Queues", bgGet("bgQueues"), bgSet("bgQueues"), bgShown, 24, "time waited, and the time left to enter after an invite")
+	check("Icons left of the bars", bgGet("bgIcons"), bgSet("bgIcons"), bgShown, 24, "like the icons left of the quest titles")
+	heading("Flags and warnings")
+	check("Flag carriers", bgGet("bgCarriers"), bgSet("bgCarriers"), bgShown, 24, "who holds each flag")
+	check("Node warnings", bgGet("ownBgWarn"), bgSet("ownBgWarn"), nil, 24,
+		"a chat line and a sound when the enemy takes one of your nodes, and again 10 s before you lose it")
+
 	page("tracking", "quests", "Tracking and sorting")
 	heading("What shows")
 	choice("Track", function() return TRACK_OPTIONS end, function() return trackGet(db) end,
@@ -2155,20 +2437,30 @@ local function declareItems(db)
 		return { { "closest", "Closest quest first" }, { "alpha", "Alphabetical (A to Z)" } }
 	end, function() return db.zoneOrder or "closest" end,
 		function(v) if api.setZoneOrder then api.setZoneOrder(v) end end, function() return db.zoneSort end)
+	-- 3.2
+	choice("Sort quests in a zone", function()
+		return { { "distance", "Closest first" }, { "level", "Lowest level first" }, { "progress", "Most done first" } }
+	end, function() return db.questOrder or "distance" end,
+		function(v) db.questOrder = v; if api.sortNow then api.sortNow() end
+			if api.refreshQuests then api.refreshQuests() end end, function() return db.zoneSort end)
+	slider("Grey quests from", 0, 20, 1, function(v) return v == 0 and "Game's rule" or (v .. " levels below") end,
+		function() return tonumber(db.greyLevels) or 0 end,
+		function(v) db.greyLevels = v; if api.refreshQuests then api.refreshQuests() end end)
+	help("quests this many levels below you show grey in More quests and the journals; 0: the game decides")
 	-- R106-86: only the player's zone open; the other zones folded in More quests (click a zone to open it)
 	check("Expand current zone only", function() return db.expandCurrentZone end,
 		function(v)
 			db.expandCurrentZone = v and true or false
 			if api.sortNow then api.sortNow() end
-			if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+			if api.refreshQuests then api.refreshQuests() end
 		end,
 		function() return db.trackMode == "all" and db.zoneSort and not db.zoneFilter end, nil,
-		"other zones are folded under their header; click a zone to open it")
+		"other zones fold under their header; click a zone to open it")
 	-- R106-95: Ctrl+left-click a quest: General message + Looking For Group listing (GroupFinder.lua)
 	heading("Extras")
 	check("Ctrl+click a quest: find a group", function() return db.questGroupFinder ~= false end,
 		function(v) db.questGroupFinder = v and true or false end, nil, nil,
-		"asks: LFM in General chat, a Looking For Group listing, or both; whisper 'inv' to join")
+		"asks where: LFM in General chat, a Looking For Group listing, or both; others whisper 'inv' to join")
 	-- R106-99: hover an objective naming an NPC or an object: its 3D model beside the tracker (NpcPanel.lua)
 	check("Hover an objective: show its 3D model", function() return db.npcPanelQuests ~= false end,
 		function(v) db.npcPanelQuests = v and true or false; if not v and api.hideNpcPanel then api.hideNpcPanel() end end,
@@ -2176,16 +2468,17 @@ local function declareItems(db)
 	-- R106-101: a rare spotted in your zone, on its zone header (Rares.lua)
 	check("Rares near your quests", function() return db.rareAlert ~= false end,
 		function(v) if api.setRareAlert then api.setRareAlert(v) end end, nil, nil,
-		"a rare in your zone shows on the zone's header with its distance; hover: its 3D model; click: waypoint")
-	check("List quests past the tracking limit", function() return db.moreQuests ~= false end,
-		function(v) db.moreQuests = v; if api.rebuildMoreQuests then api.rebuildMoreQuests() end end,
-		function() return db.trackMode == "all" end)
+		"a rare in your zone shows on the zone header with its distance; hover: 3D model; click: waypoint")
+	-- 3.2 (user)
+	check("Rare message on screen", function() return db.rareMessage ~= false end,
+		function(v) db.rareMessage = v and true or false end, function() return db.rareAlert ~= false end, 1,
+		"a raid-warning style message in the middle of the screen, with its sound")
 	-- Questie's own "hide untracked quest icons", the other way round (Questie.lua): with it on, these quests have no
 	-- map markers
 	if api.questieLoaded and api.questieLoaded() and api.questieShowsUntracked then
 		check("Show them on the map (Questie)", function() return api.questieShowsUntracked() end,
 			function(v) api.setQuestieShowsUntracked(v) end,
-			function() return db.trackMode == "all" and db.moreQuests ~= false end, 24,
+			function() return db.trackMode == "all" end, nil,
 			"world map and minimap markers; the same as Questie's \"Hide untracked quest icons\", turned the other way")
 	end
 	pageByKey.tracking.reset = resetQuests
@@ -2196,25 +2489,23 @@ local function declareItems(db)
 	local g = root.objectives.settings
 	if not g then
 		page("guidetracker", "guide", "Steps")
-		note(root.standaloneObjectives
-			and "The separate AllObjectives RXP addon is running, so its settings are not shown here. Disable that addon in the AddOns list and /reload to use the built-in RXP Tracker."
-			or "RestedXP Guides is not available, so the guide settings cannot be shown.")
+		note("RestedXP Guides is not available, so the guide settings cannot be shown.")
 	else
 		local resetGuide = function() g.reset() end
 		local function arrowOn() return g.get("arrowButton") end
 		page("guidetracker", "guide", "Steps")
 		check("Show RestedXP steps in the tracker", function() return g.get("enabled") end,
-			function(v) g.setEnabled(v) end, nil, nil, "off brings back RestedXP's own windows")
-		check("NPC automation while RestedXP is hidden", function() return g.get("hiddenAutomation") end,
+			function(v) g.setEnabled(v) end, nil, nil, "off: RestedXP's own windows come back")
+		check("RestedXP's other NPC automation while it is hidden", function() return g.get("hiddenAutomation") end,
 			function(v) g.setFlag("hiddenAutomation", v) end, function() return g.get("enabled") end, 24,
-			"quests, gossip, flights, hearthstone, buying and training, with its window hidden")
+			"chat choices, flights, hearthstone, buying, spirit healer and training (accepting, turning in and chat skipping are in Helpers > NPCs)")
 		-- R106-87: the target buttons ping what they target (Objectives/Core.lua ns.pingLine)
 		check("Ping what you target", function() return g.get("targetPing") ~= false end,
 			function(v) g.setFlag("targetPing", v) end, function() return g.get("enabled") end, 24,
-			"the step's target buttons /ping the unit they target, for your group")
+			"the step's target buttons /ping their unit for your group")
 		check("Own window", function() return db.guideDetached end,
 			function(v) if api.setGuideDetached then api.setGuideDetached(v) end end,
-			function() return g.get("enabled") end, 24, "out of the quest tracker; drag its bar to move it")
+			function() return g.get("enabled") end, 24, "outside the quest tracker; drag its bar to move it")
 		buttons("Window position", {
 			{ "Reset window position", function() if api.resetGuideWindow then api.resetGuideWindow() end end, 170 },
 		}, function() return db.guideDetached and g.get("enabled") end)
@@ -2223,14 +2514,14 @@ local function declareItems(db)
 		local function stepsFormat(v) return v >= allSteps and "All" or ("%d"):format(v) end
 		slider("Steps shown ahead", 0, allSteps, 1, stepsFormat,
 			function() return g.get("followingSteps") end, function(v) g.setSteps(v) end)
-		help("how many of the next steps are listed under the current one")
+		help("how many next steps are listed under the current one")
 		slider("Steps shown at once", 1, allSteps, 1, stepsFormat, function() return g.get("upcomingShown") or 2 end,
 			function(v) g.setUpcoming("upcomingShown", v) end)
 		help("the rest scroll with the mouse wheel")
 		-- the "N/M" step counter in the header (Header.lua)
 		local function countOn() return g.get("stepCountShown") ~= false end
 		check("Step counter (N/total)", countOn, function(v) g.setUpcoming("stepCountShown", v and true or false) end,
-			nil, nil, "in the RXP Tracker's header (Forever Style)")
+			nil, nil, "in the RXP Tracker's header")
 		slider("Step counter size", 0, 24, 1, function(v) return v == 0 and "Header's" or ("%d px"):format(v) end,
 			function() return g.get("stepCountSize") or 0 end, function(v) g.setUpcoming("stepCountSize", v) end, countOn, 24)
 		check("Custom step counter colour", function() return type(g.get("stepCountColor")) == "table" end,
@@ -2274,12 +2565,12 @@ local function declareItems(db)
 
 		page("arrow", "guide", "Waypoint arrow")
 		check("Use RestedXP's arrow as the objective button", arrowOn, function(v) g.setFlag("arrowButton", v) end)
-		help("click the arrow to use the step's item or target")
+		help("click it to use the step's item or target")
 		check("Small objective buttons around the arrow", function() return g.get("arrowSatellites") end,
 			function(v) g.setFlag("arrowSatellites", v) end, arrowOn, 24)
 		check("Collapse two or more into one +N badge", function() return g.get("arrowCollapse") end,
 			function(v) g.setFlag("arrowCollapse", v) end, function() return arrowOn() and g.get("arrowSatellites") end, 48,
-			"opens on hover")
+			"the badge opens when you hover it")
 		if g.setArrowScale then
 			slider("Arrow scale", 20, 200, 5, "%d%%", function() return math.floor(g.getArrowScale() * 100 + 0.5) end,
 				function(v) g.setArrowScale(v / 100) end)
@@ -2397,6 +2688,17 @@ local function declareItems(db)
 	slider("Extra width", 0, 300, 1, "+%d px", function() return db.widthExtra end,
 		function(v) db.widthExtra = v; api.applyWidth() end)
 	note("Extra width widens the tracker's frame. |cffff5a3cTo make text bigger or smaller use the scale sliders above (and the RXP Tracker's step scales in Tracker settings) instead, and turn on \"Word wrap titles and objectives\" (Quest titles) so long quest text wraps instead of being cut off.|r")
+	-- 3.2: fade or hide the tracker in combat or in a raid group
+	heading("Combat and raids")
+	local fadeModes = function() return { { "off", "Normal" }, { "fade", "Fade" }, { "hide", "Hide" } } end
+	choice("In combat", fadeModes, function() return db.combatFade or "off" end,
+		function(v) db.combatFade = v; if api.applySituationAlpha then api.applySituationAlpha() end end)
+	help("Fade: see-through while you fight. Hide: gone until the fight ends.")
+	choice("In a raid group", fadeModes, function() return db.raidFade or "off" end,
+		function(v) db.raidFade = v; if api.applySituationAlpha then api.applySituationAlpha() end end)
+	slider("Faded opacity", 5, 100, 5, "%d%%", function() return math.floor((db.combatFadeAlpha or 0.3) * 100 + 0.5) end,
+		function(v) db.combatFadeAlpha = v / 100; if api.applySituationAlpha then api.applySituationAlpha() end end,
+		function() return (db.combatFade or "off") == "fade" or (db.raidFade or "off") == "fade" end, 24)
 	-- last on the page: it changes how the tracker stacks with every other window
 	heading("Layer", true)
 	note("|cffff5a3cWarning: only change this if you know what you're doing.|r It sets which windows the tracker draws above or below; a wrong value can hide the tracker behind other frames or put it over windows you need. 1-25 behind the minimap, 51-75 normal, 76 and up on top. The Defaults button on this page puts it back.")
@@ -2407,7 +2709,7 @@ local function declareItems(db)
 	page("background", "window", "Background")
 	check("Show a background behind the trackers", function() return db.background end,
 		function(v) db.background = v and true or false; if api.applyBackground then api.applyBackground() end end, nil, nil,
-		"behind the RXP Tracker and the quest list, down to the last quest shown")
+		"behind the RXP Tracker and the quest list, down to the last quest")
 	color("Background colour", function() return db.backgroundColor or { 0, 0, 0, 0.4 } end,
 		function(v) db.backgroundColor = v; if api.applyBackground then api.applyBackground() end end,
 		function() return db.background end, nil, 0.4)
@@ -2519,6 +2821,8 @@ local function declareItems(db)
 	if api.declareAutoQuestPage then api.declareAutoQuestPage(declareKit) end
 	if api.declareGuidePages then api.declareGuidePages(declareKit) end
 	if api.declareStatsPages then api.declareStatsPages(declareKit) end
+	-- 3.2: pages of the newer files (Journal, Reminders, Rewards, DungeonPlus, Chains), in load order
+	for _, declarePages in ipairs(api.pageDeclarers or {}) do declarePages(declareKit) end
 
 	-- page names, shown above each page's settings while searching
 	for _, p in ipairs(pages) do
@@ -2555,7 +2859,7 @@ local function buildSidebar(f, top)
 	sidebar.scroller, sidebar.content = scroller, content
 	local headers, entries = {}, {}
 	local rows = {} -- every header and entry, with its place in the list: { frame, top, bottom }
-	for _, group in ipairs(GROUPS) do
+	for _, group in ipairs(groupOrder()) do
 		local list = {}
 		for _, s in ipairs(SECTIONS) do
 			if s.group == group.key then
@@ -2588,6 +2892,12 @@ local function buildSidebar(f, top)
 				b.icon:SetTexture(s.icon)
 				b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 				local iconLayers = { b.icon }
+				-- 3.2: a picture of our own (its whole image), or an atlas when the game has it
+				if s.whole then b.icon:SetTexCoord(0, 1, 0, 1) end
+				if s.atlas and b.icon.SetAtlas and C_Texture and C_Texture.GetAtlasInfo then
+					local okA, info = pcall(C_Texture.GetAtlasInfo, s.atlas)
+					if okA and info then pcall(b.icon.SetAtlas, b.icon, s.atlas) end
+				end
 				-- RestedXP's own logo when RestedXP is loaded (its whole image, no icon crop)
 				if s.rxpIcon and C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides") then
 					b.icon:SetTexture(s.rxpIcon)
@@ -2617,9 +2927,11 @@ local function buildSidebar(f, top)
 				b.sub:SetWordWrap(false)
 				b.sub:SetText(s.sub or "")
 				b:SetScript("OnClick", function()
-					if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then pcall(PlaySound, SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+					if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_CHARACTER_INFO_TAB) end
 					selectPage(s.key)
 				end)
+				-- 3.2 (user): the icon tilts a little under the mouse (Animations.lua animTilt)
+				b:HookScript("OnEnter", function(self) if api.animTilt then api.animTilt(self.icon) end end)
 				-- greyed (still clickable) when none of its pages applies now (p.dimmed())
 				b.isDim = function()
 					local any, all = false, true
@@ -2921,7 +3233,10 @@ local function build()
 	close:SetSize(28, 28)
 	close:SetPoint("TOPRIGHT", -3, -4)
 	close:SetFrameLevel(bar:GetFrameLevel() + 5)
-	close:HookScript("OnClick", function() f:Hide() end) -- keep the template's own close behaviour
+	-- 3.2 (user): the window fades out when closed (Animations.lua animWindowClose; Esc still closes it at once)
+	close:SetScript("OnClick", function()
+		if api.animWindowClose then api.animWindowClose(f, function() f:Hide() end) else f:Hide() end
+	end)
 
 	-- items (declared first: the category list is built from the pages)
 	wipe(declared)
@@ -2982,7 +3297,7 @@ local function build()
 		local holder = CreateFrame("Frame", nil, bar)
 		holder:SetPoint("LEFT", versionText, "RIGHT", 14, 0)
 		holder:SetHeight(20)
-		local label = text(holder, "GameFontHighlightSmall", 1.1, C.subLabel)
+		local label = text(holder, "GameFontHighlightSmall", 1.1, C.label)
 		label:SetText("Opacity")
 		label:SetPoint("LEFT", holder, "LEFT", 0, 0)
 		local slider = CreateFrame("Slider", nil, holder)
@@ -3068,12 +3383,41 @@ local function build()
 	pageSub:SetJustifyH("LEFT")
 	pageSub:SetWordWrap(false)
 	f.qtsPageSub = pageSub
-	-- the section's pages as tabs: gold pills, the open one filled
+	-- the section's pages as tabs: gold pills, the open one filled.
+	-- 3.2 (user: "beautify the way you have headings selected within our Forever artstyle"): the open tab is a gold
+	-- bar lit from above (a light-to-deep gold gradient, a bright edge, a shine line along its top and a soft gold glow
+	-- around it) with dark engraved text; the others are dark gradient pills whose edge and text turn gold under the
+	-- mouse. A thin gold line, fading to the right, runs under the row.
 	local tabs = {}
 	local tabRow = CreateFrame("Frame", nil, panel)
 	tabRow:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -60)
 	tabRow:SetPoint("RIGHT", panel, "RIGHT", -20, 0)
 	tabRow:SetHeight(24)
+	local tabLine = tabRow:CreateTexture(nil, "BACKGROUND")
+	tabLine:SetHeight(1)
+	tabLine:SetPoint("TOPLEFT", tabRow, "BOTTOMLEFT", 0, -5)
+	tabLine:SetPoint("TOPRIGHT", tabRow, "BOTTOMRIGHT", 0, -5)
+	hGradient(tabLine, C.on, 0.55, 0)
+	tabLine:Hide()
+	-- 3.2: a short bright gold mark on the line, under the open tab; it glides to a newly picked tab (Animations.lua)
+	local tabMark = tabRow:CreateTexture(nil, "ARTWORK")
+	tabMark:SetHeight(2)
+	tabMark:SetColorTexture(1, 0.86, 0.45, 1)
+	tabMark:Hide()
+	local tabMarkSection
+	local TAB = {
+		activeEdgeTop = { 1, 0.9, 0.6 }, activeEdgeBottom = { 0.5, 0.34, 0.1 },
+		activeTop = { 0.98, 0.82, 0.44 }, activeBottom = { 0.68, 0.48, 0.16 },
+		activeText = { 0.16, 0.09, 0.02 }, glow = { 1, 0.78, 0.3 },
+		edgeHover = { 0.7, 0.56, 0.3 }, fillHoverTop = { 0.25, 0.21, 0.16 }, textHover = { 1, 0.88, 0.6 },
+	}
+	-- a vertical gradient on a tinted circle or a plain texture (flat where gradients are missing)
+	local function shade(t, top, bottom, a)
+		if t.qtsTinted then t:SetVertexColor(1, 1, 1, 1) else t:SetColorTexture(1, 1, 1, 1) end
+		local ok = t.SetGradient and CreateColor and pcall(t.SetGradient, t, "VERTICAL",
+			CreateColor(bottom[1], bottom[2], bottom[3], a or 1), CreateColor(top[1], top[2], top[3], a or 1))
+		if not ok then paint(t, { (top[1] + bottom[1]) / 2, (top[2] + bottom[2]) / 2, (top[3] + bottom[3]) / 2 }, a) end
+	end
 	local function tabButton(i)
 		if tabs[i] then return tabs[i] end
 		local b = CreateFrame("Button", nil, tabRow)
@@ -3081,26 +3425,54 @@ local function build()
 			return { left = circle(b, layer, sub), right = circle(b, layer, sub), mid = b:CreateTexture(nil, layer, nil, sub) }
 		end
 		b.edge, b.fill = pill("BORDER", 0), pill("ARTWORK", 0)
+		-- the glow: three thin added rings, fainter outward, so it fades softly
+		b.glows = { pill("BACKGROUND", 0), pill("BACKGROUND", 1), pill("BACKGROUND", 2) }
+		for _, g in ipairs(b.glows) do for _, t in pairs(g) do t:SetBlendMode("ADD") end end
+		b.shine = b:CreateTexture(nil, "ARTWORK", nil, 2)
+		b.shine:SetHeight(1)
 		b.label = text(b, "GameFontNormal", 1.05)
-		b.label:SetPoint("CENTER")
+		b.label:SetPoint("CENTER", 0, 0)
 		b.place = function(h, active)
-			local function placePill(p, inset, c)
+			local function placePill(p, inset, top, bottom, a)
 				local d = h - 2 * inset
 				p.left:SetSize(d, d); p.left:ClearAllPoints(); p.left:SetPoint("LEFT", inset, 0)
 				p.right:SetSize(d, d); p.right:ClearAllPoints(); p.right:SetPoint("RIGHT", -inset, 0)
 				p.mid:ClearAllPoints()
 				p.mid:SetPoint("TOPLEFT", inset + d / 2, -inset)
 				p.mid:SetPoint("BOTTOMRIGHT", -(inset + d / 2), inset)
-				paint(p.left, c); paint(p.right, c); paint(p.mid, c)
+				shade(p.left, top, bottom, a); shade(p.right, top, bottom, a); shade(p.mid, top, bottom, a)
 			end
-			placePill(b.edge, 0, active and { 0.55, 0.43, 0.18 } or C.ctrlEdge)
-			placePill(b.fill, 1, active and C.on or (b.hover and { 0.2, 0.17, 0.13 } or { 0.13, 0.11, 0.09 }))
-			if active then b.label:SetTextColor(0.1, 0.07, 0.03) else b.label:SetTextColor(C.value[1], C.value[2], C.value[3]) end
+			local hover = b.hover and not active
+			for j, g in ipairs(b.glows) do
+				for _, t in pairs(g) do t:SetShown(active) end
+				if active then placePill(g, -(4 - j), TAB.glow, TAB.glow, ({ 0.05, 0.07, 0.12 })[j]) end
+			end
+			if active then
+				placePill(b.edge, 0, TAB.activeEdgeTop, TAB.activeEdgeBottom)
+				placePill(b.fill, 1, TAB.activeTop, TAB.activeBottom)
+			else
+				local e = hover and TAB.edgeHover or C.ctrlEdge
+				placePill(b.edge, 0, e, e)
+				placePill(b.fill, 1, hover and TAB.fillHoverTop or C.ctrlTop, C.ctrlBottom)
+			end
+			-- the shine: a light line along the top of the open tab, between its round ends
+			b.shine:ClearAllPoints()
+			b.shine:SetPoint("TOPLEFT", h / 2, -2)
+			b.shine:SetPoint("TOPRIGHT", -h / 2, -2)
+			b.shine:SetColorTexture(1, 0.97, 0.85, 0.55)
+			b.shine:SetShown(active)
+			local c = active and TAB.activeText or (hover and TAB.textHover or C.value)
+			b.label:SetTextColor(c[1], c[2], c[3])
+			if active then
+				b.label:SetShadowColor(1, 0.92, 0.7, 0.45); b.label:SetShadowOffset(0, -1) -- engraved
+			else
+				b.label:SetShadowColor(0, 0, 0, 1); b.label:SetShadowOffset(1, -1)
+			end
 		end
 		b:SetScript("OnEnter", function(self) self.hover = true; if frame.qtsArrangeTabs then frame.qtsArrangeTabs(true) end end)
 		b:SetScript("OnLeave", function(self) self.hover = false; if frame.qtsArrangeTabs then frame.qtsArrangeTabs(true) end end)
 		b:SetScript("OnClick", function(self)
-			if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then pcall(PlaySound, SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+			if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_CHARACTER_INFO_TAB) end
 			if self.pageKey then selectPage(self.pageKey) end
 		end)
 		tabs[i] = b
@@ -3128,9 +3500,23 @@ local function build()
 			b:SetPoint("LEFT", tabRow, "LEFT", x, 0)
 			b.place(h, other.key == activePage)
 			b:SetShown(shown)
-			x = x + w + 6
+			x = x + w + 8
 		end
 		for i = #list + 1, #tabs do tabs[i]:Hide() end
+		tabLine:SetShown(shown)
+		tabMark:SetShown(shown)
+		if shown then
+			if tabMarkSection ~= p.section then tabMarkSection, tabMark.qtsAt = p.section, nil end
+			for i, other in ipairs(list) do
+				if other.key == activePage then
+					local b = tabs[i]
+					local _, _, _, bx = b:GetPoint(1)
+					local inset = math.floor(h / 2)
+					if api.animTabMark then api.animTabMark(tabMark, (bx or 0) + inset, math.max(b:GetWidth() - 2 * inset, 4))
+					else tabMark:SetPoint("BOTTOMLEFT", tabRow, "BOTTOMLEFT", (bx or 0) + inset, -6); tabMark:SetWidth(math.max(b:GetWidth() - 2 * inset, 4)) end
+				end
+			end
+		end
 		-- the page starts under the tabs, or right under the title without them
 		if lastTabsShown ~= shown then
 			lastTabsShown = shown
@@ -3150,7 +3536,9 @@ local function build()
 			if next(questKeys) then api.resetDefaults(questKeys, '"' .. tostring(p.title or activePage) .. '"')
 			elseif next(guideKeys) then DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99ForeverTrackerPlus|r \"" .. tostring(p.title or activePage) .. "\" settings reset to defaults") end
 		end
+		sweepReset = true
 		api.refreshConfig()
+		sweepReset = false
 		scheduleLayout()
 	end)
 	defaultsButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -18, -14)
@@ -3376,10 +3764,11 @@ end
 
 function api.toggleConfig()
 	if not frame then build(); selectPage(ns.db.configPage or ns.db.configTab or "main") end
-	if frame:IsShown() then
-		frame:Hide()
+	if frame:IsShown() and not frame.qtsClosing then
+		if api.animWindowClose then api.animWindowClose(frame, function() frame:Hide() end) else frame:Hide() end
 	else
 		frame:Show()
+		if api.animWindowOpen then api.animWindowOpen(frame) end
 		api.refreshConfig()
 		layout()
 		scheduleLayout() -- the scroll area has its real size one frame after showing
@@ -3431,7 +3820,7 @@ local function registerOptionsPanel()
 	local how = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
 	local hf, hs, hfl = how:GetFont()
 	if hf and hs then how:SetFont(hf, hs * 1.3, hfl) end
-	how:SetText("Access options with /qt")
+	how:SetText("Access options with /ftp")
 	how:SetPoint("TOP", version, "BOTTOM", 0, -14)
 	local open = makeButton(p, "Open Options", 300, function()
 		if SettingsPanel and SettingsPanel:IsShown() then

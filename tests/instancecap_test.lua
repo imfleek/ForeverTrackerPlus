@@ -34,7 +34,7 @@ local function enter(name, map) inside, kind, iname, imap = true, "party", name,
 local function leave() inside, kind = false, "none"; fire("PLAYER_ENTERING_WORLD") end
 
 check("on by default", api.instanceCapOn() == true)
-check("nothing yet: 0 of 10", select(1, api.instanceCap()) == 0 and select(2, api.instanceCap()) == 10)
+check("nothing yet: 0 of 5", select(1, api.instanceCap()) == 0 and select(2, api.instanceCap()) == 5)
 enter("The Deadmines", 36)
 check("entering a dungeon: 1 counted", api.instanceCap() == 1)
 units.target = "Creature-0-1-36-555-639-0001"
@@ -49,20 +49,20 @@ fire("CHAT_MSG_SYSTEM", "The Deadmines has been reset.")
 clock = clock + 60; enter("The Deadmines", 36)
 check("after the reset message: a new run, 3", api.instanceCap() == 3)
 leave()
-for i = 1, 7 do clock = clock + 30; enter("Dungeon " .. i, 100 + i); leave() end
+for i = 1, 2 do clock = clock + 30; enter("Dungeon " .. i, 100 + i); leave() end
 local count, limit, wait = api.instanceCap()
-check("10 of 10: at the limit, a wait given", count == 10 and limit == 10 and type(wait) == "number" and wait > 0)
+check("5 of 5: at the limit, a wait given", count == 5 and limit == 5 and type(wait) == "number" and wait > 0)
 local text = api.instanceCapText("The Deadmines")
-check("the line: red count and 'next in'", text:find("|cffff404010/10|r", 1, true) ~= nil and text:find("next in", 1, true) ~= nil)
+check("the line: red count and 'next in'", text:find("|cffff40405/5|r", 1, true) ~= nil and text:find("next in", 1, true) ~= nil)
 clock = clock + 3600
-check("an hour later: under the limit again", api.instanceCap() < 10)
+check("an hour later: under the limit again", api.instanceCap() < 5)
 saved[1] = { "The Deadmines", 2 * 86400 + 4 * 3600 + 30, 5, 2 }
 check("saved lockout in the line", api.instanceCapText("The Deadmines"):find("Saved 2/5, resets 2d 4h", 1, true) ~= nil)
 check("no lockout for another dungeon", api.savedLockout("Wailing Caverns") == nil)
--- NovaInstanceTracker loaded: its count wins
+-- 3.2: NovaInstanceTracker is not read, even when loaded
 env.NIT = { hourlyLimit = 10, getInstanceLockoutInfo = function() return 4, 6, clock - 100, 0 end }
-local c2, _, _, src = api.instanceCap()
-check("NovaInstanceTracker's count used when loaded", c2 == 4 and src == "NovaInstanceTracker")
+local c2, l2, _, src = api.instanceCap()
+check("NovaInstanceTracker ignored: our count, limit 5", c2 ~= 4 and l2 == 5 and src == "ForeverTrackerPlus")
 env.NIT = nil
 clock = clock + 2 * 86400
 fire("PLAYER_ENTERING_WORLD")

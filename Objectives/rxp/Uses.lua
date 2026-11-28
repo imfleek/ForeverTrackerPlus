@@ -326,15 +326,23 @@ end
 -- CONSTRAINT: what the step can use is RestedXP's item bar (ActiveItemFrame.lua UpdateItemFrame: known spells, macros,
 -- items worn or carried, items marked "p", toys), in its order; the step decides only which of them are its own.
 -- An open .cast, which the bar never offers, is the step's objective itself and goes first.
+-- RestedXP's item bar: activeItemWindow since RestedXP 4.11.40 (before: activeItemFrame); nil until RestedXP makes it
+local function itemBar()
+	local bar = RXP.activeItemWindow or RXP.activeItemFrame
+	if type(bar) == "table" and type(bar.buttonList) == "table" then return bar end
+	return nil
+end
+
 local function emitUses(step, lines)
 	emptySets(emitted)
-	if feedItemBar(step) then RXP.UpdateItemFrame() end
+	if feedItemBar(step) and type(RXP.UpdateItemFrame) == "function" then RXP.UpdateItemFrame() end
 	local items, spells, macros = step.activeItems or NONE, step.activeSpells or NONE, step.activeMacros or NONE
 	for _, element in ipairs(elementsOf(step)) do
 		local id = castSpell(element)
 		if id and once(emitted, "spell", id) then emitSpell(lines, id) end
 	end
-	for _, button in ipairs(RXP.activeItemFrame.buttonList) do
+	local bar = itemBar()
+	for _, button in ipairs(bar and bar.buttonList or NONE) do
 		if button:IsShown() then
 			local id = button.itemId
 			if button.macro then

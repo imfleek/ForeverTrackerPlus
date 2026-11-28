@@ -108,25 +108,35 @@ ns.syncRxpAwake = sync
 -- CONSTRAINT: the automation paths (v4.11.36): RXP.QuestAutomation (RxpFixes.lua's wrapper calls this), and the
 -- .skipgossip / .skipgossipid / .gossipoption step handlers (functions.lua), which RestedXP binds from
 -- RXP.functions when a step becomes active (GuideWindow.lua BindActiveStepElement).
+-- 3.2 (user): the setting covers only the NPC automation this addon does not do itself. Accepting and turning in
+-- quests and skipping a single chat option are ours (Tracker/AutoQuest.lua: Helpers > NPCs), so RestedXP's own
+-- (RXP.QuestAutomation, .skipgossip) always sees itself hidden while its window is hidden. Picking a given chat option
+-- (.skipgossipid, .gossipoption), flights, flight paths, the hearthstone, buying, the spirit healer and training
+-- follow the setting.
 local function automationBlocked()
 	return awake and not db.hiddenAutomation
 end
 ns.rxpAutomationBlocked = automationBlocked
+local function oursBlocked() return awake end
 local automationDepth = 0
 local function restoreAwake()
 	automationDepth = 0
 	if awake then RXP.isHidden = false end
 end
-local function runAutomation(original, ...)
-	if automationDepth > 0 or not automationBlocked() then return original(...) end
+local function runGated(blocked, original, ...)
+	if automationDepth > 0 or not blocked() then return original(...) end
 	RXP.isHidden, automationDepth = true, 1
 	return around(restoreAwake, original, ...)
 end
+-- quest automation (RxpFixes.lua's QuestAutomation wrapper): ours, always seen as hidden
+local function runAutomation(original, ...) return runGated(oursBlocked, original, ...) end
 ns.runRxpAutomation = runAutomation
-local function asAutomation(original)
-	return function(...) return runAutomation(original, ...) end
+for _, tag in ipairs({"skipgossip"}) do
+	wrap(RXP.functions, tag, function(original) return function(...) return runGated(oursBlocked, original, ...) end end)
 end
-for _, tag in ipairs({"skipgossip", "skipgossipid", "gossipoption"}) do wrap(RXP.functions, tag, asAutomation) end
+for _, tag in ipairs({"skipgossipid", "gossipoption"}) do
+	wrap(RXP.functions, tag, function(original) return function(...) return runGated(automationBlocked, original, ...) end end)
+end
 -- Step handlers that act at an NPC without an isHidden check of their own (RestedXP's only gate for them is its event
 -- dispatcher, ActiveStepElementEventHandler): .fly (flight master gossip, TakeTaxiNode), .fp (learns the flight
 -- path), .home (sets the hearthstone, ConfirmBinder), .buy (BuyMerchantItem), .deathskip (spirit healer),

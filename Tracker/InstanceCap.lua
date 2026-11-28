@@ -1,13 +1,13 @@
 -- R106-100: the dungeon card's instance line (user picked NovaInstanceTracker's idea): new instances entered this hour
 -- against the game's hourly limit, when the next one frees up, and the saved lockout of the dungeon you are in:
---   "Instances this hour: 3/10 · Saved 2/5, resets 2d 4h"     (red count and "next in 12m" once at the limit)
+--   "Instances this hour: 3/5 · Saved 2/5, resets 2d 4h"     (red count and "next in 12m" once at the limit)
 -- Hover: the instances counted, newest first. Option: Dungeon card > "Instances this hour and saved lockout"
 -- (db.instanceCap, on by default).
--- Count: NovaInstanceTracker's own (NIT:getInstanceLockoutInfo, NIT.hourlyLimit) when it is loaded; else our log
+-- Count: our own log (3.2: NovaInstanceTracker is no longer read, user)
 -- (db.instanceRuns, account-wide like the limit): a run starts on entering a dungeon or raid, unless it is the same
 -- copy as the last run (same map, no reset message since, the same creature zone id seen); it counts for the hour from
--- the time it was left (or now, while inside). Limit without NovaInstanceTracker: 10 an hour (NovaInstanceTracker's
--- value for Forever).
+-- the time it was left (or now, while inside). Limit: 5 an hour (3.2, user: "Wow forever updated so it's only 5
+-- instances per hour now"; it was 10).
 -- CONSTRAINT: GetNumSavedInstances / GetSavedInstanceInfo / RequestRaidInfo are the old global API (not in the
 -- generated Forever docs; NovaInstanceTracker calls them on Forever): each is type-checked and pcall'd.
 local ADDON, root = ...; local ns = root.tracker
@@ -15,7 +15,7 @@ if ns.disabled then return end
 local api = ns.api
 local db
 
-local LIMIT = 10
+local LIMIT = 5
 local HOUR, DAY = 3600, 86400
 
 local function now() return (GetServerTime and GetServerTime()) or time() end
@@ -104,15 +104,6 @@ end
 
 -- count, limit, seconds until the next instance frees up (nil while under the limit), the source, the runs counted
 function api.instanceCap()
-	local nit = _G.NIT
-	if type(nit) == "table" and type(nit.getInstanceLockoutInfo) == "function" then
-		local ok, count, _, oldest = pcall(nit.getInstanceLockoutInfo, nit)
-		local limit = tonumber(nit.hourlyLimit) or LIMIT
-		if ok and tonumber(count) then
-			local wait = (count >= limit and tonumber(oldest)) and math.max(HOUR - (now() - oldest), 0) or nil
-			return count, limit, wait, "NovaInstanceTracker"
-		end
-	end
 	local t, count, oldest, counted = now(), 0, nil, {}
 	for i = #runs(), 1, -1 do
 		local r = runs()[i]

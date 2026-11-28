@@ -94,71 +94,104 @@ check("only mine + unlearnt professions: the profession one back", names(api.gui
 ns.db.legacyOnlyMine = false
 check("unlearnt professions box does nothing alone", names(api.guideLegacyRows()):find("Other Side", 1, true) ~= nil)
 
--- library books
-local SPOTS = { [701] = { 1429, 0.5, 0.25, "Elwynn Forest" }, [702] = { 1429, 0.1, 0.1, "Elwynn Forest" },
-	[704] = { 1453, 0.3, 0.4, "Stormwind City" }, [705] = { 1453, 0.3, 0.4, "Stormwind City" } }
-api.questieGuideData = function() return { books = {
-	{ quest = 601, name = "Book A", object = 701 }, { quest = 602, name = "Book B", object = 702 },
-	{ quest = 603, name = "Book C", object = 703 }, { quest = 604, name = "Book D", object = 704 },
-	{ quest = 605, name = "Book E", object = 705, item = 9605 },
-}, named = {} } end
-api.questieSpot = function(_, id) local s = SPOTS[id] if s then return s[1], s[2], s[3], s[4] end end
-api.questieHidden = function(id) return id == 602 end
-api.questieLibrarian = function() return "Librarian Mae" end
-done[601] = true
+-- library books (3.2: a fixed list, the Library Books addon's findings; Questie only adds the book's item)
+local BOOKS, BOOKS_60, GONE, FRIENDS = api.guideBookLists()
+check("books: 30 library books, 8 level 60 books, 2 not in the game, 3 reward quests",
+	#BOOKS == 30 and #BOOKS_60 == 8 and #GONE == 2 and #FRIENDS == 3)
+local seen, dup = {}, false
+for _, list in ipairs({ BOOKS, BOOKS_60, GONE }) do
+	for _, b in ipairs(list) do
+		if seen[b[1]] then dup = true end
+		seen[b[1]] = true
+	end
+end
+check("books: no quest twice", not dup)
+local spotsOk = true
+for _, list in ipairs({ BOOKS, BOOKS_60, GONE }) do
+	for _, b in ipairs(list) do
+		if not (type(b[3]) == "number" and b[4] > 0 and b[4] < 1 and b[5] > 0 and b[5] < 1 and type(b[6]) == "string") then spotsOk = false end
+	end
+end
+check("books: every book has a map spot and a zone", spotsOk)
+check("books: only Luddite's Guide (79953) and The Liminal and the Arcane (81951) are not in the game",
+	api.bookNotInGame(79953) and api.bookNotInGame(81951) and not api.bookNotInGame(81947) and not api.bookNotInGame(78143))
+
+api.questieGuideData = function() return { books = { { quest = 79092, item = 9605 } }, named = {} } end -- Questie: its item
+local realOn = api.questieOn
+api.questieOn = function() return true end
+done[78124] = true -- Nar'thalas Almanac turned in
+for i = 1, 9 do done[BOOKS[i][1]] = true end -- 10 books turned in in all
+done[78150] = true -- Friend of the Library done
 local books = api.guideBookRows()
-check("books: header counts every book", books[1].header and books[1][3] == "1 of 5 turned in")
-local b = row(books, "Book B")
-check("books: hidden by Questie -> ?", b[1] == "Interface\\Icons\\INV_Misc_QuestionMark" and b[3] == "status unknown"
-	and tipText(b.tip):find("not in the game", 1, true) ~= nil and b.onClick == nil)
-local c = row(books, "Book C")
-check("books: no place known -> ? with its reason", c[1] == "Interface\\Icons\\INV_Misc_QuestionMark"
-	and tipText(c.tip):find("does not know where", 1, true) ~= nil)
-local d = row(books, "Book D")
-check("books: open book has a place, librarian and waypoint", tipText(d.tip):find("Stormwind City (30.0, 40.0)", 1, true) ~= nil
-	and tipText(d.tip):find("Librarian Mae", 1, true) ~= nil and d.onClick ~= nil)
-check("books: in the bags", row(books, "Book E")[3] == "in your bags")
-check("books: a turned-in one has a tooltip", tipText(row(books, "Book A").tip):find("Turned in", 1, true) ~= nil)
+check("books: header counts the library books", books[1].header and books[1][2] == "Library books" and books[1][3] == "10 of 30 turned in")
+local lib = books[2]
+check("books: the librarian next, with the next reward quest and a waypoint", lib[2] == "Turn in: Garion Wendell"
+	and lib[3] == "10 of 20: Greater Friend of the Library" and lib.onClick ~= nil
+	and tipText(lib.tip):find("Friend of the Library: 10 books (done)", 1, true) ~= nil)
+check("books: turned in wins over the item in the bags", row(books, "Archmage Theocritus")[3] == "turned in")
+done[79092] = nil
+books = api.guideBookRows()
+check("books: in the bags when the item is there", row(books, "Archmage Theocritus")[3] == "in your bags")
+local d = row(books, "Secrets of the Dreamers")
+check("books: an open book has its zone, spot, hint, librarian and waypoint", d[3] == "The Barrens" and d.onClick ~= nil
+	and tipText(d.tip):find("The Barrens (46.2, 34.4)", 1, true) ~= nil and tipText(d.tip):find("52.8, 54.7", 1, true) ~= nil
+	and tipText(d.tip):find("Garion Wendell", 1, true) ~= nil)
+check("books: a second place in the tooltip", tipText(row(books, "Rumi of Gnomeregan").tip):find("Or in Westfall", 1, true) ~= nil)
+check("books: Sanguine Sorcery is a real book now", row(books, "Sanguine Sorcery") and row(books, "Sanguine Sorcery")[3] == "Swamp of Sorrows")
+check("books: a turned-in one has a tooltip", tipText(row(books, "Nar'thalas Almanac").tip):find("Turned in", 1, true) ~= nil)
+check("books: level 60 books with their own librarian", row(books, "Level 60 books") and row(books, "Level 60 books")[3] == "0 of 8 turned in"
+	and row(books, "Turn in: Jennea Cannon") ~= nil)
+local gone = row(books, "The Liminal and the Arcane")
+check("books: The Liminal and the Arcane -> ?, not in the game, no waypoint", gone[1] == "Interface\\Icons\\INV_Misc_QuestionMark"
+	and gone[3] == "not in the game" and gone.onClick == nil and tipText(gone.tip):find("Not in the game", 1, true) ~= nil)
+check("books: Luddite's Guide not in the game", row(books, "A Luddite's Guide to Caring for Your Demonic Pet")[3] == "not in the game")
+api.questieOn = function() return false end
+books = api.guideBookRows()
+check("books: no Questie: the list still shows", books[1][3] == "9 of 30 turned in" and row(books, "Geomancy") ~= nil)
 ns.db.booksShowDone = false
 books = api.guideBookRows()
-check("books: Show collected books off hides the turned-in one", row(books, "Book A") == nil and row(books, "Book D") ~= nil
-	and books[1][3] == "1 of 5 turned in")
+check("books: Show collected books off hides the turned-in ones", row(books, "Nar'thalas Almanac") == nil and row(books, "Geomancy") ~= nil
+	and books[1][3] == "9 of 30 turned in")
 ns.db.booksShowDone = nil
+api.questieOn = realOn
+for id in pairs(done) do done[id] = nil end
 
--- the sleeping bag chain
-local NEXT = { [79008] = { 79192 }, [79192] = { 79976 }, [79976] = {} }
-api.questieGuideData = function() return { books = {}, named = {} } end -- the name search found nothing
-api.questieGet = function(kind, id, field)
-	if kind == "Quest" and field == "name" then return ({ [79008] = "... and that note you found", [79192] = "Stepping Stones",
-		[79976] = "This Must Be The Place" })[id] end
+-- the sleeping bag chain (3.2: a secret with its steps, Secrets page)
+api.questieGuideData = function() return { books = {}, named = {} } end
+local function bedRows()
+	local out, on = {}, false
+	for _, r in ipairs(api.guideSecretRows()) do
+		if r[2] == "Cozy Sleeping Bag" then on = true elseif on and r.split ~= nil then on = false end
+		if on then out[#out + 1] = r end
+	end
+	return out
 end
-api.questieForPlayer = function(id) return id ~= 79007 end
-api.questieNextQuests = function(id) return NEXT[id] or {} end
-api.questieSpot = function() return nil end
-local bed = api.guideBedrollRows()
-check("bedroll: the note row first, wrapped", bed[1].note == true and bed[1][2]:find("From level 14", 1, true) ~= nil)
-check("bedroll: found by its known IDs when the name search finds nothing", bed[2].header and bed[2][3] == "0 of 3 done"
-	and bed[3][2] == "... and that note you found")
+local bed = bedRows()
+check("bedroll: a secret, open, with its 7 steps (one optional)", bed[1] and bed[1].fold == false and #bed == 8
+	and bed[2][2]:find("and that note you found", 1, true) ~= nil and bed[8][2]:find("Rekindle", 1, true) ~= nil)
+check("bedroll: each step has a waypoint", bed[2].onClick ~= nil and bed[5].onClick ~= nil)
 done[79008], done[79192] = true, true
-bed = api.guideBedrollRows()
-check("bedroll: part done shows the steps", bed[2][3] == "2 of 3 done")
+bed = bedRows()
+check("bedroll: steps tick as their quests are done", bed[2][3] == "done" and bed[3][3] == "done" and bed[4][3] ~= "done"
+	and bed[1][3]:find("2 of 6 steps", 1, true) ~= nil)
 done[79976] = true
-bed = api.guideBedrollRows()
-check("bedroll: all done -> one green line with a check", #bed == 1 and bed[1][2] == "You have completed this questchain."
-	and bed[1][1] == "Interface\\RaidFrame\\ReadyCheck-Ready" and bed[1][4] and bed[1][4][2] > 0.8)
-api.questieOn = function() return false end
-bed = api.guideBedrollRows()
-check("bedroll: done even without Questie", #bed == 1 and bed[1][2] == "You have completed this questchain.")
-done[79976] = nil
-bed = api.guideBedrollRows()
-check("bedroll: not done, no Questie -> note and Needs Questie", bed[1].note and bed[2][2] == "Needs Questie.")
+bed = bedRows()
+-- 3.2 (user): a found secret keeps its own icon and its gold name
+check("bedroll: done -> one gold line with its own icon, folded, steps on a click", #bed == 1
+	and bed[1][1] ~= "Interface\\RaidFrame\\ReadyCheck-Ready" and bed[1][3] == "found" and bed[1][4] and bed[1][4][2] == 0.82
+	and bed[1].fold == true and bed[1].onClick ~= nil)
+bed[1].onClick()
+bed = bedRows()
+check("bedroll: opened by hand, every step done", #bed == 8 and bed[7][3] == "done" and bed[8][3] ~= "done")
+ns.db.secretsClosed = nil
+done[79008], done[79192], done[79976] = nil, nil, nil
 
 -- the pages
 local checks, notes, byPage, current = {}, {}, {}, nil
 local kit = { page = function(key) current = key; byPage[key] = {} end, heading = function() end,
 	check = function(l, get, set, enabled, indent) checks[l] = { get = get, set = set, enabled = enabled, indent = indent };
 		byPage[current][#byPage[current] + 1] = l end,
-	help = function() end, note = function(t) notes[current] = t end, custom = function() end, buttons = function() end,
+	help = function() end, note = function(t) notes[current] = t end, custom = function() end, buttons = function() end, input = function() end, choice = function() end,
 	pageByKey = setmetatable({}, { __index = function(t, k) local p = {}; rawset(t, k, p) return p end }), refresh = function() end }
 api.declareGuidePages(kit)
 check("legacy page: the only-mine switch", checks["Only challenges this character can do"] ~= nil)
@@ -167,7 +200,6 @@ check("legacy page: the professions box sits under it, on only with the switch",
 ns.db.legacyOnlyMine = false
 check("legacy page: professions box greyed while the switch is off", profs and profs.enabled() == false)
 check("books page: Show collected books, on by default", checks["Show collected books"] and checks["Show collected books"].get() == true)
-check("bedroll page: no fixed note (the rows carry it)", notes.bedroll == nil)
 
 ---------------------------------------------------------------------------------------------------------------------
 -- Stats.lua
@@ -187,7 +219,7 @@ local shownFrames = {}
 local sns = { api = {}, onLogin = {}, db = {} }
 local senv
 senv = setmetatable({
-	CreateFrame = frame, GetTime = function() return now end, time = function() return wall end,
+	CreateFrame = frame, GetTime = function() return now end, time = function() return wall end, date = os.date,
 	C_Timer = { NewTicker = function(_, fn) tickers[#tickers + 1] = fn return { Cancel = function() end } end,
 		After = function(_, fn) afters[#afters + 1] = fn end },
 	UnitName = function() return "Jugo" end, GetRealmName = function() return "Realm" end,
@@ -261,32 +293,39 @@ st.lootGuid = "GameObject-0-1-2-3-4-5"
 fire("LOOT_OPENED"); st.money = 9500; fire("PLAYER_MONEY"); fire("LOOT_CLOSED")
 check("a chest's money is not gold off mobs", r.gold.loot == 250)
 local gold = sapi.statsGoldTiles()
-check("gold tiles: quests, mobs, session, total", #gold == 4 and gold[1][3] == "Gold from quests" and gold[2][3] == "Gold off mobs"
-	and gold[2][2]:find("2", 1, true) ~= nil and gold[3][3] == "Gold this session")
+-- 3.2: the period's gold (This session), by source, then the total and the gold spent
+check("gold tiles: quests, mobs, AH, mail, vendors, trades, total, spent", #gold == 8 and gold[1][3] == "Gold from quests"
+	and gold[2][3] == "Gold from mobs" and gold[2][2]:find("2", 1, true) ~= nil and gold[3][3] == "Gold from AH"
+	and gold[4][3] == "Gold from mail" and gold[5][3] == "Gold from vendors" and gold[6][3] == "Gold from trades"
+	and gold[7][3] == "Gold in total" and gold[8][3] == "Gold spent")
 check("money text", sapi.statsMoney(123456):find("^12|cffffd100g|r 34") ~= nil and sapi.statsMoney(305):find("^3|cffc7c7cfs|r 5") ~= nil)
 
 -- overview tiles
 local function labels(list) local o = {} for i, x in ipairs(list) do o[i] = x[3] end return table.concat(o, ",") end
 local tiles = sapi.statsOverviewTiles()
 check("overview: no Fastest quest", not labels(tiles):find("Fastest", 1, true))
-check("overview: experience tiles below the cap", labels(tiles):find("Experience from quests", 1, true) and labels(tiles):find("Session experience", 1, true) and true or false)
+check("overview: experience tiles below the cap", labels(tiles):find("Experience from quests", 1, true) and labels(tiles):find("Experience gained", 1, true) and true or false)
 local xpTile
 for _, x in ipairs(tiles) do if x[3] == "Experience from quests" then xpTile = x end end
 check("overview: Experience from quests has no coin icon", xpTile and not xpTile[1]:find("Coin", 1, true))
 check("level bar below the cap: xp numbers", sapi.statsLevelBar()[1][2]:find("/", 1, true) ~= nil)
 st.level = 60
 tiles = sapi.statsOverviewTiles()
-check("overview at the cap: no experience tiles", not labels(tiles):find("xperience", 1, true) and #tiles == 5)
+check("overview at the cap: no experience tiles", not labels(tiles):find("xperience", 1, true) and #tiles == 4
+	and not labels(tiles):find("per hour", 1, true))
 local bar = sapi.statsLevelBar()[1]
 check("level bar at the cap: no bar to 61, a full one marked maximum", bar[1] == "Level 60" and bar[2] == "maximum level" and bar[3] == 1)
 
 -- run analysis
 local bars = sapi.statsTimeBars()
 local bl = {}
-for i, x in ipairs(bars) do bl[i] = x[1] end
+for _, x in ipairs(bars) do
+	bl[#bl + 1] = x[1]
+	for _, kid in ipairs(x.kids or {}) do bl[#bl + 1] = kid[1] end
+end
 bl = table.concat(bl, ",")
-check("run analysis: Standing kept, Jumping / Swimming / Crafting in", bl:find("Standing", 1, true)
-	and bl:find("Jumping", 1, true) and bl:find("Swimming", 1, true) and bl:find("Crafting/gathering", 1, true) and true or false)
+check("run analysis: Standing / Swimming / Crafting in, Jumping (no time) left out", bl:find("Standing", 1, true)
+	and not bl:find("Jumping", 1, true) and bl:find("Swimming", 1, true) and bl:find("Crafting/gathering", 1, true) and true or false)
 local run = sapi.statsRunTiles()
 check("run analysis: a Jumps tile", run[6][3] == "Jumps" and run[6][2] == "3")
 check("run analysis: Gold acquired after XP from quests, no coin on XP", run[3][3] == "XP from quests" and not run[3][1]:find("Coin", 1, true)
@@ -294,7 +333,7 @@ check("run analysis: Gold acquired after XP from quests, no coin on XP", run[3][
 local lines = sapi.statsLevelLines()
 check("time per level keeps standing", lines[1] and lines[1][3]:find("Standing", 1, true) ~= nil)
 check("discord text: jumps and the standing line", sapi.statsDiscordText():find("3 jumps", 1, true) ~= nil
-	and sapi.statsDiscordText():match("\nStanding ") ~= nil)
+	and sapi.statsDiscordText():match("\n  Standing ") ~= nil)
 
 ---------------------------------------------------------------------------------------------------------------------
 -- Forever Style only

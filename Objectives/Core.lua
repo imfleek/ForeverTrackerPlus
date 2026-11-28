@@ -1,6 +1,4 @@
 local ADDON_NAME, root = ...; local ns = root.objectives
--- A separately installed AllObjectives RXP is running: leave everything to it (see Bootstrap.lua).
-if root.standaloneObjectives or root.disabledAll then return end
 local AceAddon = LibStub and LibStub("AceAddon-3.0", true)
 local RXP = AceAddon and AceAddon:GetAddon("RXPGuides", true)
 
@@ -414,5 +412,5 @@ ns.listen({
 })
 
 C_Timer.After(0, function()
-	ns.say("loaded. RestedXP steps now render in your All Objectives tracker. " .. ns.accent("/qt") .. " or " .. ns.accent("/qtrxp") .. " for settings.")
+	ns.say("loaded. RestedXP steps now show in the ForeverTrackerPlus tracker. " .. ns.accent("/ftp") .. " opens the settings.")
 end)

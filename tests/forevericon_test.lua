@@ -1,5 +1,5 @@
 -- Icon Classifications: an infinity sign on quests added in World of Warcraft Forever (quest ID at or above
--- FOREVER_MIN_QUEST_ID), on the tracked quests (Extras.lua render) and in More quests (MoreQuests.lua).
+-- FOREVER_MIN_QUEST_ID), on our tracked quests (Own/Frame.lua).
 local dir = arg[1]
 local pass = true
 local function check(l, c) print((c and "ok   " or "FAIL ") .. l); pass = pass and c end
@@ -40,9 +40,8 @@ check("Icon Classifications off: no icon", api.foreverIcon(91733) == nil)
 db.condense = true
 
 -- placed with the other title icons: furthest out on tracked quests, and in More quests
-check("render adds it furthest out", src:find("if forever then table.insert(slots, 1, forever) end", 1, true) ~= nil)
-local more = io.open(dir .. "/Tracker/MoreQuests.lua"):read("a")
-check("More quests shows it too", more:find("api.foreverIcon(quest.id)", 1, true) ~= nil)
+local own = io.open(dir .. "/Tracker/Own/Frame.lua"):read("a")
+check("our tracker adds it furthest out", own:find("if forever then icons%[#icons %+ 1%] = forever end%s+local star") ~= nil)
 
 -- the texture: a 64x64, 32-bit uncompressed TGA (the game loads TGA textures with power-of-two sides)
 local f = io.open(dir .. "/Textures/Infinity.tga", "rb")

@@ -31,14 +31,21 @@ end
 local surnamesCached
 local function surnames()
 	if surnamesCached ~= nil then return surnamesCached end
-	local fn = UnitNameUnmodified or UnitName
-	local name, second = fn("player")
-	if isSecret(name) or isSecret(second) then return false end
-	surnamesCached = (type(second) == "string" and second ~= "") or (type(name) == "string" and name:find(separator(), 1, true) ~= nil)
+	-- 3.2: the same test as api.playerName (Core.lua): a second value that is not the realm is a surname
+	if not api.playerName then -- (tests without Core.lua) the old test: any second value
+		local name, second = UnitName("player")
+		if isSecret(name) or isSecret(second) then return false end
+		surnamesCached = (type(second) == "string" and second ~= "") or (type(name) == "string" and name:find(separator(), 1, true) ~= nil)
+		return surnamesCached
+	end
+	local full, first = api.playerName()
+	if not full then return false end
+	surnamesCached = full ~= first or full:find(separator(), 1, true) ~= nil
 	return surnamesCached
 end
 -- a unit's name with its surname on Forever ("Ana Smith"), else its name; and its first name
 local function fullName(unit)
+	if unit == "player" and api.playerName then return api.playerName() end
 	local name, second = UnitName(unit)
 	if type(name) ~= "string" or isSecret(name) or isSecret(second) then return nil end
 	local sep = separator()
@@ -177,6 +184,52 @@ local function onQuest(unit, questID)
 		local ok, value = pcall(_G.IsUnitOnQuest, index, unit)
 		if ok and value ~= nil then return value and value ~= 0 end
 	end
+end
+
+-- 3.2 (DungeonPlus.lua): who in the party has which quest, for the quests want(id) accepts:
+-- { [questID] = { "You", "Ana Smith", ... } }. From your log, this addon's party messages, Questie's party sync and
+-- the game's IsUnitOnQuest (for quests in your own log).
+function api.partyQuestHolders(want)
+	local out, mineIds = {}, {}
+	local function add(id, who)
+		if type(id) == "number" and want(id) then
+			out[id] = out[id] or {}
+			table.insert(out[id], who)
+		end
+	end
+	for i = 1, (C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetNumQuestLogEntries() or 0) do
+		local info = C_QuestLog.GetInfo(i)
+		if info and not info.isHeader and info.questID then mineIds[#mineIds + 1] = info.questID; add(info.questID, "You") end
+	end
+	local logs
+	local loader = _G.QuestieLoader
+	if C_AddOns.IsAddOnLoaded("Questie") and type(loader) == "table" and type(loader.ImportModule) == "function" then
+		local ok, comms = pcall(loader.ImportModule, loader, "QuestieComms")
+		logs = ok and type(comms) == "table" and type(comms.remoteQuestLogs) == "table" and comms.remoteQuestLogs or nil
+	end
+	if not IsInGroup() then return out end
+	for i = 1, (GetNumSubgroupMembers and GetNumSubgroupMembers() or 4) do
+		local unit = "party" .. i
+		if UnitExists(unit) then
+			local full, name = fullName(unit)
+			if full then
+				local seen = {}
+				for id in pairs(progress[full] or progress[name] or {}) do seen[id] = true end
+				for id, players in pairs(logs or {}) do
+					if type(players) == "table" then
+						for player in pairs(players) do
+							if type(player) == "string" and (player == full or player == name or shortName(player) == name) then
+								seen[id] = true
+							end
+						end
+					end
+				end
+				for _, id in ipairs(mineIds) do if onQuest(unit, id) then seen[id] = true end end
+				for id in pairs(seen) do add(id, full) end
+			end
+		end
+	end
+	return out
 end
 
 function api.addPartyProgress(tip, questID)

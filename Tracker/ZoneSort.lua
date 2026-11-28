@@ -1,21 +1,19 @@
--- Sort all quests by zone, with zone headers in Blizzard's quest tracker.
+-- Sort all quests by zone: the order (orderQuests) and the zone names (questZoneName) our own tracker groups by
+-- (Tracker/Own/Data.lua), the quest distances and directions, and the game's watch list in the same order.
 --
 -- SORT: Blizzard lists tracked quests in the order they were watched. When the option is on, the watch list is
 -- rebuilt (RemoveQuestWatch + AddQuestWatch, keeping each quest's watch type) whenever the order is wrong: zones by
 -- their closest quest, quests inside a zone closest first, so the closest quest/objective is at the very top. Re-checked
 -- every 15 s while you move and after the game's own SortQuestWatches; out of combat only, never while the order is
 -- already right, at most 4 re-orders per 10 s (so it cannot loop). With "Track all quests" the rebuild also picks WHICH
--- quests are tracked: the closest ones, up to the game's limit; "More quests" lists the rest after them.
---
--- HEADERS (experimental): a zone name is drawn above the first quest block of each zone. The room for it is added to
--- the bottom of the block above (SetHeight post-hook, the technique AllObjectives RXP uses) and the header text is a
--- child of that block, so it scrolls and clips with the list. Nothing of Blizzard's is replaced.
+-- quests are watched: the closest ones, up to the game's limit (the map shows them).
+-- 3.2 (user: "Delete the old tracker's code"): the zone headers drawn on Blizzard's tracker were removed; our own
+-- tracker draws its own (Own/Frame.lua api.ownZoneLabelFor).
 local ADDON, root = ...; local ns = root.tracker
 if ns.disabled then return end
 local api = ns.api
 local db
 
-local HEADER_H = 18
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
 
 local function headerTitle(questID)
@@ -39,6 +37,8 @@ local function headerTitle(questID)
 	local title = info and info.title
 	if type(title) == "string" and not isSecret(title) then return title end
 end
+
+api.questZoneName = headerTitle -- 3.2 beta: our own tracker's zone groups (Tracker/Own/Data.lua)
 
 local function watched()
 	local list = {}
@@ -91,6 +91,8 @@ local function worldPos(mapID, x, y, depth)
 	if info and info.parentMapID and info.parentMapID ~= 0 then return worldPos(info.parentMapID, 0.5, 0.5, (depth or 0) + 1) end
 end
 
+api.mapToWorld = worldPos -- 3.2: map position -> continent, world x, y (CorpseRun.lua)
+
 local function center(mapID)
 	if centers[mapID] == nil then
 		local continent, x, y = worldPos(mapID, 0.5, 0.5)
@@ -101,13 +103,17 @@ end
 
 -- Inside a dungeon, raid or scenario: its name (lower case), else nil. The game gives no map position there, so the
 -- distances of quests outside cannot be compared with it; the dungeon's own quests come first instead.
-local function instanceName()
+-- withPvp: a battleground or an arena counts too (the sort: user, in Warsong Gulch: "The Warsong Gulch quests I
+-- have should appear at the top"); the distance arrows still work there (api.playerWorldPos asks without it).
+-- Returns the name and whether it is a battleground or arena.
+local function instanceName(withPvp)
 	if not IsInInstance then return nil end
 	local inside, kind = IsInInstance()
-	if not inside or not (kind == "party" or kind == "raid" or kind == "scenario") then return nil end
+	local pvp = kind == "pvp" or kind == "arena"
+	if not inside or not (kind == "party" or kind == "raid" or kind == "scenario" or (withPvp and pvp)) then return nil end
 	local name = GetInstanceInfo and GetInstanceInfo()
 	if type(name) ~= "string" or name == "" or isSecret(name) then name = GetRealZoneText and GetRealZoneText() end
-	return type(name) == "string" and name ~= "" and name:lower() or nil
+	return type(name) == "string" and name ~= "" and name:lower() or nil, pvp
 end
 
 -- "The Deadmines" and "Deadmines" are the same place
@@ -155,7 +161,8 @@ local function playerPlace()
 	if not map then
 		local zone = GetRealZoneText and GetRealZoneText() or nil
 		if isSecret(zone) then zone = nil end
-		local place = { name = zone and zone:lower() or nil, zone = zone, instance = instanceName() }
+		local place = { name = zone and zone:lower() or nil, zone = zone }
+		place.instance, place.pvp = instanceName(true)
 		if lastOutdoor then place.continent, place.x, place.y = lastOutdoor.continent, lastOutdoor.x, lastOutdoor.y end
 		return place
 	end
@@ -170,7 +177,8 @@ local function playerPlace()
 	if type(x) ~= "number" or isSecret(x) then x, y = 0.5, 0.5 end
 	local continent, wx, wy = worldPos(map, x, y)
 	local place = { name = name, zone = GetRealZoneText and GetRealZoneText() or nil, continent = continent, x = wx, y = wy,
-		instance = instanceName(), map = map }
+		map = map }
+	place.instance, place.pvp = instanceName(true)
 	if continent and not place.instance then
 		lastOutdoor = place
 	elseif not continent and lastOutdoor then
@@ -352,6 +360,16 @@ local function questDistance(id, zone, place)
 	if isInstanceZone(place, zone) then lastSource[id] = "instance" return -1 end
 	-- a quest done in this dungeon but filed under another zone (Questie): its zone right after the dungeon's
 	if place and place.instance and isDungeonQuest(id, place) then lastSource[id] = "instance (Questie)" return -0.5 end
+	-- in a battleground: a quest named after it ("Warsong Gulch Victory") with it, then the other battleground
+	-- quests (the log's "Battlegrounds" header)
+	if place and place.pvp and place.instance then
+		local title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
+		if type(title) == "string" and not isSecret(title) and title:lower():find(bareName(place.instance), 1, true) then
+			lastSource[id] = "battleground" return -1
+		end
+		local bg = _G.BATTLEGROUNDS
+		if zone and type(bg) == "string" and zone:lower() == bg:lower() then lastSource[id] = "battleground" return -0.5 end
+	end
 	local points = questWorldPoints(id)
 	if points and #points > 0 and place and place.continent then
 		local best
@@ -388,6 +406,38 @@ end
 
 -- Sorts entries { id, zone, index } (index: the current position). "closest": zones by their closest quest, quests
 -- inside a zone by distance; "alpha": zones A to Z, quests inside a zone by distance.
+-- 3.2: inside a zone, quests by distance (default), by level (low first) or by how done they are (most done first)
+local function questLevel(id)
+	local index = C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(id)
+	local info = index and C_QuestLog.GetInfo(index)
+	local level = info and (info.level or info.difficultyLevel)
+	if type(level) ~= "number" or (issecretvalue and issecretvalue(level)) then return 999 end
+	return level
+end
+local function questProgress(id)
+	if C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) then return 1 end
+	local list = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(id)
+	if type(list) ~= "table" or #list == 0 then return 0 end
+	local sum = 0
+	for _, o in ipairs(list) do
+		local have, need = tonumber(o.numFulfilled), tonumber(o.numRequired)
+		if o.finished then sum = sum + 1
+		elseif have and need and need > 0 then sum = sum + math.min(have / need, 1) end
+	end
+	return sum / #list
+end
+local function innerKeys(out, qd)
+	local mode = db and db.questOrder
+	if mode ~= "level" and mode ~= "progress" then return qd end
+	local keys = {}
+	for _, q in ipairs(out) do
+		if mode == "level" then keys[q.id] = questLevel(q.id)
+		else keys[q.id] = -math.floor(questProgress(q.id) * 20 + 0.5) end -- 5 % steps: calm
+	end
+	return keys
+end
+api.questProgressFraction = questProgress
+
 local function orderQuests(list, place)
 	local out = {}
 	for i, q in ipairs(list) do out[i] = q end
@@ -400,6 +450,7 @@ local function orderQuests(list, place)
 		if zd[key] == nil or d < zd[key] then zd[key] = d end
 	end
 	local alpha = db and db.zoneOrder == "alpha"
+	local inner = innerKeys(out, qd)
 	table.sort(out, function(a, b)
 		local za, zb = a.zone or "", b.zone or ""
 		if za ~= zb then
@@ -407,7 +458,8 @@ local function orderQuests(list, place)
 			if not alpha and zd[za] ~= zd[zb] then return zd[za] < zd[zb] end
 			return za:lower() < zb:lower()
 		end
-		if qd[a.id] ~= qd[b.id] then return qd[a.id] < qd[b.id] end
+		if inner[a.id] ~= inner[b.id] then return inner[a.id] < inner[b.id] end
+		if inner ~= qd and qd[a.id] ~= qd[b.id] then return qd[a.id] < qd[b.id] end
 		return a.index < b.index
 	end)
 	return out
@@ -417,8 +469,7 @@ api.orderQuests = function(list) return orderQuests(list) end
 local function sorted(list) return orderQuests(list) end
 
 -- "Track all quests": the game tracks at most MAX_QUEST_WATCHES quests (20 seen on Forever). The closest ones (by the
--- same order) are the tracked ones; the rest are listed right after them by "More quests" (MoreQuests.lua), so both
--- read as one list sorted by distance. Other modes only re-order what is tracked.
+-- same order) are the watched ones (our own tracker lists the rest too). Other modes only re-order what is tracked.
 local function maxWatches()
 	return (Constants and Constants.QuestWatchConsts and Constants.QuestWatchConsts.MAX_QUEST_WATCHES) or 25
 end
@@ -430,7 +481,7 @@ local function candidates(list)
 	for i = 1, n do
 		local info = C_QuestLog.GetInfo(i)
 		local id = info and not info.isHeader and info.questID
-		-- the same quests "More quests" lists: not hidden, world or bonus tasks, or hidden by the zone filter
+		-- not hidden, world or bonus tasks, or hidden by the zone filter
 		if id and not isSecret(id) and not seen[id] and not info.isHidden and not info.isTask and not info.isBounty
 			and not (db.zoneHidden and db.zoneHidden[id]) then
 			seen[id] = true
@@ -441,8 +492,7 @@ local function candidates(list)
 end
 local function wantedWatches(list)
 	local want = sorted(candidates(list))
-	-- R106-86: "Expand current zone only": only the quests of the player's zone are tracked (shown open); the rest go to
-	-- More quests, under folded zone headers (MoreQuests.lua). The super-tracked quest stays.
+	-- R106-86: "Expand current zone only": only the quests of the player's zone are watched. The super-tracked quest stays.
 	if db.expandCurrentZone and db.trackMode == "all" and api.inCurrentZone then
 		local sup = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
 		local keep = {}
@@ -509,177 +559,10 @@ local function sortWatches(force, afterGame)
 	if not ok then geterrorhandler()(err) end
 end
 
----------------------------------------------------------------------------------------------------------------------
--- Headers
----------------------------------------------------------------------------------------------------------------------
-local hooked = {}
-local labels = setmetatable({}, { __mode = "k" }) -- block -> FontString
-local extra = setmetatable({}, { __mode = "k" })  -- block -> extra height currently wanted
-local applying = false
-
-local function hookBlock(block)
-	if hooked[block] then return end
-	hooked[block] = true
-	hooksecurefunc(block, "SetHeight", function(self, h)
-		if applying or not extra[self] or extra[self] <= 0 or type(h) ~= "number" then return end
-		applying = true
-		pcall(self.SetHeight, self, h + extra[self])
-		applying = false
-	end)
-end
-
-local function headerHeight() return math.ceil(HEADER_H * (db.zoneHeaderScale or 1)) end
-
-local function styleLabel(label)
-	local color = db.zoneHeaderColor or { 0.2, 0.85, 0.55 }
-	label:SetTextColor(color[1], color[2], color[3], tonumber(color[4]) or 1)
-	local font, size, flags = GameFontNormalSmall:GetFont()
-	font = api.fontPath and api.fontPath() or font
-	if font and size then
-		local s, f = size * (db.zoneHeaderScale or 1), db.zoneHeaderOutline and "OUTLINE" or flags
-		local hf, hs, hfl = label:GetFont()
-		if hf ~= font or not hs or math.abs(hs - s) > 0.01 or (hfl or "") ~= (f or "") then label:SetFont(font, s, f) end
-	end
-end
-
--- The left edge of the zone headers shown (UIParent units), for the background (Core.lua)
-function api.zoneLabelsLeft()
-	local left
-	local ui = UIParent:GetEffectiveScale()
-	for _, label in pairs(labels) do
-		if label:IsVisible() then
-			local l = label:GetLeft()
-			if l then
-				l = l * label:GetEffectiveScale() / ui
-				if not left or l < left then left = l end
-			end
-		end
-	end
-	return left
-end
-
--- R106-101: the zone header shown for a zone name (Rares.lua puts its tag on it); nil when that zone has none
+-- our zone header's text for a zone (Rares.lua's rare tag and Chains.lua's "Explored 7/12" sit on it)
 function api.zoneLabelFor(zone)
 	if type(zone) ~= "string" then return nil end
-	for _, label in pairs(labels) do
-		if label:IsShown() and label:GetText() == zone then return label end
-	end
-end
-
--- for MoreQuests.lua: the same zone header look and room
-api.styleZoneLabel = function(label) styleLabel(label) end
-api.zoneHeaderHeight = function() return headerHeight() end
-
-local function getLabel(block)
-	local label = labels[block]
-	if not label then
-		label = block:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		label:SetJustifyH("LEFT")
-		labels[block] = label
-	end
-	styleLabel(label)
-	return label
-end
-
-local function questBlocks()
-	local blocks = {}
-	local module = _G.QuestObjectiveTracker
-	if not module or type(module.usedBlocks) ~= "table" then return blocks end
-	for _, byId in pairs(module.usedBlocks) do
-		if type(byId) == "table" then
-			for id, block in pairs(byId) do
-				if type(block) == "table" and block.IsShown and block:IsShown() then blocks[tonumber(id) or id] = block end
-			end
-		end
-	end
-	return blocks
-end
-
--- The first zone has no quest above it to make room in, so the gap between the "Quests" header and the first quest
--- is widened instead (the module's own fromHeaderOffsetY field; offsets are negative going down).
-local baseHeaderOffset -- the module's original value, false if the field does not exist
-local firstHeaderShown = false
-local function applyFirstGap()
-	local module = _G.QuestObjectiveTracker
-	if not module then return false end
-	if baseHeaderOffset == nil then
-		baseHeaderOffset = type(module.fromHeaderOffsetY) == "number" and module.fromHeaderOffsetY or false
-	end
-	if baseHeaderOffset == false then return false end
-	local want = baseHeaderOffset
-	if firstHeaderShown then want = baseHeaderOffset - headerHeight() - (db.zoneHeaderPadY or 6) end
-	if module.fromHeaderOffsetY ~= want then module.fromHeaderOffsetY = want; return true end
-	return false
-end
-
-local function decorate()
-	if not db or InCombatLockdown() then return false end
-	firstHeaderShown = false
-	local blocks = questBlocks()
-	local want, changed = {}, false -- block -> {extra, zone} ; extra is set on the block above a new zone
-	if db.zoneSort and db.enabled then
-		local prevBlock, prevZone
-		local shown = {}
-		for id, block in pairs(blocks) do
-			local top = block:GetTop()
-			-- R106-42: a shown quest with no place yet (laid out later in this frame): the headers stay as they are and
-			-- are placed again shortly; placing them without it hid a header for a moment (user: the zone header flickers)
-			if not top and type(id) == "number" then
-				if api.retryZoneHeaders then api.retryZoneHeaders() end
-				return false
-			end
-			if top and type(id) == "number" then shown[#shown + 1] = { id = id, top = top, zone = headerTitle(id) or "" } end
-		end
-		table.sort(shown, function(a, b) return a.top > b.top end) -- the order Blizzard actually displays
-		for _, q in ipairs(shown) do
-			local block = blocks[q.id]
-			if block then
-				hookBlock(block)
-				if q.zone ~= prevZone and q.zone ~= "" then
-					want[block] = want[block] or {}
-					want[block].header = q.zone
-					if not prevBlock then firstHeaderShown = true end
-					if prevBlock then want[prevBlock] = want[prevBlock] or {}; want[prevBlock].extra = headerHeight() end
-				end
-				prevBlock, prevZone = block, q.zone
-			end
-		end
-		api.lastTrackedZone = prevZone -- the zone of the last tracked quest shown (MoreQuests continues from it)
-	else
-		api.lastTrackedZone = nil
-	end
-	for block in pairs(hooked) do
-		local w = want[block] or {}
-		local e = w.extra or 0
-		if (extra[block] or 0) ~= e then extra[block] = e; changed = true end
-		local label = labels[block]
-		if w.header then
-			label = getLabel(block)
-			-- the block itself sits questTitleX further right (Quest titles horizontal position): taken back off here
-			-- only set again when something differs (nothing to redraw on most passes)
-			local x, y = (db.zoneHeaderX or 4) - (tonumber(db.questTitleX) or 0), 2 + (tonumber(db.zoneHeaderY) or 0)
-			if label.qtsX ~= x or label.qtsY ~= y then
-				label:ClearAllPoints()
-				label:SetPoint("BOTTOMLEFT", block, "TOPLEFT", x, y)
-				label.qtsX, label.qtsY = x, y
-			end
-			if label:GetText() ~= w.header then label:SetText(w.header) end
-			if not label:IsShown() then label:Show() end
-		elseif label then
-			label:Hide()
-		end
-	end
-	if applyFirstGap() then changed = true end
-	if api.applyBackground then api.applyBackground() end -- the background starts at the headers
-	return changed
-end
-
-local function relayout()
-	local module = _G.QuestObjectiveTracker
-	if module and module.MarkDirty then pcall(securecallfunction, module.MarkDirty, module) end
-	if ObjectiveTrackerFrame and ObjectiveTrackerFrame.MarkDirty then
-		pcall(securecallfunction, ObjectiveTrackerFrame.MarkDirty, ObjectiveTrackerFrame)
-	end
+	return api.ownZoneLabelFor and api.ownZoneLabelFor(zone) or nil
 end
 
 local timer
@@ -692,7 +575,6 @@ local function schedule(delay, doSort)
 		timer = nil
 		xpcall(function()
 			if sortRequested then sortRequested = false; sortWatches(true) end
-			if decorate() then relayout() end
 		end, geterrorhandler())
 	end)
 end
@@ -705,28 +587,16 @@ function api.setZoneSort(enabled)
 end
 
 function api.applyZoneHeaders()
-	schedule(0, false)
-	if api.rebuildMoreQuests then api.rebuildMoreQuests() end -- its zone headers take the same look
+	if api.refreshQuests then api.refreshQuests() end -- our zone headers take the new look
 end
 
 function api.sortNow() schedule(0, true) end
-
--- decorate() found a quest with no place yet: again in 0.1 s, at most 10 times in a row (then the next tracker
--- update places the headers)
-local retries, lastRetry = 0, 0
-function api.retryZoneHeaders()
-	if GetTime() - lastRetry > 2 then retries = 0 end
-	lastRetry = GetTime()
-	if retries >= 10 then return end
-	retries = retries + 1
-	schedule(0.1, false)
-end
 
 -- "Sort zones": "closest" (closest zone to you first, the default) or "alpha" (A to Z)
 function api.setZoneOrder(order)
 	db.zoneOrder = order == "alpha" and "alpha" or "closest"
 	schedule(0, true)
-	if api.rebuildMoreQuests then api.rebuildMoreQuests() end
+	if api.refreshQuests then api.refreshQuests() end
 end
 
 function api.zoneDebug(say)
@@ -747,8 +617,6 @@ function api.zoneDebug(say)
 	say(("watch insert reversed: %s"):format(tostring(reversedAdd)))
 	say(("re-sorts: %d after the game's own sort (at once), %d of ours, %d held back"):format(sortCounts.game,
 		sortCounts.ours, sortCounts.held))
-	local module = _G.QuestObjectiveTracker
-	say(("first zone gap: fromHeaderOffsetY=%s (original %s)"):format(tostring(module and module.fromHeaderOffsetY), tostring(baseHeaderOffset)))
 end
 
 ns.onLogin[#ns.onLogin + 1] = function()
@@ -776,7 +644,6 @@ ns.onLogin[#ns.onLogin + 1] = function()
 			if busy then return end
 			local ok, err = pcall(sortWatches, true, true)
 			if not ok then geterrorhandler()(err) end
-			schedule(0.1, false)
 		end)
 	end
 	-- you move: re-check every MOVE_CHECK s (15, was 4: "calmer sorting", user) and only re-orders when a different quest
@@ -795,7 +662,4 @@ ns.onLogin[#ns.onLogin + 1] = function()
 		lastPlace, idle = here, 0
 		schedule(0, true)
 	end) end
-	if ObjectiveTrackerContainerMixin then
-		hooksecurefunc(ObjectiveTrackerContainerMixin, "Update", function() schedule(0.1, false) end)
-	end
 end

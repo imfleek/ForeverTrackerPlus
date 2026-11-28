@@ -51,9 +51,18 @@ end
 function ns.activeTimer()
 	local now = GetTime()
 	local label, start, expires
+	-- 3.2 (user): our flight bar is on: the clock ring leaves RestedXP's flight bar out
+	local trackerApi = root.tracker and root.tracker.api
+	local info = type(RXP.flightInfo) == "table" and RXP.flightInfo
+	local skip = info and info.flightBar and trackerApi and trackerApi.flightTrackerOn and trackerApi.flightTrackerOn()
+		and info.flightBar or nil
 	for name, bar in pairs(ns.timerBars()) do
-		local ends = bar.running and bar.exp
-		if ends and ends > now and (not expires or ends > expires) then label, start, expires = name, bar.start, ends end
+		local ends = bar ~= skip and bar.running and tonumber(bar.exp)
+		if ends and ends > now and (not expires or ends > expires) then
+			-- 3.2 (user: error on taking a flight): a running bar with no start (set without LibCandyBar's Start); the
+			-- swipe then runs from now
+			label, start, expires = name, tonumber(bar.start) or now, ends
+		end
 	end
 	return label, start, expires
 end

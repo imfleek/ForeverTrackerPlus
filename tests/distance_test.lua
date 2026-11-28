@@ -139,69 +139,9 @@ db.questDistance = false
 attach(fs, 77)
 check("switched off: hidden", not w.text.shown and not w.arrow.shown)
 
--- R106-55: on a tracked quest the yards are placed from the quest's right edge, so a title that kept its full width
--- (Blizzard anchors it on both sides) does not push them past the tracker's edge
-db.questDistance = true
-local fs5 = region()
-function fs5:GetParent() return parent end
-function fs5:GetFont() return "font", 12, "" end
-function fs5:IsVisible() return true end
-fs5.left = 100
-fs5.qtsReserve = reserve("font", 12, "")
-local block5 = { GetRight = function() return 400 end }
-attach(fs5, 77, block5)
-local p5 = fs5.qtsDistance.text.points[1]
-check("from the quest's right edge: 300 - 4 from the title's left", p5[1] == "TOPRIGHT" and p5[2] == fs5
-	and p5[3] == "TOPLEFT" and p5[4] == 296)
-local fs6 = region()
-function fs6:GetParent() return parent end
-function fs6:GetFont() return "font", 12, "" end
-function fs6:IsVisible() return true end
-fs6.qtsReserve = reserve("font", 12, "")
-attach(fs6, 77, block5) -- no position yet
-check("no position yet: after the title for now", fs6.qtsDistance.text.points[1][3] == "TOPRIGHT")
-fs6.left = 100
-where[77] = { 120, 0 }
-refresh(true)
-check("placed from the quest's edge once it has a position", fs6.qtsDistance.text.points[1][3] == "TOPLEFT")
--- done with these two titles: no longer watched (the checks below count re-layouts)
-db.questDistance = false
-attach(fs5, 77); attach(fs6, 77)
-where[77] = nil
-
-local more = io.open(dir .. "/Tracker/MoreQuests.lua"):read("a")
-check("More quests titles show it too", more:find("api.attachQuestDistance(fs, quest.id)", 1, true) ~= nil)
 local f = io.open(dir .. "/Textures/DirArrow.tga", "rb")
 check("Textures/DirArrow.tga exists (64x64)", f and f:read(18):byte(13) == 64)
 if f then f:close() end
-
--- R106-14: the room only on titles of quests that show a distance; set before Blizzard measures the title
-db.questDistance = true
-local title = { HeaderText = fs, questID = 77 }
-where[77] = { 120, 0 }
-check("a quest with a distance: the title keeps the room", env.api.titleReserve(title) == reserve("font", 12, ""))
-where[77] = nil
-check("a quest without one: no room (the title keeps its full width)", env.api.titleReserve(title) == nil)
-local fs2 = region()
-function fs2:GetParent() return parent end
-function fs2:GetFont() return "font", 12, "" end
-function fs2:IsVisible() return true end
-fs2.qtsBlock = title
-attach(fs2, 88) -- no room yet
-refresh(true)
-check("no room: watched, nothing drawn", not fs2.qtsDistance.text.shown and not fs2.qtsDistance.arrow.shown)
-where[88] = { 50, 0 }
-_G.GetTime = function() return 10 end
-refresh(true)
-check("its distance appears: the title is laid out again (to get the room)", relayouts == 1
-	and not fs2.qtsDistance.text.shown)
-refresh(true)
-check("at most every 2 s", relayouts == 1)
-check("the title's SetText hook sets the room before the width (before Blizzard measures it)",
-	src:find("if api.titleReserve then block.HeaderText.qtsReserve, block.HeaderText.qtsYardsW = api.titleReserve(block) end\n\t\tlocal width = block.HeaderText:GetWidth()\n", 1, true) ~= nil
-	and src:find("applying = true\n\t\tpcall(prepareText, block.HeaderText, block)", 1, true) ~= nil)
-check("More quests keeps the room only for quests with a distance",
-	more:find("api.questHasDistance(quest.id)", 1, true) ~= nil)
 
 -- R106-17: the arrow file cannot be loaded (added since the game started): the game's minimap arrow instead
 local parent3 = { CreateFontString = function() return region() end, CreateTexture = function()
@@ -277,7 +217,6 @@ attach(fs7, 79)
 refresh(true)
 check("arrow hidden: the yards, no arrow", fs7.qtsDistance.text.shown and not fs7.qtsDistance.arrow.shown)
 db.distanceText = false
-check("both hidden: no room kept on the title", env.api.titleReserve({ HeaderText = fs7, questID = 79 }) == nil)
 db.distanceText, db.distanceArrow = nil, nil
 check("the two options in Quest titles", cfg:find('check("Show distance"', 1, true) ~= nil
 	and cfg:find('check("Show arrow"', 1, true) ~= nil)

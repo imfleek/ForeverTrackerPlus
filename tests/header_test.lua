@@ -36,7 +36,9 @@ local toggled = 0
 local ns = { rxp = RXP, db = db, toggleHidden = function() toggled = toggled + 1 end, windowsTooltip = function() return "" end, forever = function() return db.theme == "forever" end, textStyle = function() return "f", { 1, 1, 1 } end,
 	hideTooltip = function() end, getTooltip = function() return obj() end, canStepBack = function() return true end,
 	canStepForward = function() return true end }
-local root = { objectives = ns, tracker = { api = { togglePrereqs = function() opened = opened + 1 end } } }
+local mainHeader = _G.ObjectiveTrackerFrame.Header -- stands in for our own tracker's main header
+local root = { objectives = ns, tracker = { api = { togglePrereqs = function() opened = opened + 1 end,
+	ownMainHeader = function() return { frame = mainHeader, Text = mainHeader.Text, MinimizeButton = mainHeader.MinimizeButton } end } } }
 -- 3.5.8 compat helpers (Objectives/Core.lua), as the game would have them
 ns.isSecret = ns.isSecret or function() return false end
 ns.itemCooldown = ns.itemCooldown or function(item) return RXP.GetItemCooldown and RXP.GetItemCooldown(item) end

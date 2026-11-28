@@ -1,14 +1,14 @@
 ## Interface: 16001
 ## Title: ForeverTrackerPlus
 ## Notes: Shows your RestedXP guide steps in the objective tracker (click-to-use circles, waypoint arrow, back a step) and makes the tracker mouse-wheel scrollable, with zone sorting, rewards and tooltips. Settings: /qt
-## Version: 3.1.2
+## Version: 3.2
 ## Category: Quests
 ## X-Curse-Project-ID: 1801986
 ## IconTexture: Interface\AddOns\ForeverTrackerPlus\Textures\MapPin
 ## SavedVariables: ForeverTrackerPlusDB, ForeverTrackerPlusGuideDB
 ## AllowLoadGameType: camelot
 ## LoadSavedVariablesFirst: 1
-## OptionalDeps: RXPForeverTracker, AllTrackerRXP, AllObjectivesRXP, RXPGuides, LibSharedMedia-3.0, Questie, QuestieDB
+## OptionalDeps: RXPGuides, LibSharedMedia-3.0, Questie, QuestieDB, LayerSwap
 
 Bootstrap.lua
 ScrollSkin.lua
@@ -18,7 +18,6 @@ Objectives/rxp/Readers.lua
 Objectives/rxp/Uses.lua
 Objectives/rxp/Snapshot.lua
 Objectives/features/QuestFocus.lua
-Objectives/features/QuestReady.lua
 Objectives/features/Windows.lua
 Objectives/features/RxpFixes.lua
 Objectives/features/RxpAwake.lua
@@ -41,6 +40,15 @@ Objectives/Slash.lua
 Objectives/Settings.lua
 
 Tracker/Core.lua
+Tracker/Own/Data.lua
+Tracker/Own/Look.lua
+Tracker/Own/Rows.lua
+Tracker/Own/Recipes.lua
+Tracker/Own/Legacy.lua
+Tracker/Own/Battleground.lua
+Tracker/Own/Frame.lua
+Tracker/Animations.lua
+Tracker/LevelBanner.lua
 Tracker/Profiles.lua
 Tracker/Fonts.lua
 Tracker/ZoneFilter.lua
@@ -57,7 +65,7 @@ Tracker/NpcPanel.lua
 Tracker/ObjectModels.lua
 Tracker/InstanceCap.lua
 Tracker/Rares.lua
-Tracker/MoreQuests.lua
+Tracker/QuestClicks.lua
 Tracker/Stats.lua
 Tracker/FlightData.lua
 Tracker/Helpers.lua
@@ -65,9 +73,23 @@ Tracker/Questing.lua
 Tracker/AutoQuest.lua
 Tracker/WorldMarker.lua
 Tracker/Guides.lua
+Tracker/Journal.lua
+Tracker/Reminders.lua
+Tracker/Rewards.lua
+Tracker/DungeonPlus.lua
+Tracker/DungeonLoot.lua
+Tracker/DungeonRuns.lua
+Tracker/QuestLogTags.lua
+Tracker/CorpseRun.lua
+Tracker/BugReport.lua
+Tracker/DeadEnd.lua
+Tracker/LayerSwapButton.lua
+Tracker/QuestAction.lua
+Tracker/Chains.lua
 Tracker/Config.lua
 Tracker/DebugWindow.lua
 Tracker/Setup.lua
+Tracker/WhatsNew.lua
 Tracker/Prereqs.lua
 Tracker/Conflicts.lua
 Tracker/LevelCap.lua

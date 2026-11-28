@@ -4,15 +4,18 @@
 -- login), "Don't ask again" (this character). Only while RXPGuides is loaded; never in combat (waits for its end).
 -- Without RXPGuides the RXP Tracker part of this addon has no guide to show; the quest tracker keeps working.
 local _, root = ...; local ns = root.tracker
+-- 3.2: the character key with the surname (Core.lua api.playerKey); without it (tests) "Name-Realm"
+local function playerKey(...)
+	if ns.api.playerKey then return ns.api.playerKey(...) end
+	local name, realm = UnitName and UnitName("player"), GetRealmName and GetRealmName()
+	if type(name) ~= "string" or (issecretvalue and (issecretvalue(name) or issecretvalue(realm))) then return nil end
+	return name .. "-" .. tostring(realm or "")
+end
 
 local LEVEL_CAP = 60
 local DELAY = 8 -- seconds after login, so the popup does not land in the loading-screen rush
 
-local function charKey()
-	local name = UnitName and UnitName("player") or "?"
-	local realm = GetRealmName and GetRealmName() or "?"
-	return tostring(name) .. "-" .. tostring(realm)
-end
+local function charKey() return playerKey(ns.db and ns.db.levelCapAsked) or "?" end -- 3.2: with the surname
 
 local function rxpLoaded()
 	return C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RXPGuides") and true or false
@@ -67,7 +70,6 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2)
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		if arg1 == false and arg2 == false then return end -- a zone change, not a login or reload
 		C_Timer.After(DELAY, function()
-			if root.disabledAll then return end
 			local level = UnitLevel and UnitLevel("player")
 			if type(level) == "number" and level >= LEVEL_CAP then ask() end
 		end)

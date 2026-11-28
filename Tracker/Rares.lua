@@ -39,12 +39,32 @@ local function playerZone()
 	return info and info.name, (GetRealZoneText and GetRealZoneText()), map
 end
 
+-- 3.2 (user): a new rare: its tag pulses (Animations.lua) and a raid-warning style message shows in the middle of the
+-- screen with its sound (db.rareMessage, on by default; at most one every 10 seconds)
+local newRare, lastMessage = false, -100
+local function announce(name)
+	if not (db and db.rareMessage ~= false) or type(name) ~= "string" or isSecret(name) then return end
+	if GetTime() - lastMessage < 10 then return end
+	lastMessage = GetTime()
+	local text = ("Rare nearby: %s"):format(name)
+	local frame = rawget(_G, "RaidWarningFrame")
+	local info = ChatTypeInfo and ChatTypeInfo.RAID_WARNING
+	if frame and type(RaidNotice_AddMessage) == "function" then
+		pcall(RaidNotice_AddMessage, frame, text, info or { r = 1, g = 0.5, b = 0.2 })
+	elseif UIErrorsFrame then
+		UIErrorsFrame:AddMessage(text, 1, 0.5, 0.2)
+	end
+	if PlaySound and SOUNDKIT and SOUNDKIT.RAID_WARNING then (root.playSound or pcall)(PlaySound, SOUNDKIT.RAID_WARNING) end
+end
+api.rareAnnounce = announce -- (tests)
 local function remember(key, entry)
 	local old = spotted[key]
 	if old then
 		for k, v in pairs(entry) do old[k] = v end
 	else
 		spotted[key] = entry
+		newRare = true
+		announce(entry.name)
 	end
 end
 
@@ -190,11 +210,15 @@ local function refresh()
 		tag:SetParent(label:GetParent())
 		tag:SetFrameLevel((label:GetParent():GetFrameLevel() or 1) + 5)
 		tag:ClearAllPoints()
-		local module = _G.QuestObjectiveTracker
+		-- at the right edge of our list
 		tag:SetPoint("BOTTOM", label, "BOTTOM", 0, 0)
-		tag:SetPoint("RIGHT", module or label:GetParent(), "RIGHT", -4, 0)
+		tag:SetPoint("RIGHT", label:GetParent(), "RIGHT", -4, 0)
 		tag:SetSize(math.max(tag.text:GetStringWidth() or 10, 10), math.max(tag.text:GetStringHeight() or 12, 12))
 		tag:Show()
+		if newRare then
+			newRare = false
+			if api.animPulse then api.animPulse(tag) end
+		end
 	end
 	if ticker and next(spotted) == nil then
 		ticker:Cancel()

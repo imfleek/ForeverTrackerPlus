@@ -64,6 +64,7 @@ local ns = { api = {}, onLogin = {}, db = {}, objectModels = { [3240] = 200000 }
 local root = { tracker = ns, objectives = {} }
 assert(loadfile(dir .. "/Tracker/NpcPanel.lua", "t", env))("ForeverTrackerPlus", root)
 local api = ns.api
+api.ownTrackerFrame = function() return env.ObjectiveTrackerFrame end -- stands in for our own tracker's frame
 ns.onLogin[1]()
 
 -- the distance: a radius-5 model, fov 0.7, a stage wider than tall (the height holds it)

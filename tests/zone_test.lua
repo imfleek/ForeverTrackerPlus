@@ -139,6 +139,3 @@ do
 	check("after 60 s without a place: only the game's distance (no arrow)", a3 == nil and y3 ~= nil)
 	_G.GetTime = function() return 0 end
 end
--- R106-42: zone headers wait while a shown quest has no place yet
-check("zone headers wait for every shown quest's place", zsrc:find("if api.retryZoneHeaders then api.retryZoneHeaders() end", 1, true) ~= nil)
-check("zone header text set only when it differs", zsrc:find("if label:GetText() ~= w.header then label:SetText(w.header) end", 1, true) ~= nil)

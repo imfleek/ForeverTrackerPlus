@@ -15,7 +15,7 @@ ns.view = view
 local ownTooltip
 
 function ns.getTooltip()
-	ownTooltip = ownTooltip or CreateFrame("GameTooltip", "AllObjectivesRXPTooltip", UIParent, "GameTooltipTemplate")
+	ownTooltip = ownTooltip or CreateFrame("GameTooltip", "ForeverTrackerPlusGuideTooltip", UIParent, "GameTooltipTemplate")
 	return ownTooltip
 end
 

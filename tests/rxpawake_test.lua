@@ -24,7 +24,8 @@ local automationSaw
 local RXP = { isHidden = false, RXPFrame = rxpFrame }
 RXP.QuestAutomation = function() automationSaw = RXP.isHidden end
 local lastGossipSaw
-RXP.functions = { skipgossip = function() lastGossipSaw = RXP.isHidden end }
+local optionSaw
+RXP.functions = { skipgossip = function() lastGossipSaw = RXP.isHidden end, gossipoption = function() optionSaw = RXP.isHidden end }
 local function hide() shown = false; RXP.isHidden = true; for _, f in ipairs(scripts.OnHide or {}) do f() end end
 local function show() shown = true; RXP.isHidden = false; for _, f in ipairs(scripts.OnShow or {}) do f() end end
 
@@ -52,10 +53,16 @@ gossipHandler()
 check("automation setting off: gossip step handlers see RestedXP hidden", lastGossipSaw == true and RXP.isHidden == false)
 ns.db.hiddenAutomation = true
 RXP.QuestAutomation()
-check("automation setting on: quest automation runs (sees the engine awake)", automationSaw == false
+check("3.2 setting on: quest automation is ours, still sees RestedXP hidden", automationSaw == true
 	and RXP.isHidden == false)
 gossipHandler()
-check("automation setting on: gossip step handlers run", lastGossipSaw == false)
+check("3.2 setting on: .skipgossip is ours, still hidden", lastGossipSaw == true)
+RXP.functions.gossipoption()
+check("3.2 setting on: .gossipoption (not ours) runs", optionSaw == false)
+ns.db.hiddenAutomation = false
+RXP.functions.gossipoption()
+check("3.2 setting off: .gossipoption sees RestedXP hidden", optionSaw == true)
+ns.db.hiddenAutomation = true
 local okErr = pcall(function() ns.db.hiddenAutomation = false; ns.runRxpAutomation(function() error("boom") end) end)
 check("automation off: an error is passed on and the engine stays awake", not okErr and RXP.isHidden == false)
 ns.db.hiddenAutomation = true

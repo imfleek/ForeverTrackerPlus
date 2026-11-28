@@ -6,7 +6,8 @@
 local ADDON, root = ...; local ns = root.tracker
 if ns.disabled then return end
 local api = ns.api
-local SETUP_VERSION = 3
+-- 4 (3.2): who finished the 3.x setup (3) sees only the "New in 3.2" steps once
+local SETUP_VERSION = 4
 
 local frame, steps, stepIndex
 
@@ -27,13 +28,81 @@ local function list(...)
 	return out
 end
 
-local function buildSteps()
+-- 3.2's new features: four steps (also part of the full setup)
+local function newSteps(d, out)
+	local relayout = function() call(api.applyLayout) end
+	out[#out + 1] = { title = "New in 3.2: the tracker", text = "Changes to the quest list.", rows = list(
+		row("Distance only on the 3 closest quests", "the yards and the arrow only on the 3 quests closest to you; off: on every quest",
+			function() return (tonumber(d.distanceClosest) or 3) > 0 end,
+			function(v) d.distanceClosest = v and 3 or 0; call(api.applyQuestDistance); call(api.refreshQuests) end),
+		row("Time to arrive", "after the yards: how long it takes to get there, as \"1:20\"",
+			function() return d.distanceEta == true end,
+			function(v) d.distanceEta = v; call(api.applyQuestDistance); call(api.refreshQuests) end),
+		row("Hide done objectives", "an objective you finished (\"8/8\") is taken off the quest",
+			function() return d.hideDoneObjectives == true end, function(v) d.hideDoneObjectives = v; call(api.applyProgressBars) end),
+		row("Fade the tracker in combat", "see-through while you fight (Settings > Size and layer: hide it, or in raids)",
+			function() return (d.combatFade or "off") ~= "off" end,
+			function(v) d.combatFade = v and "fade" or "off"; call(api.applySituationAlpha) end),
+		row("Sort quests by level", "inside each zone, the lowest level first; off: the closest first",
+			function() return d.questOrder == "level" end,
+			function(v) d.questOrder = v and "level" or "distance"; call(api.sortNow) end)
+	) }
+	out[#out + 1] = { title = "New in 3.2: reminders", text = "Little nudges while you level (Settings > Helpers > Reminders).", rows = list(
+		row("New spells at your trainer", "visit your class trainer once; then a line at the top says when spells wait there",
+			function() return d.trainerReminder ~= false end, function(v) d.trainerReminder = v; relayout() end),
+		row("Unspent talent points", "a line at the top while you have points to spend",
+			function() return d.talentReminder ~= false end, function(v) d.talentReminder = v; relayout() end),
+		row("Items that start a quest", "a message when you loot an item that starts a quest you do not have",
+			function() return d.questItemAlert ~= false end, function(v) d.questItemAlert = v end),
+		row("Kill count in mob tooltips", "how many of that mob this character killed",
+			function() return d.killCounts ~= false end, function(v) d.killCounts = v end),
+		row("Your path on the world map", "gold dots where you went during this level",
+			function() return d.pathMap ~= false end, function(v) d.pathMap = v end),
+		row("Session summary at login", "what you did last time, in chat (/ftp session: now)",
+			function() return d.sessionSummary ~= false end, function(v) d.sessionSummary = v end)
+	) }
+	out[#out + 1] = { title = "New in 3.2: rewards and dungeons", text = "Quest rewards (Helpers > Rewards) and the dungeon card (Instances > Dungeons).", rows = list(
+		row("Arrow on upgrades", "a green arrow on a quest reward that is better than what you wear",
+			function() return d.rewardArrow ~= false end, function(v) d.rewardArrow = v end),
+		row("Disenchant icon", "on rewards that can be disenchanted; hover: what they give",
+			function() return d.rewardDisenchant ~= false end, function(v) d.rewardDisenchant = v end),
+		row("Pick the best upgrade for me", "with \"Turn in finished quests\" on; the most valuable reward when none is better",
+			function() return (d.autoReward or "off") ~= "off" end, function(v) d.autoReward = v and "upgrade" or "off" end),
+		row("Dungeon splits", "the run's time and each boss's kill time, with your best",
+			function() return d.dungeonSplits ~= false end, function(v) d.dungeonSplits = v; relayout() end),
+		row("Your party's dungeon quests", "who has which quest for the dungeon, with a button to share yours",
+			function() return d.dungeonPartyQuests ~= false end,
+			function(v) d.dungeonPartyQuests = v; d.dungeonShare = v; relayout() end),
+		row("Next boss's abilities", "hover the line on the dungeon card",
+			function() return d.dungeonAbilities ~= false end, function(v) d.dungeonAbilities = v; relayout() end)
+	) }
+	out[#out + 1] = { title = "New in 3.2: guides", text = "Settings > Collections > Quest chains has three new lists:\n\n" ..
+		"|cffffd100Attunements|r: the raid attunement chains, step by step.\n" ..
+		"|cffffd100Class quests|r: every quest for your class, in chains.\n" ..
+		"|cffffd100Profession quests|r: quests that need a profession rank.\n" ..
+		"\n" ..
+		(questieLoaded() and "" or "The class and profession lists need Questie.\n\n"), rows = list(
+		row("Explored count on the zone's header", "\"Explored 7/12\" after your zone's name",
+			function() return d.zoneExplored ~= false end, function(v) d.zoneExplored = v; call(api.refreshExploredTag) end)
+	) }
+end
+
+local function buildSteps(onlyNew)
 	local d = db()
 	local g = guide()
 	local out = {}
-	out[#out + 1] = { title = "Welcome to ForeverTrackerPlus 3.1", text =
+	if onlyNew then
+		out[#out + 1] = { title = "ForeverTrackerPlus 3.2", text =
+			"3.2 adds new features. The next steps show them, each with an on/off switch.\n\n" ..
+			"Every choice applies at once. Type |cffffd100/ftp|r for more choices, or |cffffd100/ftp setup|r for the full setup.\n\n" ..
+			"Press |cffffd100Next|r to start, or |cffffd100Skip setup|r to keep everything as it is." }
+		newSteps(d, out)
+		out[#out + 1] = { title = "All set", text = "That is everything new. Have a good run!", final = true }
+		return out
+	end
+	out[#out + 1] = { title = "Welcome to ForeverTrackerPlus 3.2", text =
 		"This short setup shows every feature and lets you turn each one on or off. It takes about a minute.\n\n" ..
-		"Every choice applies at once. You can change all of it later: type |cffffd100/qt|r or click the minimap button.\n\n" ..
+		"Every choice applies at once. You can change all of it later: type |cffffd100/ftp|r or click the minimap button.\n\n" ..
 		"Press |cffffd100Next|r to start, or |cffffd100Skip setup|r to keep everything as it is." }
 	out[#out + 1] = { title = "Your quest list", text = "How the quest tracker lists your quests.", rows = list(
 		row("Zone headers and sorting", "quests grouped under their zone, the closest zone first",
@@ -41,7 +110,7 @@ local function buildSteps()
 			function(v) if api.setMode then api.setMode(d.trackMode or "all", v) end end),
 		row("Distance arrows", "how far each quest is, with an arrow that points at it",
 			function() return d.questDistance ~= false end,
-			function(v) d.questDistance = v; call(api.applyQuestDistance); call(api.rebuildMoreQuests) end),
+			function(v) d.questDistance = v; call(api.applyQuestDistance); call(api.refreshQuests) end),
 		row("Experience reward", "the experience a quest gives, after its title",
 			function() return d.showXP and true or false end, function(v) call(api.setReward, "xp", v) end),
 		row("Gold reward", "the money a quest gives, after its title",
@@ -52,13 +121,13 @@ local function buildSteps()
 	out[#out + 1] = { title = "Quest lines", text = "What each quest line shows.", rows = list(
 		row("Progress bars", "a small bar with the count on each objective",
 			function() return d.progressBars ~= false end,
-			function(v) d.progressBars = v; call(api.applyProgressBars); call(api.rebuildMoreQuests) end),
+			function(v) d.progressBars = v; call(api.applyProgressBars); call(api.refreshQuests) end),
 		row("Icons", "elite, group, dungeon, raid, PvP and new-in-Forever icons on titles",
 			function() return d.condense and true or false end,
 			function(v) d.condense = v; call(api.applyExtras) end),
 		row("Checks on finished quests", "a green tick left of a finished quest's title",
 			function() return d.completeCheck ~= false end,
-			function(v) d.completeCheck = v; call(api.applyExtras); call(api.rebuildMoreQuests) end),
+			function(v) d.completeCheck = v; call(api.applyExtras); call(api.refreshQuests) end),
 		row("Dungeon card", "in a dungeon or raid: its name, group, deaths and lockout at the top",
 			function() return d.dungeonCard ~= false end, function(v) call(api.setDungeonCard, v) end),
 		row("Tracked reputation", "the faction you watch, with its bar, above the quests",
@@ -107,7 +176,7 @@ local function buildSteps()
 			function() return d.partyDone == true end, function(v) d.partyDone = v end)
 	) }
 	out[#out + 1] = { title = "Talking to NPCs", text = "Let the addon click through quest NPCs for you. All off unless you turn them on.\n\nHold |cffffd100Shift|r while you talk to an NPC: nothing is automatic that time. More choices: Settings > Helpers > NPCs.", rows = list(
-		row("Accept quests", "talk to an NPC: its quests are accepted for you",
+		row("Accept quests", "talking to an NPC accepts its quests for you",
 			function() return d.autoAccept == true end, function(v) d.autoAccept = v end),
 		row("Turn in finished quests", "when you can pick a reward, you still pick",
 			function() return d.autoTurnIn == true end, function(v) d.autoTurnIn = v end),
@@ -122,10 +191,10 @@ local function buildSteps()
 		row("Minimap button", "left-click opens the settings",
 			function() return not (d.minimap and d.minimap.hide) end, function(v) call(api.setMinimapShown, v) end)
 	) }
-	out[#out + 1] = { title = "Guides", text = "Settings > Guides has three lists:\n\n" ..
+	out[#out + 1] = { title = "Collections", text = "Settings > Collections has these lists:\n\n" ..
 		"|cffffd100Legacy Challenges|r: WoW Forever's challenges and what is still to do.\n" ..
 		"|cffffd100Library books|r: every book for the library; click one for a waypoint.\n" ..
-		"|cffffd100Sleeping bag|r: the Cozy Sleeping Bag quest chain, from level 14.\n\n" ..
+		"|cffffd100Secrets|r: hidden toys and quests, and the Cozy Sleeping Bag chain.\n\n" ..
 		(questieLoaded() and "" or "The books and the sleeping bag chain need Questie.\n\n"), rows = list(
 		row("Show finished challenges", "off: Legacy Challenges lists only the ones still to do",
 			function() return d.legacyShowDone == true end, function(v) d.legacyShowDone = v end),
@@ -138,10 +207,11 @@ local function buildSteps()
 		row("Level-up line in chat", "how long the last level took, and your time played",
 			function() return d.levelAnnounce ~= false end, function(v) d.levelAnnounce = v end)
 	) }
+	newSteps(d, out)
 	out[#out + 1] = { title = "All set", text =
 		"That is everything. Have a good run!\n\n" ..
-		"|cffffd100/qt|r opens the settings, where every feature has more choices.\n" ..
-		"|cffffd100/qt setup|r opens this setup again.", final = true }
+		"|cffffd100/ftp|r opens the settings, where every feature has more choices.\n" ..
+		"|cffffd100/ftp setup|r opens this setup again.", final = true }
 	return out
 end
 
@@ -184,7 +254,7 @@ local function build()
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	local font = GameFontNormal and GameFontNormal:GetFont() or STANDARD_TEXT_FONT
 	if font then title:SetFont(font, 16, "") end
-	title:SetText("|cfff2e6c8RXP|r |cffffd100Forever|r|cfff0cf86Tracker|r  |cffb0a99cSetup|r")
+	title:SetText("|cffffd100Forever|r|cfff0cf86TrackerPlus|r  |cffb0a99cSetup|r")
 	title:SetPoint("CENTER")
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", -3, -4)
@@ -304,10 +374,10 @@ function api.showSetup(force)
 		return
 	end
 	if not frame and not build() then return end
-	steps = buildSteps()
+	steps = buildSteps(not force and (tonumber(d.setupDone) or 0) == 3)
 	frame.show(1)
 	frame:Show()
-	if PlaySound and SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPEN then pcall(PlaySound, SOUNDKIT.IG_MAINMENU_OPEN) end
+	if PlaySound and SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPEN then (root.playSound or pcall)(PlaySound, SOUNDKIT.IG_MAINMENU_OPEN) end
 end
 
 ns.onLogin[#ns.onLogin + 1] = function()

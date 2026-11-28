@@ -133,10 +133,24 @@ local function onProgress()
 	if call("IsQuestCompletable") then call("CompleteQuest") return "completed" end
 end
 
-local function onComplete()
+local function onComplete(tries)
 	if not on("autoTurnIn") or paused() or skipRepeat() then return end
 	local choices = tonumber(call("GetNumQuestChoices")) or 0
-	if choices > 1 then return "choose" end -- yours to pick
+	if choices > 1 then
+		-- 3.2 (Rewards.lua): the best upgrade or the most valuable reward, when switched on
+		local mode = db and db.autoReward
+		if mode and mode ~= "off" and api.pickReward then
+			local pick, pending = api.pickReward(mode)
+			if pick then call("GetQuestReward", pick) return "rewarded" end
+			if pending and (tries or 0) < 5 and C_Timer then
+				C_Timer.After(0.3, function()
+					local qf = rawget(_G, "QuestFrame")
+					if qf and qf.IsShown and qf:IsShown() then pcall(onComplete, (tries or 0) + 1) end
+				end)
+			end
+		end
+		return "choose" -- yours to pick
+	end
 	call("GetQuestReward", choices == 1 and 1 or nil)
 	return "rewarded"
 end
@@ -169,13 +183,13 @@ function api.declareAutoQuestPage(k)
 	k.page("automation", "quests", "NPCs")
 	k.note("Hold Shift while you talk to an NPC: nothing is automatic that time.")
 	k.heading("Quests")
-	sw("Accept quests", "autoAccept", "talk to an NPC: its quests are accepted for you")
-	sw("Turn in finished quests", "autoTurnIn", "finished quests are handed in; when you can pick a reward, you pick")
+	sw("Accept quests", "autoAccept", "talking to an NPC accepts its quests for you")
+	sw("Turn in finished quests", "autoTurnIn", "finished quests are handed in; if there is a reward choice, you pick")
 	k.heading("Chat")
-	sw("Skip the chat", "autoGossip", "an NPC with only one chat option: it is picked for you (never a vendor, trainer, flight or other service)")
+	sw("Skip the chat", "autoGossip", "if an NPC has only one chat option, it is picked for you (never a vendor, trainer, flight master or other service)")
 	k.heading("Which quests", true)
-	sw("Also repeatable and daily quests", "autoRepeatable", "off: these often share items, so you choose", anyOn)
-	sw("Also grey (low level) quests", "autoTrivial", "off: grey quests are left for you", anyOn)
+	sw("Also repeatable and daily quests", "autoRepeatable", "off: you choose, as these often share items", anyOn)
+	sw("Also grey (low level) quests", "autoTrivial", "off: grey quests are left to you", anyOn)
 	sw("Also in dungeons and raids", "autoInDungeon", "off: an escort could start before your group is ready", anyOn)
 	k.pageByKey.automation.reset = k.reset
 end

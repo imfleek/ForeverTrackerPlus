@@ -132,8 +132,8 @@ function api.resetCircles() if ns.resetCircleOffset then ns.resetCircleOffset() 
 
 api.maxSteps = ns.MAX_FOLLOWING
 api.allSteps = ns.ALL_STEPS -- one past maxSteps: "All"
-function api.showWelcome() ns.showWelcome() end   -- /qt welcome
-function api.printStatus() ns.printStatus() end   -- /qt status
+function api.showWelcome() ns.showWelcome() end   -- /ftp welcome
+function api.printStatus() ns.printStatus() end   -- /ftp status
 
 -- Live status for the window: on/off, guide, step counter, arrow state.
 function api.status()

@@ -7,62 +7,28 @@ local ADDON, root = ...
 root.objectives, root.tracker = {}, {}
 root.BRAND = "ForeverTrackerPlus"
 
-local function say(text)
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99" .. root.BRAND .. "|r " .. text)
-end
-
-local function copy(value)
-	if type(value) ~= "table" then return value end
-	local out = {}
-	for k, v in pairs(value) do out[k] = copy(v) end
-	return out
-end
-
--- Take settings over once from an older addon that is loaded in this session (OptionalDeps loads it first).
-local function adopt(target, ...)
-	if type(_G[target]) == "table" then return end
-	for i = 1, select("#", ...) do
-		local source = _G[(select(i, ...))]
-		if type(source) == "table" then
-			_G[target] = copy(source)
-			return true
-		end
+-- 3.2 (user): every sound of the addon goes through here, so one switch mutes them all (Settings: "Sounds",
+-- db.sounds; on by default). Called as (root.playSound or pcall)(PlaySound, id): the files work without it too.
+-- 3.2 (user's BugSack: "ForeverTrackerPlus tried to call the protected function" in SendChatMessage): text for the
+-- chat box goes only into a chat box you opened yourself (Enter). Opening it from addon code (ChatFrame_OpenChat)
+-- left the box tainted, and your own Enter press was then blocked. Returns true when the text went in; otherwise
+-- it says to press Enter first, as the game's own item links do.
+function root.chatInsert(text)
+	if type(text) ~= "string" or text == "" then return false end
+	local get = (ChatFrameUtil and ChatFrameUtil.GetActiveWindow) or ChatEdit_GetActiveWindow
+	local box = type(get) == "function" and get() or nil
+	if box and box.Insert then
+		box:Insert(text)
+		return true
 	end
+	if UIErrorsFrame and UIErrorsFrame.AddMessage then
+		UIErrorsFrame:AddMessage("Press Enter to open the chat box, then Shift-click again.", 1, 0.82, 0)
+	end
+	return false
 end
 
-local loaded = C_AddOns.IsAddOnLoaded
-local oldTracker = loaded("AllTrackerRXP")       -- the previous name of this addon (1.x or 2.0.0)
-local oldGuide = loaded("AllObjectivesRXP")      -- the separate AllObjectives RXP addon
-
-local oldName = loaded("RXPForeverTracker")     -- the previous name of this addon (2.x to 3.1)
--- From 3.1.1 that folder is a stub that only loads the old settings (Legacy/), so the CurseForge app's update keeps them
-local stub = oldName and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("RXPForeverTracker", "X-ForeverTrackerPlus-Stub")
-if stub then oldName = false end
-
-adopt("ForeverTrackerPlusDB", "RXPForeverTrackerDB", "AllTrackerRXPDB")
-adopt("ForeverTrackerPlusGuideDB", "RXPForeverTrackerGuideDB", "AllTrackerRXPObjectivesDB", "AllObjectivesRXPDB")
-
-if oldName then
-	-- The old copy under its old name runs this session too: stand down, and turn it off for the next /reload.
-	root.disabledAll = true
-	pcall(C_AddOns.DisableAddOn, "RXPForeverTracker")
-	C_Timer.After(2, function()
-		say("RXP ForeverTracker is now " .. root.BRAND .. ". Your settings have been copied. The old addon is turned "
-			.. "off: type /reload, then you can delete the RXPForeverTracker folder.")
-	end)
-elseif oldTracker then
-	-- Both would take over the same tracker: stand down for this session and let the old copy run.
-	root.disabledAll = true
-	C_Timer.After(2, function()
-		say("AllTracker RXP is still enabled, so " .. root.BRAND .. " is off this session; your settings have been "
-			.. "copied. Disable AllTracker RXP" .. (oldGuide and " and AllObjectives RXP" or "") .. " in the AddOns list and /reload.")
-	end)
-elseif oldGuide then
-	-- The separate AllObjectives RXP would draw the guide a second time: the built-in copy stays off and the tracker
-	-- half works with the separate one.
-	root.standaloneObjectives = true
-	C_Timer.After(2, function()
-		say("AllObjectives RXP is built in. The separate AllObjectives RXP addon is still enabled, so it is used "
-			.. "instead; your settings have been copied. Disable it in the AddOns list and /reload.")
-	end)
+function root.playSound(play, id, ...)
+	local t = root.tracker
+	if t and t.db and t.db.sounds == false then return end
+	if type(play) == "function" and id ~= nil then return pcall(play, id, ...) end
 end

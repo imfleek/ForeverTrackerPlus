@@ -60,7 +60,7 @@ check("an open row says click to close", rows[1].clickHint == "Click: close")
 local refreshed = 0
 local pages, buttons = {}, {}
 local kit = { page = function(key) pages[#pages + 1] = key end, heading = function() end, check = function() end,
-	help = function() end, note = function() end, custom = function() end,
+	help = function() end, note = function() end, custom = function() end, input = function() end, choice = function() end,
 	buttons = function(label, list) buttons[label] = list end,
 	pageByKey = setmetatable({}, { __index = function(t, k) local p = {}; rawset(t, k, p) return p end }),
 	refresh = function() refreshed = refreshed + 1 end }
@@ -73,7 +73,7 @@ rows[1].onClick()
 rows = api.guideLegacyRows()
 check("a second click opens it", rows[1].fold == false and find("Rank 6") ~= nil)
 local ob
-for label, list in pairs(buttons) do if label:find("Open all", 1, true) then ob = list end end
+for label, list in pairs(buttons) do if label:find("Open all", 1, true) and label:find("categories", 1, true) then ob = list end end
 check("Open all and Close all buttons", ob and ob[1][1] == "Open all" and ob[2][1] == "Close all")
 ob[2][2]()
 rows = api.guideLegacyRows()

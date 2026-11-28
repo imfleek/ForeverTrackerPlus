@@ -24,6 +24,10 @@ env = setmetatable({
 	NumTaxiNodes = function() return 2 end,
 	TaxiNodeName = function(i) return ({ "Here", "There" })[i] end,
 	TaxiNodeGetType = function(i) return i == 1 and "CURRENT" or "REACHABLE" end,
+	-- 3.2: the time comes from RestedXP's flight time list
+	RXP = { player = { faction = "Horde" }, FPDB = { Horde = { [101] = { [102] = 95 } } },
+		flightInfo = { currentFP = 101, nodeHash = { [20] = 102 } }, GetFlightHash = function(i) return i * 10 end,
+		settings = { profile = { showFlightTimers = false } } },
 }, { __index = _G })
 env._G = env
 local ns = { api = {}, onLogin = {}, db = { flightLog = { ["Here > There"] = { t = 95, n = 1 } } } }
@@ -48,4 +52,19 @@ check("ours first: its line is rewritten when it shows", #tip.lines == 2 and not
 eluiHasRoute = false
 hover(false)
 check("EllesmereUI has no line: ours is added", #tip.lines == 2 and tip.lines[2].text:find("Flight time:") ~= nil)
+-- 3.2: RXPGuides loaded with its flight timers on: EllesmereUI's line is blanked (RestedXP shows the time)
+eluiHasRoute = true
+env.RXP.settings.profile.showFlightTimers = true
+env.C_AddOns.IsAddOnLoaded = function(n) return n == "EllesmereUIForeverEssentials" or n == "RXPGuides" end
+hover(true)
+check("RestedXP shows the time: EllesmereUI's line blanked (EllesmereUI first)", tip.lines[2].text == "")
+hover(false)
+check("RestedXP shows the time: EllesmereUI's line blanked (ours first)", tip.lines[2].text == "")
+eluiHasRoute = false
+hover(false)
+check("RestedXP shows the time, EllesmereUI no line: nothing added", #tip.lines == 1)
+eluiHasRoute = true
+env.RXP.settings.profile.showFlightTimers = false
+hover(true)
+check("RestedXP timers off: EllesmereUI's line left alone", tip.lines[2].text == "Flight time: 1:40")
 print(pass and "ALL OK" or "SOME FAILED")

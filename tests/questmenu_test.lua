@@ -63,8 +63,8 @@ now = 200
 menuHandler(nil, rootDescription)
 check("no quest known: no line", button == nil)
 
-local ex = io.open(dir .. "/Tracker/Extras.lua"):read("a")
-check("the quest pressed is recorded on mouse down", ex:find("api.lastQuestPressed = { id = questIDOf(block), at = GetTime(),", 1, true) ~= nil)
+local rows = io.open(dir .. "/Tracker/Own/Rows.lua"):read("a")
+check("the quest pressed is recorded on mouse down", rows:find("api.lastQuestPressed = { id = self.questID, at = GetTime(),", 1, true) ~= nil)
 local toc = io.open(dir .. "/ForeverTrackerPlus.toc"):read("a")
 check("in the toc", toc:find("Tracker/QuestMenu.lua", 1, true) ~= nil)
 
@@ -85,20 +85,5 @@ if body then
 	zenv.db.expandCurrentZone = false
 	check("option off: every quest as before", #wanted({ { id = 1 }, { id = 20 } }) == 2)
 end
-local mq = io.open(dir .. "/Tracker/MoreQuests.lua"):read("a")
-local fold = mq:match("(local openZones = {}.-\napi.moreQuestsZoneFolded = isFolded)")
-check("the folding found", fold ~= nil)
-if fold then
-	local fenv = setmetatable({ db = { expandCurrentZone = true, zoneSort = true },
-		api = { isCurrentZoneName = function(z) return z == "Felwood" end } }, { __index = _G })
-	load(fold, "f", "t", fenv)()
-	local isFolded = fenv.api.moreQuestsZoneFolded
-	check("another zone folded", isFolded("Winterspring") == true)
-	check("the player's zone open", isFolded("Felwood") == false)
-	fenv.db.expandCurrentZone = false
-	check("option off: nothing folded", isFolded("Winterspring") == false)
-end
-check("a folded zone's header shows its count", mq:find('("+ %s (%d)"):format(quest.header, zoneCount[quest.header] or 0)', 1, true) ~= nil)
-check("zones opened by hand fold again in a new zone", mq:find('if event == "ZONE_CHANGED_NEW_AREA" then wipe(openZones) end', 1, true) ~= nil)
 check("its option", io.open(dir .. "/Tracker/Config.lua"):read("a"):find('"Expand current zone only"', 1, true) ~= nil)
 print(pass and "PASS" or "FAILED")

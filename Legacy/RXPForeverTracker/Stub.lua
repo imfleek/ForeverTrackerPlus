@@ -1,3 +1,0 @@
--- ForeverTrackerPlus was called RXPForeverTracker before 3.1.1. The game loads saved settings only for an addon
--- folder of the same name, so this empty folder keeps RXPForeverTrackerDB and RXPForeverTrackerGuideDB loading.
--- ForeverTrackerPlus copies them once (Bootstrap.lua). No code runs here.

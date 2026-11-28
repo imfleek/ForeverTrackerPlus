@@ -1,18 +1,11 @@
--- Quest block extras: experience reward after the quest title, gold reward before it, and spacing between quests.
---
--- The reward text is added to the title text of Blizzard's quest block with a SetText post-hook (the original title is
--- remembered and put back when an option is switched off). Spacing changes the quest module's own block-offset field.
--- Both are written without Blizzard's Forever tracker source: if a field or reward function does not exist in the
--- client, that part silently does nothing (see /qt debug).
+-- Quest extras our own tracker (Tracker/Own/Frame.lua) draws with: the reward text after titles, the title icons and
+-- the done check, progress bars on objectives, the distance and arrow, the quest tooltip and the reward links.
+-- If a reward function does not exist in the client, that part silently does nothing (see /qt debug).
 local ADDON, root = ...; local ns = root.tracker
 if ns.disabled then return end
 local api = ns.api
 local db
-local applying = false
-local schedule, itemButtonOf, prepareText, repRewards
-local hooked = {}
-local baseSpacing -- the module's own value, captured before we touch it
-local baseOffsetX -- the module's own blockOffsetX (left inset of quest titles and objectives), likewise
+local repRewards
 
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
 
@@ -73,7 +66,9 @@ local COIN_FILE = { g = "UI-GoldIcon", s = "UI-SilverIcon", c = "UI-CopperIcon" 
 local function coinPx(fontSize)
 	fontSize = tonumber(fontSize)
 	if not fontSize or fontSize <= 0 then return 0 end
-	return math.max(math.floor(fontSize * COIN_SCALE + 0.5), 6)
+	-- 3.2 (user): "Coin size" slider, 50-200 % (db.coinScale)
+	local scale = math.min(math.max(tonumber(db and db.coinScale) or 1, 0.5), 2)
+	return math.max(math.floor(fontSize * COIN_SCALE * scale + 0.5), 6)
 end
 api.coinPx = coinPx
 -- coins: true/false to choose; nil follows "Show coins instead" (titles). Tooltips pass db.tooltipCoins.
@@ -144,6 +139,10 @@ api.foreverIcon = foreverIcon
 
 
 local function applyIcon(tex, desc)
+	-- the textures are pooled: a crop from the art drawn before (the PvP badge's 40/64) stays through SetAtlas when the
+	-- atlas is a whole file (user: "Sometimes icons in the quest titles are missized"; /qt icons: a Dungeon icon with the
+	-- PvP crop), so the crop is reset first; SetAtlas sets its own crop after it when it needs one
+	tex:SetTexCoord(0, 1, 0, 1)
 	if desc.atlas and tex.SetAtlas and C_Texture and C_Texture.GetAtlasInfo then
 		local ok, info = pcall(C_Texture.GetAtlasInfo, desc.atlas)
 		if ok and info then tex:SetAtlas(desc.atlas); return end
@@ -242,7 +241,9 @@ api.placeCheck = placeCheck
 
 -- Puts the icons (descriptors {atlas=, file=, coords=}) left of fs's first line, outside the title, and returns ""
 -- (the title needs no room for them). Textures belong to fs's parent and are reused.
+local iconTitles = setmetatable({}, { __mode = "k" }) -- titles that drew icons (for /ftp icons)
 local function placeTitleIcons(fs, icons)
+	if iconTitles then iconTitles[fs] = true end
 	fs.qtsIcons = fs.qtsIcons or {}
 	local pool = fs.qtsIcons
 	local parent = fs:GetParent()
@@ -260,6 +261,7 @@ local function placeTitleIcons(fs, icons)
 		applyIcon(tex, desc)
 		local drawn = math.floor(size * (tonumber(desc.scale) or 1) + 0.5) -- R106-51: centred on its slot
 		tex:SetSize(drawn, drawn)
+		tex.qtsDesc, tex.qtsDrawn = desc, drawn
 		tex:SetAlpha(alpha)
 		tex:ClearAllPoints()
 		tex:SetPoint("CENTER", fs, "TOPLEFT", -(ICON_GAP + (n - i) * (size + SLOT_GAP) + size / 2), -lineH / 2)
@@ -271,6 +273,31 @@ local function placeTitleIcons(fs, icons)
 	return "" -- the title keeps its place (nothing to make room for)
 end
 api.placeTitleIcons = placeTitleIcons
+
+-- /qt icons: each shown title's icons as drawn (user: "Sometimes icons in the quest titles are missized", classic and
+-- the new tracker alike): the art (atlas or file and what the game loaded), the size asked for, the size it has, the
+-- crop, so the odd one out can be found
+if api.addSlash then api.addSlash("icons", "list the icons on the quest titles with their sizes", function(_, say)
+	local n = 0
+	for title in pairs(iconTitles) do
+		if title:IsVisible() then
+			for i, tex in ipairs(title.qtsIcons or {}) do
+				if tex:IsShown() then
+					n = n + 1
+					local d = tex.qtsDesc or {}
+					local w, h = tex:GetSize()
+					local ok, l, r, t, b = pcall(tex.GetTexCoord, tex)
+					say(("%s #%d: %s scale %s; wanted %s, has %.1fx%.1f; atlas %s, texture %s; crop %s"):format(
+						tostring(title:GetText()):gsub("|", "||"):sub(1, 30), i, tostring(d.atlas or d.file),
+						tostring(d.scale or 1), tostring(tex.qtsDrawn), w or 0, h or 0, tostring(tex.GetAtlas and tex:GetAtlas()),
+						tostring(tex:GetTexture()), ok and ("%.2f,%.2f,%.2f,%.2f"):format(l or 0, r or 0, t or 0, b or 0) or "?"))
+				end
+			end
+		end
+	end
+	say(("icon size setting %s -> %d px slot"):format(tostring(db and db.iconScale), iconSize()))
+	if n == 0 then say("no quest title shows an icon") end
+end) end
 local function hideTitleIcons(fs)
 	for _, tex in ipairs(fs and fs.qtsIcons or {}) do tex:Hide() end
 	if fs then fs.qtsIconsWidth = 0 end
@@ -375,85 +402,6 @@ local function classifier(questID)
 end
 api.questClassifier = classifier -- R106-128: More quests (MoreQuests.lua) shows the same marker
 
-local function stripTag(text, tagName)
-	-- "[Elite] Title", "[60 Elite] Title" or "[60+] Title" -> "Title" / "[60] Title"
-	local inner, rest = text:match("^%[([^%]]*)%]%s*(.*)$")
-	if not inner then return text end
-	local level = inner:match("^(%d+)%+?")
-	if level and (inner:find("+", 1, true) or (tagName ~= "" and inner:lower():find(tagName:lower(), 1, true))) then
-		return "[" .. level .. "] " .. rest
-	end
-	if tagName ~= "" and inner:lower():find(tagName:lower(), 1, true) then return rest end
-	return text
-end
-
-local function questIDOf(block)
-	local id = block.id or block.questID
-	return type(id) == "number" and id or nil
-end
-
-local measurer
-local function measureInit(fs)
-	if not measurer then
-		measurer = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		measurer:Hide()
-	end
-	local font, size, flags = fs:GetFont()
-	if font and size then measurer:SetFont(font, size, flags) end
-end
-local function indentFor(fs, markerText)
-	measureInit(fs)
-	measurer:SetText(markerText)
-	local w = measurer:GetStringWidth() or 12
-	measurer:SetText(" ")
-	local sp = measurer:GetStringWidth()
-	if not sp or sp <= 0 then sp = 3 end
-	return string.rep(" ", math.ceil((w + 4) / sp) + 1) -- +1: a space after the icon
-end
-
-local function markerLabel(block, fs)
-	if not block.qtsMarker then
-		block.qtsMarker = block:CreateFontString(nil, "OVERLAY")
-		block.qtsMarker:SetJustifyH("LEFT")
-	end
-	local label = block.qtsMarker
-	local font, size, flags = fs:GetFont()
-	if font and size then label:SetFont(font, size, flags) end
-	label:ClearAllPoints()
-	label:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
-	return label
-end
-
--- CONSTRAINT: Blizzard sets a title again with the text it currently shows (hovering quests re-applies the
--- highlighted title), which already holds what render() added; taken as the new base, every hover appended the
--- rewards once more ("390xp 390xp 390xp ..."). A captured title is therefore cleaned of everything render() adds: the
--- reward suffix always starts with two spaces and a colour code, and the elite/group marker indents with spaces.
--- 2.2.7: the text Blizzard re-applies when a quest is hovered on the world map's quest list came back in a form the
--- first cleanup missed (user video), so every form of what render() appends is removed wherever it is, with any
--- spacing, coloured or not, until nothing changes.
-local REWARD_PATTERNS = {
-	"%s*|c%x%x%x%x%x%x%x%x%d+|r|T[^|]*XPOrb[^|]*|t|r", -- xp with the orb
-	"%s*|c%x%x%x%x%x%x%x%x%d+xp|r",                    -- xp
-	"%s*|c%x%x%x%x%x%x%x%x%d+|r|T[^|]*|t",             -- gold/silver/copper coins
-	"%s*|c%x%x%x%x%x%x%x%x%d+[gsc]|r",                 -- gold/silver/copper letters
-	"%s*|cff4cc2ff%+%d+ rep|r",                        -- reputation
-	"%s*|T[^|]*XPOrb[^|]*|t",                          -- a bare orb left over
-	"|T[^|]*UI%-RaidTargetingIcon_1[^|]*|t%s?",        -- the attunement star (Questie.lua)
-	"%s*|T[^|]*UI%-RaidTargetingIcon_1[^|]*|t%s*",    -- the attunement star
-}
-local PLAIN_TAILS = { "%s+%d+xp$", "%s+%d+[gsc]$", "%s+%+%d+ rep$" } -- the same with colour codes removed
-local function baseTitle(text)
-	local before
-	repeat
-		before = text
-		for _, pattern in ipairs(REWARD_PATTERNS) do text = text:gsub(pattern, "") end
-		for _, pattern in ipairs(PLAIN_TAILS) do text = text:gsub(pattern, "") end
-	until text == before
-	text = text:gsub("^%s+", "")
-	text = text:gsub("%s+$", "")
-	return text
-end
-
 -- What follows a quest title: experience and gold (and rep) as switched on, in their order. Also used by the
 -- "More quests" section (MoreQuests.lua). Every part starts with two spaces and a colour code (see baseTitle).
 -- Experience and gold as on quest titles (the title settings: xp orb or "xp" in the xp colour, coins or g/s/c), for
@@ -492,16 +440,6 @@ function api.rewardSuffix(id, fontSize)
 		end
 	end
 	return text
-end
-
-local function questComplete(id)
-	if C_QuestLog and C_QuestLog.IsComplete then
-		local ok, done = pcall(C_QuestLog.IsComplete, id)
-		if ok and done ~= nil and not isSecret(done) then return done and true or false end
-	end
-	local index = C_QuestLog and C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(id)
-	local info = index and C_QuestLog.GetInfo and C_QuestLog.GetInfo(index)
-	return type(info) == "table" and info.isComplete == 1 or info and info.isComplete == true or false
 end
 
 -- A coin amount in a title ("2" and its gold coin, "Show coins instead") whose coin would wrap onto the next line
@@ -560,51 +498,6 @@ local function keepCoinsTogether(fs, text)
 	return text
 end
 api.keepCoinsTogether = keepCoinsTogether
-
-local function render(block)
-	local fs = block.HeaderText
-	if not fs or not block.qtsBase then return end
-	block.qtsBase = baseTitle(block.qtsBase) -- never decorate an already decorated title
-	local text = block.qtsBase
-	local id = questIDOf(block)
-	local markerShown = false
-	local slots, indent = {}, ""
-	if id then
-		if db.condense then
-			local marker, tagName = classifier(id)
-			if type(marker) == "table" then
-				slots[#slots + 1] = marker
-				text = stripTag(text, tagName or "")
-			elseif marker then -- "[+N]" group size: text, not an icon
-				local label = markerLabel(block, fs)
-				label:SetText(marker)
-				label:Show()
-				markerShown = true
-				indent = indentFor(fs, marker)
-				text = stripTag(text, tagName or "")
-			end
-		end
-		-- raid attunement quests (Questie.lua): a star, further from the title than the Elite+ icon (the icon next to
-		-- the title is the one a finished quest's check sits on)
-		local star = attunementIcon(id)
-		if star then table.insert(slots, 1, star) end
-		-- added in WoW Forever: the infinity sign, furthest out
-		local forever = foreverIcon(id)
-		if forever then table.insert(slots, 1, forever) end
-		text = text .. api.rewardSuffix(id, select(2, fs:GetFont()))
-	end
-	text = keepCoinsTogether(fs, indent .. placeTitleIcons(fs, slots) .. text)
-	fs.qtsCoinW = fs:GetWidth() -- the width the coins were measured at (reshape in hookBlock)
-	-- a finished quest: the green check, on its own left of the title (it does not move the text)
-	placeCheck(fs, id and questComplete(id))
-	if block.qtsMarker and not markerShown then block.qtsMarker:Hide() end
-	-- the same title again (most tracker updates): leave the text alone, so the game has nothing to measure again
-	if block.qtsLast == text and fs:GetText() == text then return end
-	applying = true
-	pcall(fs.SetText, fs, text)
-	applying = false
-	block.qtsLast = text
-end
 
 -- Experience and gold follow the order in which they were switched on.
 local REWARD_KEY = { xp = "showXP", gold = "showGold" }
@@ -666,116 +559,9 @@ function api.setReward(kind, on)
 	for _, k in ipairs(api.rewardOrder()) do if k ~= kind then order[#order + 1] = k end end
 	if on then order[#order + 1] = kind end
 	db.rewardOrder = order
-	schedule()
+	if api.refreshQuests then api.refreshQuests() end
 end
 
--- R106-46: Blizzard's quest POI buttons (the round map markers left of quest titles) are always hidden (user).
--- CONSTRAINT: never :Hide() them and never hook their :Show(): their OnShow / OnHide (POIButtonMixin) register with
--- EventRegistry's "Supertracking.OnChanged", and doing that from addon code taints every map pin and vignette
--- subscriber (blocked SetPropagateMouseClicks on the world map, secret-value tooltip errors; EllesmereUI Quest
--- Tracker 9.9.1's notes, _Skin.lua). Alpha 0 and no mouse instead: no script runs. The fade-in when a quest is added
--- (AddAnim) ends on alpha 1, so its Alpha animations get a target of 0 and the button is set again 0.35 s later.
-local poiMuted = setmetatable({}, { __mode = "k" })
-local poiRepair = setmetatable({}, { __mode = "k" })
-local function suppressPOI(button)
-	if type(button) ~= "table" or not button.SetAlpha then return end
-	if button:GetAlpha() ~= 0 then button:SetAlpha(0) end
-	if button.IsMouseEnabled and button:IsMouseEnabled() and not (ns.protectedInCombat and ns.protectedInCombat(button)) then
-		pcall(button.EnableMouse, button, false)
-	end
-	local anim = button.AddAnim
-	if anim and anim.GetAnimations and not poiMuted[anim] then
-		poiMuted[anim] = true
-		for _, a in ipairs({ anim:GetAnimations() }) do
-			if a.GetObjectType and a:GetObjectType() == "Alpha" and a.SetToAlpha then a:SetToAlpha(0) end
-		end
-	end
-	if not poiRepair[button] and C_Timer then
-		poiRepair[button] = true
-		C_Timer.After(0.35, function()
-			poiRepair[button] = nil
-			if button:GetAlpha() ~= 0 then button:SetAlpha(0) end
-		end)
-	end
-end
-api.suppressPOI = suppressPOI
-local poiHooked = setmetatable({}, { __mode = "k" })
--- the block takes its button in GetPOIButton (in its layout, before the button is drawn): hidden right there
-local function hidePOI(block)
-	if type(block) ~= "table" then return end
-	if not poiHooked[block] and type(block.GetPOIButton) == "function" then
-		poiHooked[block] = true
-		hooksecurefunc(block, "GetPOIButton", function(self) suppressPOI(self.poiButton) end)
-	end
-	suppressPOI(block.poiButton)
-end
-api.hidePOI = hidePOI
-
-local function hookBlock(block)
-	hidePOI(block)
-	local fs = block.HeaderText
-	if hooked[block] or not fs or not fs.SetText then return end
-	hooked[block] = true
-	-- CONSTRAINT: a block's objective lines are hooked as the block takes them (ObjectiveTrackerBlockMixin:GetLine,
-	-- then AddObjective sets the text), not only on the next pass 0.1 s later: a re-sort rebuilds the blocks, and their
-	-- plain text then showed for a moment and snapped back (user: "the tracker will jitter").
-	if type(block.GetLine) == "function" then
-		hooksecurefunc(block, "GetLine", function(self, key)
-			local lines = self.usedLines
-			local line = type(lines) == "table" and lines[key]
-			if type(line) == "table" and line.Text and api.hookObjectiveText then api.hookObjectiveText(line.Text, self) end
-			-- the chosen font kept at once on the line and its dash (Fonts.lua, R106-43)
-			if type(line) == "table" and api.keepTrackerFont and api.trackerFontActive and api.trackerFontActive() then
-				api.keepTrackerFont(line.Text, "line")
-				api.keepTrackerFont(line.Dash, "line")
-			end
-		end)
-	end
-	if type(fs.GetText) == "function" then
-		local ok, current = pcall(fs.GetText, fs)
-		if ok and type(current) == "string" and not isSecret(current) then block.qtsBase = baseTitle(current) end
-	end
-	if api.keepTrackerFont and api.trackerFontActive and api.trackerFontActive() then api.keepTrackerFont(fs, "title") end -- R106-43
-	hooksecurefunc(fs, "SetText", function(_, text)
-		if applying or type(text) ~= "string" or isSecret(text) then return end
-		if text == block.qtsLast then return end -- our own text set again: nothing new
-		block.qtsBase = baseTitle(text)
-		if db.showGold or db.showXP or db.condense then render(block) end
-		-- the distance's room first: the title's width is then final before Blizzard measures its height (a title
-		-- narrowed afterwards wrapped onto a line Blizzard left no room for, over the first objective)
-		if api.titleReserve then block.HeaderText.qtsReserve, block.HeaderText.qtsYardsW = api.titleReserve(block) end
-		local width = block.HeaderText:GetWidth()
-		-- 3.1.2 speed: our own width / wrap calls inside do not run reshape (below) a second time
-		applying = true
-		pcall(prepareText, block.HeaderText, block)
-		applying = false
-		-- the width changed: the coins measured again at the final width (still before Blizzard measures the title)
-		if math.abs((block.HeaderText:GetWidth() or 0) - (width or 0)) > 1 and (db.showGold or db.showXP or db.condense) then
-			render(block)
-		end
-	end)
-	-- CONSTRAINT: Blizzard sets the title's width, word wrap or line limit again after its text (a rebuilt block: the
-	-- title showed cut off with "..." and not wrapped for a moment, then the 0.1 s pass fixed it: user's jitter
-	-- screenshot); each of those is followed at once by ours (prepareText), still before Blizzard measures the title
-	-- R106-39: and the coins measured again when the width moved since they were (a coin that wrapped at the old width
-	-- jumped a line on the next pass: user, opening the map / a new zone)
-	local function reshape()
-		if applying then return end
-		applying = true
-		pcall(prepareText, fs, block)
-		applying = false
-		if block.qtsBase and (db.showGold or db.showXP or db.condense)
-			and math.abs((fs:GetWidth() or 0) - (fs.qtsCoinW or 0)) > 1 then
-			pcall(render, block)
-		end
-	end
-	for _, method in ipairs({ "SetWidth", "SetWordWrap", "SetMaxLines" }) do
-		if type(fs[method]) == "function" then hooksecurefunc(fs, method, reshape) end
-	end
-end
-
--- Tooltip: quest title, level, overview text, objectives and rewards.
-local tipHooked = {}
 -- Vendor value of an item (sell price x count), when the item's data is loaded; asks the game to load it otherwise,
 -- so the next hover shows it.
 local function vendorValue(itemID, link, count)
@@ -1005,6 +791,7 @@ fill = function(tip, id, fallbackTitle, extra)
 		end
 	end
 	if api.addQuestieLines then pcall(api.addQuestieLines, tip, id) end -- Questie.lua, only while Questie is used
+	if api.addDeadEndLine then pcall(api.addDeadEndLine, tip, id) end -- 3.2 (user idea 35)
 	addRewards(id)
 	if db.partyProgress ~= false and api.addPartyProgress then api.addPartyProgress(tip, id) end
 	if extra then extra(tip) end
@@ -1025,10 +812,6 @@ function api.refreshQuestTooltip()
 	local tip = GameTooltip
 	if not tip:IsShown() or tip:GetOwner() ~= lastTip[1] then return end
 	questTooltip(lastTip[1], lastTip[2], lastTip[3], lastTip[4], true)
-end
-
-local function showTip(block)
-	questTooltip(block, questIDOf(block), block.qtsBase)
 end
 
 -- R106-73: Ctrl + right-click on a quest puts the links of the items it rewards (and its choices) in the chat box
@@ -1064,305 +847,9 @@ function api.linkQuestRewards(id)
 		return
 	end
 	local text = table.concat(links, " ")
-	local active = (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow())
-		or (ChatFrameUtil and ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow())
-	if active and active.Insert then
-		active:Insert(text)
-	elseif ChatFrame_OpenChat then
-		ChatFrame_OpenChat(text)
-	elseif ChatFrameUtil and ChatFrameUtil.OpenChat then
-		ChatFrameUtil.OpenChat(text)
-	end
+	if root.chatInsert then root.chatInsert(text) end -- only into a chat box you opened (Bootstrap.lua)
 end
 
--- after Blizzard's own right-click (its menu for the quest): Ctrl held, the menu closes and the links go to chat
-local function onQuestMouseUp(block, button)
-	if not (IsControlKeyDown and IsControlKeyDown()) then return end
-	-- R106-95: Ctrl+left-click: look for players (GroupFinder.lua), straight from the click; Blizzard's left-click
-	-- opened the quest on the map: closed again when it was closed before the click
-	if button == "LeftButton" and api.findGroupForQuest and api.questGroupFinderOn and api.questGroupFinderOn() then
-		local id = questIDOf(block)
-		if not id then return end
-		local pressed = api.lastQuestPressed
-		local mapWasOpen = pressed and pressed.mapOpen
-		pcall(api.findGroupForQuest, id)
-		if not mapWasOpen then
-			C_Timer.After(0, function()
-				local map = _G.WorldMapFrame
-				if map and map:IsShown() and not InCombatLockdown() then
-					if HideUIPanel then pcall(HideUIPanel, map) else map:Hide() end
-				end
-			end)
-		end
-		return
-	end
-	if button ~= "RightButton" then return end
-	local id = questIDOf(block)
-	if not id then return end
-	C_Timer.After(0, function()
-		if Menu and Menu.GetManager then pcall(function() Menu.GetManager():CloseMenus() end) end
-		if CloseDropDownMenus then pcall(CloseDropDownMenus) end
-	end)
-	pcall(api.linkQuestRewards, id)
-end
-
--- The quest name sits on its own mouse-enabled header button in some clients, which receives the hover instead of the
--- block: every mouse-enabled child of the block (except the quest item button) shows the same tooltip.
-local function hookTooltipOn(frame, block)
-	if tipHooked[frame] or not frame.HookScript then return end
-	tipHooked[frame] = true
-	frame:HookScript("OnEnter", function()
-		pcall(showTip, block)
-		if api.npcHoverStart then pcall(api.npcHoverStart, block, questIDOf(block)) end -- R106-99 (NpcPanel.lua)
-	end)
-	frame:HookScript("OnLeave", function()
-		if db.tooltips then GameTooltip:Hide() end
-		if api.npcHoverStop then pcall(api.npcHoverStop, block) end
-	end)
-	frame:HookScript("OnMouseUp", function(_, button) onQuestMouseUp(block, button) end) -- R106-73
-	-- R106-85: the quest the right-click menu is for (QuestMenu.lua: the menu does not say)
-	frame:HookScript("OnMouseDown", function()
-		local map = _G.WorldMapFrame
-		api.lastQuestPressed = { id = questIDOf(block), at = GetTime(), mapOpen = map and map:IsShown() or false }
-	end)
-end
-
-local function hookTooltip(block)
-	hookTooltipOn(block, block)
-	local item = itemButtonOf(block)
-	for _, key in ipairs({ "HeaderButton", "headerButton", "HeaderText" }) do
-		local f = block[key]
-		if type(f) == "table" and f.HookScript and f.IsMouseEnabled and f:IsMouseEnabled() then hookTooltipOn(f, block) end
-	end
-	for _, child in ipairs({ block:GetChildren() }) do
-		if child ~= item and child.IsMouseEnabled and child:IsMouseEnabled() then hookTooltipOn(child, block) end
-	end
-end
-
--- Quest item buttons: on the side away from the scrollbar (Core decides the side). Blizzard re-anchors them on every
--- layout, so this runs after each tracker update. Item buttons can be protected: only moved out of combat.
-function itemButtonOf(block)
-	local b = block.ItemButton or block.itemButton
-	if not b then
-		local edge = block.rightEdgeFrame
-		if edge and (edge.icon or edge.Icon or edge.SetItem or edge.HotKey) then b = edge end
-	end
-	return b
-end
-
--- Blizzard re-anchors item buttons on every tracker update; the SetPoint post-hook moves them back to the left in the
--- same frame (moving them 0.1 s later made them flicker). Item buttons can be protected: then only out of combat.
-local placingItem = false
-local ITEM_SCALE = 0.875 -- R106-53: quest item buttons 12.5 % smaller
-local function itemMovable(item)
-	return not InCombatLockdown() or not (item.IsProtected and item:IsProtected())
-end
--- R106-52: beside the objectives, not the title: its top under the title's last line, left of the quest (user: the
--- title's left is where the Icon Classifications go). The title is the anchor, so a title that wraps moves it down.
-local function itemAnchor(block) return block.HeaderText or block end
-local function putLeft(item, block)
-	placingItem = true
-	pcall(function()
-		item:ClearAllPoints()
-		if block.HeaderText then
-			item:SetPoint("TOPRIGHT", block.HeaderText, "BOTTOMLEFT", -4, -1)
-		else
-			item:SetPoint("TOPRIGHT", block, "TOPLEFT", -4, 0)
-		end
-	end)
-	placingItem = false
-	item.qtsSide = "left"
-end
-local itemHooked = setmetatable({}, { __mode = "k" })
-local function hookItem(item)
-	if itemHooked[item] then return end
-	itemHooked[item] = true
-	hooksecurefunc(item, "SetPoint", function(self)
-		if placingItem then return end
-		self.qtsSide = nil
-		local block = self.qtsBlock
-		if block and api.itemSide and api.itemSide() == "left" and itemMovable(self) then putLeft(self, block) end
-	end)
-end
-
--- R106-121: the room Blizzard keeps at the right of the title for the quest's item button (its width and the quest
--- module's 2 px spacing) when the button has been moved to the left; 0 otherwise
-local ITEM_EDGE_SPACING = 2
-function api.movedItemRoom(block)
-	local item = block and itemButtonOf(block)
-	if not item or item.qtsSide ~= "left" or not (item.IsShown and item:IsShown()) then return 0 end
-	local w = item.GetWidth and item:GetWidth()
-	return (type(w) == "number" and w > 0) and (w + ITEM_EDGE_SPACING) or 0
-end
-
-local function placeItem(block)
-	local item = itemButtonOf(block)
-	if not item then return false end
-	item.qtsBlock = block
-	hookItem(item)
-	if not item:IsShown() or not itemMovable(item) then return false end
-	-- R106-53: 12.5 % smaller than Blizzard's (user); a scale, so its art and hotkey shrink with it
-	if item.SetScale and item.GetScale and math.abs((item:GetScale() or 1) - ITEM_SCALE) > 1e-3 then
-		pcall(item.SetScale, item, ITEM_SCALE)
-	end
-	local side = api.itemSide and api.itemSide() or "left"
-	if side == "left" then
-		if item.qtsSide ~= "left" or item:GetNumPoints() ~= 1 or select(2, item:GetPoint(1)) ~= itemAnchor(block) then
-			putLeft(item, block)
-		end
-		return false
-	elseif item.qtsSide == "left" then
-		item.qtsSide = nil
-		return true -- let Blizzard put it back on the right with the next layout
-	end
-	return false
-end
-
--- Word wrap and width for the title and objective lines. With an extra width set, a text whose width Blizzard set
--- explicitly is widened to the block width so the experience / gold text after the title is not cut off.
-local function textRegions(block)
-	local list = {}
-	if block.HeaderText then list[#list + 1] = block.HeaderText end
-	for _, key in ipairs({ "usedLines", "lines" }) do
-		if type(block[key]) == "table" then
-			for _, line in pairs(block[key]) do
-				if type(line) == "table" and line.Text then list[#list + 1] = line.Text end
-			end
-		end
-	end
-	return list
-end
-
--- Fit one text to its quest: with word wrap on, the text gets the room from where it starts to the right edge of the
--- quest (less the item button if that is on the right) and wraps onto more lines inside it. With word wrap off,
--- Blizzard's own widths stand (long text is cut off). This runs from SetText post-hooks, i.e. before Blizzard measures
--- the text's height for the layout, so no extra re-layout is needed (a re-layout per update broke scrolling).
--- R106-59: a title Blizzard anchors on both sides (its width comes from the anchors, SetWidth does nothing) keeps the
--- room for the distance by moving its right-side anchors in by that room (user screenshot: the gold ran under the
--- yards and the arrow). Blizzard's own anchors are remembered (a SetPoint post-hook, our own calls skipped) and each
--- right-side one is set again at its own x less the room; room 0 puts Blizzard's back.
-local function squeezeTitle(fs, room)
-	if not fs.qtsSqueezeHooked then
-		fs.qtsSqueezeHooked = true
-		fs.qtsBlizz = {}
-		for i = 1, fs:GetNumPoints() do
-			local point, rel, relPoint, x, y = fs:GetPoint(i)
-			if point then fs.qtsBlizz[point] = { rel, relPoint or point, x or 0, y or 0 } end
-		end
-		hooksecurefunc(fs, "SetPoint", function(self, point, rel, relPoint, x, y)
-			if self.qtsSqueezing or type(point) ~= "string" then return end
-			if type(rel) == "number" then x, y, rel, relPoint = rel, relPoint, nil, nil
-			elseif type(relPoint) == "number" then x, y, relPoint = relPoint, x, nil end
-			self.qtsBlizz[point] = { rel or self:GetParent(), relPoint or point, x or 0, y or 0 }
-			self.qtsRoomSet = nil -- Blizzard's again: ours goes on top of it at once
-			if point:find("RIGHT", 1, true) and (self.qtsRoomWanted or 0) ~= 0 then squeezeTitle(self, self.qtsRoomWanted) end
-		end)
-		hooksecurefunc(fs, "ClearAllPoints", function(self)
-			if not self.qtsSqueezing then self.qtsBlizz = {}; self.qtsRoomSet = nil end
-		end)
-	end
-	fs.qtsRoomWanted = room
-	if fs.qtsRoomSet == room then return end
-	fs.qtsSqueezing = true
-	for point, a in pairs(fs.qtsBlizz) do
-		if point:find("RIGHT", 1, true) then pcall(fs.SetPoint, fs, point, a[1], a[2], a[3] - room, a[4]) end
-	end
-	fs.qtsSqueezing = nil
-	fs.qtsRoomSet = room
-end
-
-function prepareText(fs, block)
-	if not fs or not block or not db then return end
-	local wrap = db.wordWrap and true or false
-	if fs.qtsOrigWrap == nil and fs.CanWordWrap then fs.qtsOrigWrap = fs:CanWordWrap() end
-	if fs.SetWordWrap then
-		local want = wrap or (fs.qtsOrigWrap and true or false)
-		if not fs.CanWordWrap or fs:CanWordWrap() ~= want then pcall(fs.SetWordWrap, fs, want) end
-		-- 3.1.2 speed: only when it is not 0 already (each call ran our SetMaxLines hook: 1686 times in 4 s after a quest
-		-- was accepted, measured in game)
-		if wrap and fs.SetMaxLines and not (fs.GetMaxLines and fs:GetMaxLines() == 0) then pcall(fs.SetMaxLines, fs, 0) end
-	end
-	-- R106-65: an objective line level with the distance column (the yards and the arrow under them reach below the
-	-- title) leaves the same room on its right (user: the objective text ran under the arrow). Level with it: the line
-	-- starts less than the column's height below the title's top. Without positions yet the last answer stands; the
-	-- 0.1 s pass measures again (fitText).
-	local distRoom = 0
-	local title = block.HeaderText
-	if fs ~= title and title and title.qtsReserve and title.qtsDistance and api.distanceColumnHeight then
-		local tTop, lTop = title:GetTop(), fs:GetTop()
-		-- R106-66: the column's real bottom when it has a place (user: lines that start under the arrow get the full
-		-- width); a few px of slack (the glyphs start below the line's top, the arrow's art inside its square)
-		local w = title.qtsDistance
-		local part = w and (api.distanceArrowShown() and w.arrow or api.distanceYardsShown() and w.text) or nil
-		local bottom = part and part.GetBottom and part:GetBottom()
-		if lTop and bottom then
-			-- R106-67 (user: still short): the slack follows the sizes: the arrow's art ends 8 % of its square above
-			-- the square's bottom at worst (DirArrow.tga keeps it within 0.84 of the inscribed circle), and a line's
-			-- letters start about a fifth of the font size below the line's top
-			local _, lineSize = fs:GetFont()
-			local art = (part == w.arrow and part.GetHeight) and (part:GetHeight() or 0) * 0.08 or 0
-			local slack = (tonumber(lineSize) or 12) * 0.2
-			fs.qtsDistRoom = (lTop - slack > bottom + art) and title.qtsReserve or 0
-			-- R106-69 (user: "the" would fit before the arrow): a line level with the arrow only, below the yards,
-			-- leaves the arrow's room, not the yards' (they are wider). The arrow sits centred under the yards, so its
-			-- art reaches half the widest yards ("9.9k yds") plus its art's half width from the right edge: a fixed
-			-- room, so the yards' text changing does not lay the tracker out again
-			local yardsBottom = api.distanceYardsShown() and w.text.GetBottom and w.text:GetBottom()
-			if fs.qtsDistRoom > 0 and part == w.arrow and yardsBottom and lTop - slack <= yardsBottom and title.qtsYardsW then
-				local _, tSize = title:GetFont()
-				local arrowRoom = math.ceil(title.qtsYardsW / 2 + api.distanceArrowSize(tSize) * 0.84 / 2 + 3)
-				-- with places: the arrow's real centre, moved to where the widest yards would put it
-				local aL, aR = w.arrow.GetLeft and w.arrow:GetLeft(), w.arrow.GetRight and w.arrow:GetRight()
-				local yR = w.text.GetRight and w.text:GetRight()
-				local yW = w.text.GetWidth and w.text:GetWidth()
-				if aL and aR and yR and yW then
-					local centre = (aL + aR) / 2 - math.max(title.qtsYardsW - yW, 0) / 2
-					arrowRoom = math.ceil(yR - (centre - (aR - aL) / 2 * 0.84) + 3)
-				end
-				fs.qtsDistRoom = math.min(title.qtsReserve, arrowRoom)
-			end
-			fs.qtsDistWhy = ("line top %.1f, letters %.1f, column ends %.1f (%s), yards end %s"):format(lTop, lTop - slack,
-				bottom + art, part == w.arrow and "arrow" or "yards", yardsBottom and ("%.1f"):format(yardsBottom) or "-")
-		elseif tTop and lTop then
-			local _, size = title:GetFont()
-			fs.qtsDistRoom = (tTop - lTop < api.distanceColumnHeight(size)) and title.qtsReserve or 0
-			fs.qtsDistWhy = ("no column place: estimate, %.1f below the title, column %d"):format(tTop - lTop,
-				api.distanceColumnHeight(size))
-		end
-		distRoom = fs.qtsDistRoom or 0
-	elseif fs ~= title then
-		fs.qtsDistRoom = nil
-	end
-	-- R106-81: the progress bar and the distance column both sit at the quest's right edge: the text stops before the
-	-- wider of the two (user: the objective ran under the bar on a line anchored on both sides, where only the
-	-- arrow's room was kept)
-	local room = math.max(fs.qtsReserve or 0, distRoom)
-	if (wrap or room > 0) and fs:GetNumPoints() <= 1 then
-		local left, blockRight = fs:GetLeft(), block:GetRight()
-		if left and blockRight then
-			local right = (api.itemSide and api.itemSide() == "right") and 30 or 0
-			local want = (blockRight - left) - 4 - right - room -- the progress count's room (below)
-			if want > 20 and math.abs(fs:GetWidth() - want) > 1 then pcall(fs.SetWidth, fs, want) end
-		end
-	elseif fs == block.HeaderText and fs:GetNumPoints() > 1 then
-		-- R106-121: Blizzard ends the title before the quest's item button (SetHeader: its RIGHT point at the block's
-		-- rightEdgeOffset, less the button's width and 2 px); the button moved to the left, that room is the title's again
-		-- (user: the coins wrapped after "(Dungeon)" with room to spare)
-		squeezeTitle(fs, (fs.qtsReserve or 0) - api.movedItemRoom(block))
-	elseif fs ~= block.HeaderText and fs:GetNumPoints() > 1 and (room > 0 or fs.qtsSqueezeHooked) then
-		-- an objective line anchored on both sides (SetWidth does nothing, user: still under the arrow): its right-side
-		-- anchors move in by the room, as a title's do; room 0 puts Blizzard's back
-		squeezeTitle(fs, room)
-	end
-end
-
--- Progress on objectives ("Khaz Modan Iron: 26/30"): the line shows the name, and a small framed bar at the right
--- edge of the quest shows the progress with the count inside it, after the user's reference art (a dark navy box with a
--- near-black rounded edge and a blue fill; Textures/BarBG.tga and BarFill.tga, drawn by tests/make_bar.py). It sits on
--- the objective's own line, so Blizzard's layout and line heights are untouched; a finished objective shows it full.
--- The shortened text is set inside the SetText post-hook, before Blizzard measures the line.
--- Quest list > "Progress bars on objectives" (db.progressBars, on by default).
-local BAR_GAP = 6
 local BAR_BG = "Interface\\AddOns\\" .. ADDON .. "\\Textures\\BarBG"
 -- the fill's colour by progress, as the reputation bars' standings (user): red 0-32 %, orange 33-65 %, yellow 66-99 %,
 -- green when done; or always the old bars' blue (Quest list > "Blue bars", db.progressBarBlue)
@@ -1476,11 +963,6 @@ end
 api.hideProgressBar = hideBar
 
 
-local function hideProgress(fs)
-	hideBar(fs.qtsProgress)
-	fs.qtsReserve, fs.qtsHave, fs.qtsNeed, fs.qtsUnder = nil, nil, nil, nil
-end
-
 -- "Under the objective" (db.progressBarUnder): the bar on a line of its own under the objective's text. The room for it
 -- is an empty last line in the text itself ("\n "), so Blizzard measures it as part of the objective and lays the next
 -- line out below it: nothing collides, also with objectives that wrap or several objective lines, and Blizzard's
@@ -1501,65 +983,6 @@ api.progressUnderBarHeight = underBarHeight
 local function barUnder() return db and db.progressBarUnder and true or false end
 api.progressBarUnder = barUnder
 
--- the line's text without its count (or, with the option off, back to the full text)
-local function decorateObjective(fs, block)
-	if not fs or fs == (block and block.HeaderText) then return end
-	local text = fs:GetText()
-	local ours = fs.qtsProgressName ~= nil and text == fs.qtsProgressName
-	if ours then text = fs.qtsOrigText end -- our own shortened text: the full one is kept
-	local name, have, need
-	if db and db.progressBars ~= false then name, have, need = progressParts(text) end
-	if not name then
-		if ours and text then applying = true; pcall(fs.SetText, fs, text); applying = false end
-		fs.qtsProgressName, fs.qtsOrigText = nil, nil
-		hideProgress(fs)
-		return
-	end
-	local under = barUnder()
-	local _, fontSize = fs:GetFont()
-	local shown = under and (name .. underLine(fontSize)) or name
-	fs.qtsOrigText, fs.qtsProgressName, fs.qtsHave, fs.qtsNeed, fs.qtsUnder = text, shown, have, need, under or nil
-	if fs:GetText() ~= shown then applying = true; pcall(fs.SetText, fs, shown); applying = false end
-	if not fs.qtsProgress then fs.qtsProgress = newProgressBar(fs:GetParent()) end
-	local _, size = fs:GetFont()
-	-- right of the text: room kept at its right; under it: the text's full width
-	fs.qtsReserve = not under and (barSize(size) + BAR_GAP) or nil
-end
-
--- the bar at the right edge of the quest (after the text's width is set)
--- CONSTRAINT: placed from the quest's right edge, not after the text: the text keeps Blizzard's full width when it
--- could not be narrowed (a line with no position yet, or a width Blizzard sets after the text), and a bar after it
--- then started past the quest's edge and was cut off (user: "Encased Fiery Essence"). The bar's left edge is measured
--- from the text's left (same scale: the text sits in the quest); without positions yet it waits for the next pass.
-local lastPlaceRetry = 0
-local function placeProgress(fs)
-	if not fs.qtsProgress then return end
-	if not (fs.qtsReserve or fs.qtsUnder) then hideProgress(fs) return end
-	local font, size, flags = fs:GetFont()
-	local block = fs.qtsBlock
-	local left, blockRight = fs:GetLeft(), block and block.GetRight and block:GetRight()
-	if not (left and blockRight) then
-		hideBar(fs.qtsProgress)
-		if api.applyExtras and GetTime() - lastPlaceRetry > 0.5 then -- laid out later: place it then
-			lastPlaceRetry = GetTime()
-			api.applyExtras()
-		end
-		return
-	end
-	local right = (api.itemSide and api.itemSide() == "right") and 30 or 0
-	if fs.qtsUnder then
-		-- in the text's last line: from the text's left to the quest's right edge, a gap above and below it
-		local bh = underBarHeight(size)
-		local bw = math.max((blockRight - left) - 4 - right, 20)
-		drawProgressBar(fs.qtsProgress, fs, 0, font, size, flags, fs.qtsHave, fs.qtsNeed, "BOTTOMLEFT", bw, bh,
-			UNDER_GAP_BOTTOM, "BOTTOMLEFT")
-		return
-	end
-	local x = (blockRight - left) - 4 - right - barSize(size)
-	drawProgressBar(fs.qtsProgress, fs, x, font, size, flags, fs.qtsHave, fs.qtsNeed, "TOPLEFT")
-end
-api.placeProgress = placeProgress
-
 -- Distance and direction after quest titles: how far away the quest is ("120 yds") and a small gold arrow
 -- (Textures/DirArrow.tga, drawn by tests/make_dirarrow.py in the look of the waypoint arrow's pointer) that turns to
 -- point at it, at the right edge of the title's line. Where the quest is: ZoneSort.lua api.questDirection (Questie's
@@ -1577,6 +1000,27 @@ local function distanceText(yards)
 	return ("%d yds"):format(math.floor(yards + 0.5))
 end
 api.distanceText = distanceText
+
+-- 3.2 "Time to arrive" (db.distanceEta, off by default; an idea from TomTom and WaypointUI): the time to walk there at
+-- your speed now, or at your run (or mount) speed while you stand. GetUnitSpeed: current, run, flight, swim (yards/s).
+local function etaText(yards)
+	if not (db and db.distanceEta) or type(yards) ~= "number" or type(GetUnitSpeed) ~= "function" then return nil end
+	local ok, now, run, flight, swim = pcall(GetUnitSpeed, "player")
+	if not ok then return nil end
+	local speed
+	for _, v in ipairs({ now, (IsSwimming and IsSwimming()) and swim or nil, (IsFlying and IsFlying()) and flight or nil, run }) do
+		if type(v) == "number" and not isSecret(v) and v > 0.5 then speed = v break end
+	end
+	speed = speed or 7
+	local sec = math.floor(yards / speed + 0.5)
+	if sec >= 3600 then return ("%d:%02d:%02d"):format(math.floor(sec / 3600), math.floor(sec / 60) % 60, sec % 60) end
+	return ("%d:%02d"):format(math.floor(sec / 60), sec % 60)
+end
+api.distanceEta = etaText
+local function distanceLabel(yards)
+	local eta = etaText(yards)
+	return eta and (distanceText(yards) .. " " .. eta) or distanceText(yards)
+end
 
 -- the arrow's size (the title's font size x "Arrow size", 50-200 %) and opacity ("Arrow opacity", 10-100 %)
 local function arrowSize(fontSize)
@@ -1612,7 +1056,7 @@ local function distanceReserve(font, size, flags)
 	if showYards() then
 		if not measure then measure = UIParent:CreateFontString(nil, "OVERLAY"); measure:Hide() end
 		if font then measure:SetFont(font, distanceTextSize(size), flags) end
-		measure:SetText("9.9k yds")
+		measure:SetText((db and db.distanceEta) and "9.9k yds 9:59" or "9.9k yds")
 		textW = math.ceil(measure:GetStringWidth() or size * 4)
 	end
 	local arrowW = showArrow() and math.floor(size + 0.5) or 0
@@ -1647,6 +1091,50 @@ local function isInstanceQuest(id)
 end
 api.isInstanceQuest = isInstanceQuest
 
+-- 3.2: only the closest quests show their distance and arrow (user: "only the closest 3 quests"). db.distanceClosest:
+-- how many (3 by default, 0 = every quest). Worked out at most once a second from every quest in the log; a quest
+-- already in the set counts 30 yards closer, so two quests at about the same distance do not swap back and forth (each
+-- swap lays the titles out again).
+local nearSet, nearAt = nil, -10
+local NEAR_KEEP = 30
+local function closestLimit()
+	local n = tonumber(db and db.distanceClosest)
+	if n == nil then return 3 end
+	return math.max(math.floor(n), 0)
+end
+local function nearQuests(me)
+	local limit = closestLimit()
+	if limit == 0 or not me then return nil end
+	local now = GetTime()
+	if nearSet and now - nearAt < 1 then return nearSet end
+	local list = {}
+	local log = rawget(_G, "C_QuestLog")
+	local count = log and log.GetNumQuestLogEntries and log.GetNumQuestLogEntries() or 0
+	for i = 1, count do
+		local info = log.GetInfo and log.GetInfo(i)
+		local id = info and not info.isHeader and not info.isHidden and info.questID
+		if type(id) == "number" and not isInstanceQuest(id) then
+			local yards = api.questDirection(id, me)
+			if type(yards) == "number" then
+				if nearSet and nearSet[id] then yards = yards - NEAR_KEEP end
+				list[#list + 1] = { id = id, d = yards }
+			end
+		end
+	end
+	-- no quest with a place known: no limit (nothing to compare)
+	if #list == 0 then nearSet, nearAt = nil, now return nil end
+	table.sort(list, function(a, b) if a.d ~= b.d then return a.d < b.d end return a.id < b.id end)
+	local set = {}
+	for i = 1, math.min(limit, #list) do set[list[i].id] = true end
+	nearSet, nearAt = set, now
+	return set
+end
+api.distanceNearSet = nearQuests
+local function isNear(id, me)
+	local set = nearQuests(me)
+	return set == nil or set[id] == true
+end
+
 local function hasDistance(id)
 	if not (db and db.questDistance ~= false) or type(id) ~= "number" or not api.questDirection then return false end
 	if not (showYards() or showArrow()) then return false end -- both hidden: no room kept
@@ -1655,38 +1143,19 @@ local function hasDistance(id)
 	if not meAt or now - meAt > 0.5 then
 		meCache, meAt = api.playerWorldPos and api.playerWorldPos() or nil, now
 	end
-	return meCache ~= nil and api.questDirection(id, meCache) ~= nil
+	return meCache ~= nil and api.questDirection(id, meCache) ~= nil and isNear(id, meCache)
 end
 api.questHasDistance = hasDistance
-function api.titleReserve(block)
-	local fs = block and block.HeaderText
-	if not fs or not hasDistance(questIDOf(block)) then return nil end
-	return distanceReserve(fs:GetFont())
-end
 
 local sinceSpot, sinceTurn = 1, 1
--- CONSTRAINT (R106-55): the yards are placed from the quest's right edge (as the progress bars), not after the end of
--- the title: a title Blizzard anchors on both sides keeps its full width (prepareText cannot narrow it), and the yards
--- and arrow after it then landed past the tracker's edge, cut off by the scroll area (user: both gone; /qt distance
--- said shown, the screenshot showed the titles running to the edge). Where they end: the quest's right edge less 4 px,
--- the item button's room on the right, and the arrow at 100 % with its gaps. Without a quest (More quests) or without
--- positions yet: after the title, as before.
+-- the yards end at the title's right edge, in the room the title keeps for them (fs.qtsReserve)
 local function placeDistanceText(fs, w)
-	local block = w.block
-	local left, blockRight = fs:GetLeft(), block and block.GetRight and block:GetRight()
 	w.text:ClearAllPoints()
-	if left and blockRight then
-		local right = (api.itemSide and api.itemSide() == "right") and 30 or 0
-		w.text:SetPoint("TOPRIGHT", fs, "TOPLEFT", (blockRight - left) - 4 - right, 0)
-		w.placedFromEdge = true
-	else
-		w.text:SetPoint("TOPRIGHT", fs, "TOPRIGHT", (fs.qtsReserve or DIST_GAP) - DIST_GAP, 0)
-		w.placedFromEdge = nil
-	end
+	w.text:SetPoint("TOPRIGHT", fs, "TOPRIGHT", (fs.qtsReserve or DIST_GAP) - DIST_GAP, 0)
 end
 -- the distance and arrow on a title whose right edge has fs.qtsReserve of room; a title without the room (its quest
 -- showed no distance when it was laid out) is still watched, so it gets the room once a distance appears
-local function attachDistance(fs, id, block)
+local function attachDistance(fs, id)
 	if not (db and db.questDistance ~= false) or type(id) ~= "number" then hideDistance(fs) return end
 	local w = fs.qtsDistance
 	if not w then
@@ -1712,7 +1181,6 @@ local function attachDistance(fs, id, block)
 	-- the yards at a fixed place (where they end does not depend on the arrow's size); the arrow starts right after
 	-- them, centred on them, and a bigger one grows to the right
 	w.base = math.floor(size + 0.5)
-	if block then w.block = block end
 	placeDistanceText(fs, w)
 	w.arrow:ClearAllPoints()
 	-- under the yards, centred on them (R106-60); a bigger arrow grows downwards
@@ -1749,7 +1217,8 @@ end
 api.turnTexture = turnTexture
 
 local lastRelayout = 0
-local function refreshDistances(spot)
+local CLOSE_YARDS = 20 -- 3.2 (user): within this the yards glow gold (an animation: off with them)
+local function refreshDistances(spot, dt)
 	local me = spot and api.playerWorldPos and api.playerWorldPos() or nil
 	if spot then meCache, meAt = me, GetTime() end
 	local facing = GetPlayerFacing and GetPlayerFacing() or nil
@@ -1761,20 +1230,30 @@ local function refreshDistances(spot)
 				local yards, angle
 				-- (an instance quest has none: R106-83; else its room would be asked for again and again)
 				if me and api.questDirection and not isInstanceQuest(id) then yards, angle = api.questDirection(id, me) end
+				if yards and not isNear(id, me) then yards, angle = nil, nil end -- 3.2: only the closest quests
 				fs.qtsYards, fs.qtsAngle = yards, angle
-				-- no positions when it was attached: from the quest's edge now (R106-55)
-				if w.block and not w.placedFromEdge then placeDistanceText(fs, w) end
 				-- shown only where the title kept the room for it
-				if yards and fs.qtsReserve and showYards() then w.text:SetText(distanceText(yards)); w.text:Show() else w.text:Hide() end
-				-- found or lost since the title was laid out: its room changes (apply() lays it out again)
+				-- 3.2 (user): the number counts toward the new one (Animations.lua animTicker; the ticks below)
+				if yards and fs.qtsReserve and showYards() then
+					local v = api.animTicker and api.animTicker(fs.qtsShownYards, yards, 0) or yards
+					fs.qtsShownYards = v
+					w.text:SetText(distanceLabel(v)); w.text:Show()
+				else
+					fs.qtsShownYards = nil
+					w.text:Hide()
+				end
+				-- found or lost since the title was laid out: its room changes (our frame draws it again)
 				if (yards ~= nil) ~= (fs.qtsReserve ~= nil) and GetTime() - lastRelayout > 2 then
 					lastRelayout = GetTime()
-					if fs.qtsBlock then
-						if api.applyExtras then api.applyExtras() end
-					elseif api.rebuildMoreQuests then
-						api.rebuildMoreQuests() -- a More quests title
-					end
+					if api.refreshQuests then api.refreshQuests() end
 				end
+			end
+			if not spot and fs.qtsYards and fs.qtsShownYards and fs.qtsShownYards ~= fs.qtsYards and api.animTicker
+				and w.text:IsShown() then
+				local v = api.animTicker(fs.qtsShownYards, fs.qtsYards, dt)
+				local was = math.floor(fs.qtsShownYards + 0.5)
+				fs.qtsShownYards = v
+				if math.floor(v + 0.5) ~= was then w.text:SetText(distanceLabel(v)) end
 			end
 			-- no facing from the game (restricted there): the arrow points the map's way (north up), as a map would
 			if fs.qtsYards and fs.qtsAngle and fs.qtsReserve and showArrow() then
@@ -1788,10 +1267,24 @@ local function refreshDistances(spot)
 				end
 				-- turned only when the angle moved (most frames it does not): lighter on the frame rate
 				local angle = fs.qtsAngle - (facing or 0)
-				if not w.arrow.qtsAngle or math.abs(angle - w.arrow.qtsAngle) > 0.02 then turnTexture(w.arrow, angle) end
+				-- 3.2: turned a little each frame toward the new angle (Animations.lua), not in one jump
+				if api.animArrowAngle then angle = api.animArrowAngle(w.arrow.qtsAngle, angle, dt) end
+				local moved = w.arrow.qtsAngle and math.abs((angle - w.arrow.qtsAngle + math.pi) % (2 * math.pi) - math.pi)
+				if not moved or moved > 0.02 then turnTexture(w.arrow, angle) end
 				w.arrow:Show()
 			else
 				w.arrow:Hide()
+			end
+			-- close by: the yards glow gold and breathe
+			local close = fs.qtsYards and fs.qtsYards < CLOSE_YARDS and api.animOn and api.animOn("close")
+			if close then
+				w.text:SetTextColor(1, 0.82, 0.25)
+				w.text:SetAlpha(0.75 + 0.25 * math.sin(GetTime() * 5))
+				w.closeGlow = true
+			elseif w.closeGlow then
+				w.text:SetTextColor(0.85, 0.85, 0.85)
+				w.text:SetAlpha(1)
+				w.closeGlow = nil
 			end
 		end
 	end
@@ -1827,14 +1320,6 @@ function api.distanceReport(say)
 				yards and distanceText(yards) or "no place", angle and ("%.2f"):format(angle) or "none (distance only)",
 				fs.qtsReserve and "yes" or "no", w.arrow:IsShown() and "shown" or "hidden",
 				tostring(tex) .. (w.arrowFallback and " (DirArrow.tga not found: the game's minimap arrow)" or "")))
-				-- R106-67: why each objective line keeps or leaves the column's room
-				if w.block then
-					for _, line in ipairs(textRegions(w.block)) do
-						if line ~= fs and line.qtsDistWhy then
-							say(("    objective: room %s, %s"):format(tostring(line.qtsDistRoom), line.qtsDistWhy))
-						end
-					end
-				end
 		end
 	end
 	if n == 0 then say("  no quest title shows a distance") end
@@ -1846,279 +1331,30 @@ local distanceClock = CreateFrame("Frame")
 distanceClock:SetScript("OnUpdate", function(_, elapsed)
 	if not next(distanceShown) then return end
 	sinceSpot, sinceTurn = sinceSpot + elapsed, sinceTurn + elapsed
-	if sinceTurn < TURN_EVERY then return end
+	-- 3.2: with animations on the arrows turn smoothly, so they are drawn more often
+	local every = api.animOn and api.animOn("arrow") and 0.03 or TURN_EVERY
+	if sinceTurn < every then return end
+	local dt = sinceTurn
 	sinceTurn = 0
 	local spot = sinceSpot >= SPOT_EVERY
 	if spot then sinceSpot = 0 end
-	refreshDistances(spot)
+	refreshDistances(spot, dt)
 end)
 
-local textHooked = setmetatable({}, { __mode = "k" })
--- an objective line's text: decorated (progress bar, width) inside its own SetText, before Blizzard measures it
-local function hookObjectiveText(fs, block)
-	fs.qtsBlock = block -- lines are pooled and move between quests
-	if textHooked[fs] or fs == block.HeaderText then return end
-	textHooked[fs] = true
-	hooksecurefunc(fs, "SetText", function(self)
-		if applying then return end
-		decorateObjective(self, self.qtsBlock)
-		-- 3.1.2 speed: our own SetWidth / SetWordWrap / SetMaxLines inside do not run reshape (below) a second time
-		applying = true
-		pcall(prepareText, self, self.qtsBlock)
-		applying = false
-		placeProgress(self)
-	end)
-	-- Blizzard setting the width, word wrap or line limit after the text: ours again at once (the bar's room, the wrap)
-	local function reshape(self)
-		if applying then return end
-		applying = true
-		pcall(prepareText, self, self.qtsBlock)
-		applying = false
-		placeProgress(self)
-	end
-	for _, method in ipairs({ "SetWidth", "SetWordWrap", "SetMaxLines" }) do
-		if type(fs[method]) == "function" then hooksecurefunc(fs, method, reshape) end
-	end
-	-- R106-41: the line's font set after its text (a reused line, the text size): the bar and its count follow at once
-	-- (user: the bar's count grew for a moment, then back to normal on the next pass)
-	local function refont(self)
-		if applying then return end
-		if self.qtsUnder then decorateObjective(self, self.qtsBlock) end -- the room under it follows the size too
-		placeProgress(self)
-	end
-	for _, method in ipairs({ "SetFont", "SetFontObject" }) do
-		if type(fs[method]) == "function" then hooksecurefunc(fs, method, refont) end
-	end
-end
-api.hookObjectiveText = hookObjectiveText
-
-local function fitText(block)
-	local reserveChanged = false
-	for _, fs in ipairs(textRegions(block)) do
-		hookObjectiveText(fs, block)
-		-- the title: room at its right edge for the distance and arrow, when its quest shows one
-		if fs == block.HeaderText then
-			local want, yardsW = api.titleReserve(block)
-			fs.qtsYardsW = yardsW
-			if want ~= fs.qtsReserve then reserveChanged = true end
-			fs.qtsReserve = want
-		end
-		decorateObjective(fs, block)
-		local width = fs:GetWidth()
-		prepareText(fs, block)
-		placeProgress(fs)
-		-- an objective line narrowed or widened for the distance column (R106-65): Blizzard measures it again
-		if fs ~= block.HeaderText and math.abs((fs:GetWidth() or 0) - (width or 0)) > 1 and fs.qtsDistRoom ~= nil then
-			reserveChanged = true
-		end
-		if fs == block.HeaderText then
-			if block.qtsBase and math.abs((fs:GetWidth() or 0) - (width or 0)) > 1
-				and (db.showGold or db.showXP or db.condense) then
-				render(block) -- coins measured again at the title's new width
-			end
-			attachDistance(fs, questIDOf(block), block)
-		end
-	end
-	return reserveChanged
-end
-
-local wrapDirty = false
-
-local function eachBlock(fn)
-	local module = _G.QuestObjectiveTracker
-	if not module or type(module.usedBlocks) ~= "table" then return end
-	for _, byId in pairs(module.usedBlocks) do
-		if type(byId) == "table" then
-			for _, block in pairs(byId) do if type(block) == "table" then fn(block) end end
-		end
-	end
-end
-
--- /qt "Progress bars on objectives" switched: every shown objective line again (and Blizzard lays out again, the
--- texts' lengths changed)
--- /qt "Distance and direction after quest titles" switched
-function api.applyQuestDistance()
-	eachBlock(fitText)
-	if api.applyExtras then api.applyExtras() end
-end
-
-function api.applyProgressBars()
-	eachBlock(fitText)
-	-- R106-82: the objectives' texts changed (the bar's room line under them added or taken away): Blizzard measures
-	-- the lines again (user: switching "Under the objective" left the old spacing, the text over the bars)
-	wrapDirty = true
-	if api.applyExtras then api.applyExtras() end
-end
-
-local function relayout()
-	local module = _G.QuestObjectiveTracker
-	if module and module.MarkDirty then pcall(securecallfunction, module.MarkDirty, module) end
-	if ObjectiveTrackerFrame then
-		if ObjectiveTrackerFrame.MarkDirty then pcall(securecallfunction, ObjectiveTrackerFrame.MarkDirty, ObjectiveTrackerFrame) end
-		-- force a real re-layout now instead of waiting for the next quest event (opening the quest log did this)
-		if ObjectiveTrackerFrame.Update then pcall(securecallfunction, ObjectiveTrackerFrame.Update, ObjectiveTrackerFrame, true) end
-	end
-end
-
-local function applySpacing()
-	local module = _G.QuestObjectiveTracker
-	if not module or InCombatLockdown() then return end
-	if baseSpacing == nil then
-		baseSpacing = type(module.fromBlockOffsetY) == "number" and module.fromBlockOffsetY or false
-	end
-	if baseSpacing == false then return end
-	local want = baseSpacing - (db.spacing or 0) -- offsets are negative going down
-	if module.fromBlockOffsetY ~= want then module.fromBlockOffsetY = want; return true end
-end
-
--- "Quest titles horizontal position": the quest module places each block (title with its objectives) blockOffsetX from
--- its left edge; db.questTitleX is added to the module's own value. Zone headers subtract it again (ZoneSort.lua,
--- MoreQuests.lua), so their own slider alone moves them. More Quests measures the blocks, so it follows.
-local function applyTitleX()
-	local module = _G.QuestObjectiveTracker
-	if not module or InCombatLockdown() then return end
-	if baseOffsetX == nil then
-		baseOffsetX = type(module.blockOffsetX) == "number" and module.blockOffsetX or false
-	end
-	if baseOffsetX == false then return end
-	local want = baseOffsetX + (tonumber(db.questTitleX) or 0)
-	if module.blockOffsetX ~= want then module.blockOffsetX = want; return true end
-end
-
--- Quest list > "Quests" header colour (its text and collapse button) and the line under it (the header's background
--- art): each a colour with opacity; nil leaves Blizzard's own. Applied on every tracker update (Blizzard may set the
--- text colour again); only when something differs.
-local function tint(texture, c)
-	if not texture then return end
-	if c then
-		texture:SetVertexColor(c[1], c[2], c[3])
-		texture:SetAlpha(c[4] or 1)
-	elseif texture.qtsTinted then
-		texture:SetVertexColor(1, 1, 1)
-		texture:SetAlpha(1)
-	end
-	texture.qtsTinted = c and true or nil
-end
+-- 3.2 (user: "Delete the old tracker's code"): the settings below reach our own tracker (Own/Frame.lua hooks
+-- applyExtras and applyWrap and redraws). Nothing here touches Blizzard's tracker any more.
+function api.applyExtras() end
+function api.applyWrap() end
+function api.applyQuestDistance() api.applyExtras() end
+function api.applyProgressBars() api.applyExtras() end
+-- Quest list > "Quests" header colour and the line under it: our Quests header (Own/Frame.lua headerLook)
 function api.applyQuestsHeaderLook()
-	local module = _G.QuestObjectiveTracker
-	local header = module and module.Header
-	if not (header and db) then return end
-	-- the line first: a failure in the text colour below must not leave it unset
-	-- the line under "Quests  N/40" is the header's own art: every texture of the header frame itself (Background
-	-- and anything a client adds there; not the collapse button's, not the Shine / Glow flashes)
-	local line = type(db.questsLineColor) == "table" and db.questsLineColor or nil
-	local text = type(db.questsHeaderColor) == "table" and db.questsHeaderColor or nil
-	-- no colour chosen and nothing tinted from before: nothing to do on this update (no region list built)
-	if not (line or text or header.qtsAnyTint) then return end
-	header.qtsAnyTint = (line or text) and true or nil
-	for _, region in ipairs({ header:GetRegions() }) do
-		if region.GetObjectType and region:GetObjectType() == "Texture" and region ~= header.Shine and region ~= header.Glow then
-			tint(region, line)
-		end
-	end
-	if header.Text then
-		if text then
-			header.Text:SetTextColor(text[1], text[2], text[3], text[4] or 1)
-			header.qtsTextTinted = true
-		elseif header.qtsTextTinted then
-			header.qtsTextTinted = nil
-			local fontObject = header.Text:GetFontObject()
-			if fontObject and fontObject.GetTextColor then header.Text:SetTextColor(fontObject:GetTextColor()) end
-		end
-	end
-	local button = header.MinimizeButton
-	if button then
-		tint(button.GetNormalTexture and button:GetNormalTexture(), text)
-		tint(button.GetPushedTexture and button:GetPushedTexture(), text)
-	end
+	if api.ownApplyHeaderLook then api.ownApplyHeaderLook() end
 end
-
--- what the 0.1 s pass had to change (each one is a re-layout the hooks did not catch in time): /qt debug
-local passFixed = { item = 0, room = 0, title = 0, spacing = 0 }
-local function apply()
-	if not db then return end
-	pcall(api.applyQuestsHeaderLook)
-	local changed = false
-	eachBlock(function(block)
-		hookBlock(block)
-		hookTooltip(block)
-		if placeItem(block) then changed = true; passFixed.item = passFixed.item + 1 end
-		if fitText(block) then changed = true; passFixed.room = passFixed.room + 1 end -- a title's width changed: Blizzard measures it again
-		local before = block.qtsBase and block.HeaderText and block.HeaderText:GetText()
-		if block.qtsBase then
-			if db.showGold or db.showXP or db.condense then render(block)
-			else
-				applying = true
-				pcall(block.HeaderText.SetText, block.HeaderText, block.qtsBase)
-				applying = false
-				block.qtsLast = block.qtsBase
-				if block.qtsMarker then block.qtsMarker:Hide() end
-				hideTitleIcons(block.HeaderText)
-			end
-			if before ~= block.HeaderText:GetText() then changed = true; passFixed.title = passFixed.title + 1 end
-		end
-	end)
-	-- R106-46: any section added later (its blocks' POI buttons hidden here too)
-	for _, module in ipairs(ObjectiveTrackerFrame and ObjectiveTrackerFrame.modules or {}) do
-		for _, byId in pairs(type(module.usedBlocks) == "table" and module.usedBlocks or {}) do
-			for _, block in pairs(type(byId) == "table" and byId or {}) do hidePOI(block) end
-		end
-	end
-	if applySpacing() then changed = true; passFixed.spacing = passFixed.spacing + 1 end
-	if applyTitleX() then changed = true; passFixed.spacing = passFixed.spacing + 1 end
-	if wrapDirty then wrapDirty = false; changed = true end -- one re-layout after the option is switched
-	return changed
-end
-
--- CONSTRAINT: no decorating pass inside Blizzard's tracker Update post-hook with a re-layout from there (R106-34):
--- apply() reports a change on most passes, so every tracker update started another one, which made the game lag
--- badly (user: "massive unplayable lag"). Decorating runs from schedule (0.1 s later) and from the GetBlock / GetLine
--- and SetText hooks only.
--- CONSTRAINT: at most RELAYOUT_MAX re-layouts per RELAYOUT_WINDOW s from this pass. Each re-layout updates Blizzard's
--- tracker, which schedules this pass again; a text that keeps changing (two states taking turns, a width that keeps
--- moving) would otherwise re-lay the tracker about ten times a second for as long as it lasts: suspected behind the
--- jitter while running (user). Counted for /qt debug (relayouts done and held back).
-local RELAYOUT_MAX, RELAYOUT_WINDOW = 3, 2
-local relayoutTimes, relayoutsDone, relayoutsHeld = {}, 0, 0
-local function cappedRelayout()
-	local now = GetTime()
-	local keep = {}
-	for _, t in ipairs(relayoutTimes) do if now - t < RELAYOUT_WINDOW then keep[#keep + 1] = t end end
-	relayoutTimes = keep
-	if #relayoutTimes >= RELAYOUT_MAX then
-		relayoutsHeld = relayoutsHeld + 1
-		return false
-	end
-	relayoutTimes[#relayoutTimes + 1] = now
-	relayoutsDone = relayoutsDone + 1
-	relayout()
-	return true
-end
-api.cappedRelayout = cappedRelayout
-
-local timer
-function schedule()
-	if timer then return end
-	timer = true
-	C_Timer.After(0.1, function()
-		timer = nil
-		xpcall(function() if apply() then cappedRelayout() end end, geterrorhandler())
-	end)
-end
-
-function api.applyExtras() schedule() end
-function api.applyWrap() wrapDirty = true; schedule() end
-function api.placeItems() schedule() end
 
 function api.extrasDebug(say)
-	local module = _G.QuestObjectiveTracker
-	say(("re-layouts from decorating: %d done, %d held back (at most %d per %d s)"):format(relayoutsDone, relayoutsHeld,
-		RELAYOUT_MAX, RELAYOUT_WINDOW))
-	say(("  fixed late: %d title text(s), %d title room(s) (distance), %d item button(s), %d spacing"):format(
-		passFixed.title, passFixed.room, passFixed.item, passFixed.spacing))
-	say(("rewards: xp=%s gold=%s; spacing=%s (module.fromBlockOffsetY=%s, original=%s); XP function: %s, gold function: %s"):format(
-		tostring(db.showXP), tostring(db.showGold), tostring(db.spacing), tostring(module and module.fromBlockOffsetY),
-		tostring(baseSpacing),
+	say(("rewards: xp=%s gold=%s; spacing=%s; XP function: %s, gold function: %s"):format(
+		tostring(db.showXP), tostring(db.showGold), tostring(db.spacing),
 		tostring((C_QuestLog and C_QuestLog.GetQuestLogRewardXP) or _G.GetQuestLogRewardXP ~= nil),
 		tostring((C_QuestLog and C_QuestLog.GetQuestLogRewardMoney) or _G.GetQuestLogRewardMoney ~= nil)))
 end
@@ -2129,37 +1365,9 @@ ns.onLogin[#ns.onLogin + 1] = function()
 	if db.attuneStar == false then db.attunementStar = false end
 	db.attuneStar = nil
 	db.ahValue = nil -- 3.0.1: auction house prices removed
-	if ObjectiveTrackerContainerMixin then
-		hooksecurefunc(ObjectiveTrackerContainerMixin, "Update", schedule)
-	end
-	-- CONSTRAINT: a block the quests section takes (ObjectiveTrackerModuleMixin:GetBlock, a new one after a re-sort) is
-	-- hooked at once, so its title (SetHeader -> SetText) and its lines are decorated before Blizzard measures them,
-	-- in the same frame, instead of on the next pass 0.1 s later (the jitter)
-	local questModule = _G.QuestObjectiveTracker
-	if type(questModule) == "table" and type(questModule.GetBlock) == "function" then
-		hooksecurefunc(questModule, "GetBlock", function()
-			eachBlock(function(block)
-				if not hooked[block] then hookBlock(block); hookTooltip(block) end
-			end)
-		end)
-	end
-	-- R106-46: the POI buttons of every other section too (campaign, world quests, ...): each block as it is taken
-	local function hideModulePOIs(module)
-		for _, byId in pairs(type(module) == "table" and type(module.usedBlocks) == "table" and module.usedBlocks or {}) do
-			for _, block in pairs(type(byId) == "table" and byId or {}) do hidePOI(block) end
-		end
-	end
-	for _, module in ipairs(ObjectiveTrackerFrame and ObjectiveTrackerFrame.modules or {}) do
-		if module ~= questModule and type(module.GetBlock) == "function" then
-			hooksecurefunc(module, "GetBlock", function(self) hideModulePOIs(self) end)
-		end
-		hideModulePOIs(module)
-	end
 	local frame = CreateFrame("Frame")
-	for _, e in ipairs({ "QUEST_LOG_UPDATE", "QUEST_POI_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED" }) do pcall(frame.RegisterEvent, frame, e) end
-	frame:SetScript("OnEvent", function(_, event, questID)
-		if event == "QUEST_ACCEPTED" or event == "QUEST_REMOVED" then api.forgetRep(type(questID) == "number" and questID or nil) end
-		schedule()
+	for _, e in ipairs({ "QUEST_ACCEPTED", "QUEST_REMOVED" }) do pcall(frame.RegisterEvent, frame, e) end
+	frame:SetScript("OnEvent", function(_, _, questID)
+		api.forgetRep(type(questID) == "number" and questID or nil)
 	end)
-	schedule()
 end

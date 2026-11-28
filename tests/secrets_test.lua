@@ -51,6 +51,9 @@ check("5 insignia: not done", find("Collect 6 Fractured Insignia")[3] ~= "done")
 toys[279471] = true
 check("the toy known: found, one green line", find("Alcaz Operative Insignia")[3] == "found" and not find("Free Mason Connery"))
 check("counter counts it", rows()[1][3] == "1 of 9 found")
+local foundRow = find("Alcaz Operative Insignia")
+check("found: it keeps its own icon and its gold name (user)", not tostring(foundRow[1]):find("ReadyCheck", 1, true)
+	and type(foundRow[4]) == "table" and foundRow[4][1] == 1 and foundRow[4][2] == 0.82)
 
 -- optional steps do not count, unordered echoes do not tick each other
 check("Traveler's Symbols: optional steps not counted", find("Traveler's Symbols")[3] == "Toy, 0 of 3 steps")
@@ -96,9 +99,19 @@ check("a new find: said once", said == 1)
 -- the page
 local pages = {}
 local kit = { page = function(key) pages[#pages + 1] = key end, heading = function() end, check = function() end,
-	help = function() end, note = function() end, custom = function() end, buttons = function() end,
+	help = function() end, note = function() end, custom = function() end, buttons = function() end, input = function() end, choice = function() end,
 	pageByKey = setmetatable({}, { __index = function(t, k) local p = {}; rawset(t, k, p) return p end }), refresh = function() end }
 api.declareGuidePages(kit)
 check("a Secrets page", table.concat(pages, ","):find("secrets", 1, true) ~= nil)
+check("no Sleeping bag page: it is part of Secrets (user)", not table.concat(pages, ","):find("bedroll", 1, true))
+ns.db.secretsShowFound = true
+local bedRow
+for _, r in ipairs(api.guideSecretRows()) do if r[2] == "Cozy Sleeping Bag" then bedRow = r end end
+check("Secrets lists the Cozy Sleeping Bag chain", bedRow ~= nil)
+do
+	local list, names = api.guideSecretRows(), {}
+	for _, r in ipairs(list) do if not r.header and r.split ~= nil or r[2] == "Cozy Sleeping Bag" then names[#names + 1] = r[2] end end
+	check("order (user): Cozy Sleeping Bag first, Chicken Egg last", list[2][2] == "Cozy Sleeping Bag" and names[#names] == "Chicken Egg")
+end
 
 print(pass and "ALL OK" or "SOME FAILED")

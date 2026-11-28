@@ -1,0 +1,138 @@
+# Extra object id -> model file pairs for objects not in the game cache or CMaNGOS (read by make_object_models.py;
+# the game cache and CMaNGOS win over these). object id <tab> model file id <tab> name
+186324	190633	?
+186463	201087	Wyrmtail [tbc]
+386675	196988	Buried Treasure
+386691	198017	Library Book
+386759	198036	Library Book
+386777	219372	Dusty Chest
+387466	196976	Rusty Lockbox
+387477	196976	Defias Stashbox
+392029	196988	Swordsman's Reward
+397987	196982	Kobold Stashbox
+402215	203402	Charred Note
+403041	200898	Blasting Supplies
+403102	196987	Bristleback Loot Cache
+403105	202297	Windfury Cone
+403718	219436	Prairie Flower
+404352	196988	Artifact Storage
+404401	204112	Sandy Loam
+404433	219372	Lunar Chest
+404695	196987	Waterlogged Stashbox
+404830	196988	Dusty Chest
+404911	196989	Hidden Cache
+404941	196988	Relic Coffer
+405201	196989	Shipwreck Cache
+405628	196987	Frostmane Loot Cache
+405633	196976	Rockjaw Footlocker
+405879	198025	Apothecary Society Primer
+405946	196988	Dusty Chest
+406006	198936	Idol
+406736	196987	Lost Stash
+407117	199226	Abandoned Snapjaw Nest
+407120	199452	Empty Snapjaw Nest
+407247	219436	Glade Flower
+407289	200276	Horde Warbanner
+407291	200268	Alliance Warbanner
+407312	190192	Hungry Idol
+407347	199989	Altar of Thorns
+407352	197063	Gnarlpine Stash
+407454	197463	Gunpowder Keg
+407457	196982	Stable Hand's Trunk
+407566	198039	Goblin Tome
+407731	197621	Stonemason's Toolbox
+407734	196989	Gnarlpine Cache
+407844	198037	Libram of Blessings
+407850	200953	Sunken Reliquary
+407918	197279	Empty Trophy Display
+407983	198056	Pile of Stolen Books
+408014	198039	Gnomish Tome
+408718	196982	Equipment Stash
+408799	201452	Idol of the Deep
+408802	189097	Gnarled Harpoon
+409131	196988	Rusty Chest
+409289	201095	Strange Orb
+409311	201649	Spear of Mannoroth
+409315	201446	Shattered Orb
+409496	198453	Scrolls
+409501	198036	Dalaran Digest
+409562	198039	Spellbook
+409700	198039	Manual
+409711	198452	Scrolls
+409717	198453	Scrolls
+409731	198453	Scrolls
+409735	198038	Spellbook
+409754	198639	Wall-Mounted Shield
+409758	197874	Discarded Helm
+410089	201662	Owl Statue
+410299	198039	Arcane Secrets
+410369	196989	Dead Drop
+410528	196987	Ornamented Chest
+410847	203020	Rusty Safe
+411328	197193	Slumbering Bones
+411348	200953	Dusty Coffer
+411674	198455	Prophecy of a King's Demise
+411710	196976	Demonic Reliquary
+411715	199444	Bough of Altek
+412759	189092	Personal Letterbox
+414197	201849	Bough of Shadows
+414532	196989	Clliffspring Chest
+414624	204112	Lighthouse Stash
+414646	202430	Remnant
+414658	189478	Rubble
+414663	190354	Shatterspear Idol
+414713	196976	Storage Locker
+417353	219237	Extinguished Campfire
+418855	196976	Illari's Loot Cache
+420055	190104	Rowboat
+421526	198453	Research Notes
+422902	189956	Crystal Waters of Lake Elune'ara
+422911	199713	Sealed Barrel
+422919	197601	Tapped Shadowforge Keg
+423695	198036	Libram of Deliverance
+423703	203177	Broken Warhammer
+423841	200066	Frozen Remains
+423895	198455	Scrolls
+423896	200911	Manual
+423897	198453	Scrolls
+423898	198028	Mysterious Book
+423899	198454	Scrolls
+423900	198029	Waterlogged Book
+423901	198046	Book
+424264	190635	Grave
+424265	189541	Grave
+424267	189541	Grave
+428228	196976	Conspicuous Cache
+433067	190342	Clay Vessel
+433593	200442	Zum'Rah's Satchel
+433594	200442	Antu'Sul's Satchel
+433596	196987	Spellbound War Chest
+441061	200640	Weathered Etching
+441248	198022	Book
+441249	198024	Book
+441250	198022	Book
+441252	198036	Book
+441253	198036	Book
+441254	198036	Book
+441865	200442	Traveller's Knapsack
+441912	203099	Giant Golem Foot
+441913	203099	Giant Golem Foot
+441914	203096	Giant Golem Arm
+441915	203096	Giant Golem Arm
+442404	199224	Stormcrow Egg
+442405	196988	Abandoned Cache
+442685	196989	Old Chest
+442688	198168	Old Crate
+443727	196988	Grimtotem Chest
+443728	200152	Woodpaw Bag
+445037	123808	Extraplanar Eye
+445039	123808	Extraplanar Eye
+445040	123808	Extraplanar Eye
+445041	123808	Extraplanar Eye
+445042	123808	Extraplanar Eye
+445044	123808	Extraplanar Eye
+581777	307330	?
+581792	343855	?
+620182	197007	?
+644609	7893610	?
+659361	7960282	?

@@ -38,14 +38,14 @@ local function flip(key)
 end
 
 local function helpLine(usage, description, current)
-	line((usage and accent("/qt " .. usage) .. "  " or "") .. description .. (current and ", now " .. current or ""))
+	line((usage and accent("/ftp " .. usage) .. "  " or "") .. description .. (current and ", now " .. current or ""))
 end
 
 local function printHelp()
 	line(ns.brand)
 	helpLine("toggle", "turn the skin on or off (off brings RestedXP's own windows back)")
 	helpLine("<0-" .. MAX_FOLLOWING .. "|all>", "steps shown ahead", db.followingSteps >= ns.ALL_STEPS and "all" or db.followingSteps)
-	helpLine("steps", "show the steps-ahead setting (/qt steps <0-" .. MAX_FOLLOWING .. "|all> sets it)")
+	helpLine("steps", "show the steps-ahead setting (/ftp steps <0-" .. MAX_FOLLOWING .. "|all> sets it)")
 	helpLine("arrow", "RestedXP's arrow as the step's objective button, on or off", onOff(db.arrowButton))
 	helpLine("satellites", "the small objective buttons around the arrow, on or off", onOff(db.arrowSatellites))
 	helpLine(nil, "Ctrl+Right-click on the arrow locks it in place or unlocks it", lockState())
@@ -59,14 +59,14 @@ end
 local function printStatus()
 	local snapshot = ns.snapshot()
 	ns.say(onOff(db.enabled) .. ", RestedXP " .. ns.rxpRelease())
-	if ns.suspended and ns.suspended() then line("Stood down this session: RestedXP's guide data could not be read. /qt toggle tries again.") end
+	if ns.suspended and ns.suspended() then line("Stood down this session: RestedXP's guide data could not be read. /ftp toggle tries again.") end
 	if ns.missingRxp and #ns.missingRxp > 0 then
 		line("Not in this RestedXP version (those parts are skipped): " .. table.concat(ns.missingRxp, ", "))
 	end
 	line(arrowLine())
 	if not snapshot then
 		if not db.enabled then
-			line("Use /qt toggle to show it.")
+			line("Use /ftp toggle to show it.")
 		elseif not RXP.currentGuide or RXP.currentGuide.empty then
 			line("No RestedXP guide loaded.")
 		else
